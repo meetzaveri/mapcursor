@@ -1,0 +1,586 @@
+:root {
+    --font-ui: 'Geist', system-ui, sans-serif;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-sketch: 'Caveat Brush', cursive;
+    --font-mono: 'Geist Mono', monospace;
+    --font-caveat-brush: 'Caveat Brush', cursive;
+
+    /* Warm Studio palette — stored as space-separated RGB *channels* so the
+       Tailwind tokens `rgb(var(--x) / <alpha-value>)` keep opacity modifiers
+       (e.g. bg-accent/30) working. Raw-CSS usages wrap them in rgb(). */
+    --color-canvas: 245 240 232; /* #f5f0e8 — the parchment */
+    --color-sidebar: 237 232 220; /* #ede8dc */
+    --color-card: 255 252 245; /* #fffcf5 */
+    --color-topbar: 26 22 18; /* #1a1612 */
+    --color-topbar-hover: 46 40 32; /* #2e2820 */
+    --color-accent: 232 200 122; /* #e8c87a */
+    --color-accent-dark: 196 144 26; /* #c4901a */
+    --color-accent-glow: rgba(184, 134, 11, 0.18);
+    --color-ink: 26 22 18; /* #1a1612 */
+    --color-ink-mid: 90 78 60; /* #5a4e3c */
+    --color-ink-muted: 140 126 106; /* #8c7e6a */
+    --color-border-panel: 212 201 180; /* #d4c9b4 */
+    --color-border-card: 196 184 154; /* #c4b89a */
+
+    /* dot-grid dot color — overridden in dark so the grid stays visible */
+    --color-dot-grid: 196 184 154; /* #c4b89a */
+}
+
+/* Dark theme: warm-dark derivation of the Warm Studio palette. Applied via a
+   `dark` class on <html> (set by useTheme + the pre-paint script in index.html).
+   Surfaces go espresso/charcoal, ink flips to light-warm, amber accent stays.
+   Values are RGB channels to match :root above. */
+.dark {
+    --color-canvas: 28 24 20; /* #1c1814 — dark parchment */
+    --color-sidebar: 35 32 25; /* #232019 — panel bg */
+    --color-card: 42 37 29; /* #2a251d — card/shape fill */
+    --color-topbar: 15 13 10; /* #0f0d0a — near-black top bar */
+    --color-topbar-hover: 46 40 32; /* #2e2820 */
+    --color-accent: 232 200 122; /* #e8c87a — keep amber */
+    --color-accent-dark: 196 144 26; /* #c4901a */
+    --color-accent-glow: rgba(184, 134, 11, 0.24);
+    --color-ink: 243 236 224; /* #f3ece0 — primary text, light warm */
+    --color-ink-mid: 200 188 166; /* #c8bca6 — secondary text */
+    --color-ink-muted: 154 142 120; /* #9a8e78 — labels, hints */
+    --color-border-panel: 58 52 43; /* #3a342b — panel dividers */
+    --color-border-card: 74 66 52; /* #4a4234 — card outlines */
+
+    --color-dot-grid: 74 66 52; /* #4a4234 */
+}
+
+.caveat-brush-regular {
+    font-family: 'Caveat Brush', cursive;
+    font-weight: 400;
+    font-style: normal;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-ui);
+
+    /* font-weight: 700; */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+#main-two-root svg {
+    /* background-image: url('./assets/ooorganize.svg') !important; */
+    /* background-repeat: no-repeat; */
+}
+
+code {
+    font-family:
+        source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+.App {
+    text-align: center;
+}
+/* Backdrop slot for the active base provider (src/bases). Sits behind
+   #main-two-root (-9) so canvas ink always draws over it, and never takes
+   pointer events — every interaction belongs to the canvas above. Empty and
+   invisible on the board base, whose backdrop is the svg background below. */
+#cb-base-root {
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    pointer-events: none;
+}
+/* MapLibre's container, created by the map base inside the slot above. It fills
+   the slot; the slot's fixed/inset positioning does the rest. */
+#cb-map-bg {
+    width: 100%;
+    height: 100%;
+}
+/* The attribution link must stay clickable (OSM's terms require the credit be
+   reachable), so it opts back in to pointer events the slot turned off. */
+#cb-map-bg .maplibregl-ctrl-attrib {
+    pointer-events: auto;
+}
+#main-two-root {
+    z-index: -9;
+}
+#main-two-root svg {
+    background-color: rgb(var(--color-canvas));
+    z-index: -1;
+}
+/* A base that paints its own backdrop (e.g. the map) needs the parchment out of
+   the way, otherwise it renders over the backdrop. The active provider toggles
+   this class on <body>. */
+body.cb-base-opaque-backdrop #main-two-root svg {
+    background-color: transparent;
+}
+/* Dot grid is opt-in (default off) behind the `dotGrid` feature flag. The
+   `cb-dot-grid` class is toggled on #main-two-root by newCanvas.tsx based on
+   getDotGridEnabled(). background-size + background-position are then driven live
+   by syncBackgroundToCamera() so the grid scales/pans with the Two.js camera.
+   24px is the first-paint default — kept in sync with BG_TILE_BASE there. */
+#main-two-root.cb-dot-grid svg {
+    background-image: radial-gradient(
+        circle,
+        rgb(var(--color-dot-grid)) 1px,
+        transparent 1px
+    );
+    background-size: 24px 24px;
+}
+
+/* #floating-toolbar {
+//   position: absolute;
+//   width: 340px;
+//   height: 40px;
+//   background: #091e42;
+//   visibility: hidden;
+//   border-radius: 10px;
+//   z-index: 99999;
+//   cursor: pointer;
+//   outline: none;
+// }
+*/
+
+#selector-rect {
+    z-index: -1;
+}
+/* 
+#rsz-rect {
+    position: absolute;
+    background: transparent;
+    width: 100px;
+    height: 100px;
+    border: 1px solid #000;
+    opacity: 0;
+} */
+
+text
+/*
+ g
+ path */ {
+    cursor: pointer !important;
+}
+
+g {
+    z-index: 1;
+}
+
+button:focus {
+    outline: none !important;
+}
+
+.App-logo {
+    height: 40vmin;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .App-logo {
+        animation: App-logo-spin infinite 20s linear;
+    }
+}
+
+.App-header {
+    /* background-color: #282c34; */
+    min-height: 10vh;
+    /* display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center; */
+    font-size: calc(10px + 2vmin);
+    color: #282c34;
+}
+
+.App-link {
+    color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.temp-input-area-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+    /* font-family: 'Noto Sans JP'; */
+    font-weight: 600;
+    font-size: 16px;
+    resize: none;
+    outline: none !important;
+}
+
+.temp-input-area {
+    background: transparent;
+    border: none;
+    color: #000;
+    /* font-family: 'Noto Sans JP'; */
+    font-weight: 300;
+    font-size: 16px;
+    resize: none;
+    outline: none !important;
+    line-height: 1.5rem;
+}
+
+.temp-textarea {
+    background: transparent;
+    border: none;
+    color: #000;
+    /* font-family: 'Noto Sans JP'; */
+    font-weight: 600;
+    font-size: 16px;
+    resize: none;
+    outline: none !important;
+    line-height: 1.5rem;
+    overflow-y: hidden;
+}
+
+/* Sidebar css */
+
+.sidebar-container {
+    z-index: 1;
+    /* width: 22%; */
+    -ms-flex: 0 100px;
+    -webkit-box-flex: 0;
+    -moz-box-flex: 0;
+    -ms-box-flex: 0;
+    box-flex: 0;
+    position: fixed;
+    top: 5px;
+    /* height: 10%; */
+    -webkit-transition: all 500ms;
+    -moz-transition: all 500ms;
+    -o-transition: all 500ms;
+    transition: all 500ms;
+}
+
+/* @keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.2);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+} */
+/* 
+.sidebar-container .icon-elements:hover::after {
+    content: 'Elements';
+    width: 90px;
+    position: absolute;
+    top: 4px;
+    left: 54px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+    font-size: 0.9rem;
+}
+
+.sidebar-container .icon-elements:hover::before {
+    content: ' ';
+    position: absolute;
+    top: 14px;
+    left: 51px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    transform: rotate(45deg);
+    width: 10px;
+    height: 10px;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+}
+
+.sidebar-container .icon-shape:hover::after {
+    width: 90px;
+    position: absolute;
+    top: 4px;
+    left: 54px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+    font-size: 0.9rem;
+    content: 'Shapes';
+}
+
+.sidebar-container .icon-shape:hover::before {
+    content: ' ';
+    position: absolute;
+    top: 14px;
+    left: 51px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    transform: rotate(45deg);
+    width: 10px;
+    height: 10px;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+}
+
+.sidebar-container .icon-frame:hover::after {
+    width: 90px;
+    position: absolute;
+    top: 4px;
+    left: 54px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+    font-size: 0.9rem;
+    content: 'Frames';
+}
+.sidebar-container .icon-frame:hover::before {
+    content: ' ';
+    position: absolute;
+    top: 14px;
+    left: 51px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    transform: rotate(45deg);
+    width: 10px;
+    height: 10px;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+}
+
+.sidebar-container .icon-text:hover::after {
+    width: 90px;
+    position: absolute;
+    top: 4px;
+    left: 54px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+    font-size: 0.9rem;
+    content: 'Add Text';
+}
+.sidebar-container .icon-text:hover::before {
+    content: ' ';
+    position: absolute;
+    top: 14px;
+    left: 51px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    transform: rotate(45deg);
+    width: 10px;
+    height: 10px;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+}
+
+.sidebar-container .icon-pencil:hover::after {
+    width: 90px;
+    position: absolute;
+    top: 4px;
+    left: 54px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+    font-size: 0.9rem;
+    content: 'Draw';
+}
+.sidebar-container .icon-pencil:hover::before {
+    content: ' ';
+    position: absolute;
+    top: 14px;
+    left: 51px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    transform: rotate(45deg);
+    width: 10px;
+    height: 10px;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+}
+
+.sidebar-container .icon-selector:hover::after {
+    width: 90px;
+    position: absolute;
+    top: 4px;
+    left: 54px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+    font-size: 0.9rem;
+    content: 'Elements';
+}
+.sidebar-container .icon-selector:hover::before {
+    content: ' ';
+    position: absolute;
+    top: 14px;
+    left: 51px;
+    background: #0747a6;
+    padding: 4px 5px;
+    color: #fff;
+    transform: rotate(45deg);
+    width: 10px;
+    height: 10px;
+    -webkit-transition: all 1s;
+    -moz-transition: all 1s;
+    -o-transition: all 1s;
+    transition: all 1s;
+    z-index: 1;
+} */
+
+/* .secondary-sidebar-content::before {
+//     content: ' ';
+//     position: absolute;
+//     top: 9px;
+//     left: -5px;
+//     background: #fff;
+//     transform: rotate(45deg);
+//     width: 10px;
+//     height: 10px;
+//     -webkit-transition: all 1s;
+//     -moz-transition: all 1s;
+//     -o-transition: all 1s;
+//     transition: all 1s;
+// }
+*/
+
+.secondary-sidebar-shapes {
+    position: fixed;
+    top: 45px;
+    left: 21px;
+}
+
+.caret-icon::before {
+    content: '';
+    position: absolute;
+    background-color: #0052cc;
+    width: 3px;
+    height: 9px;
+    transform: translate(2px, 0) rotate(45deg);
+}
+.caret-icon::after {
+    content: '';
+    position: absolute;
+    background-color: #0052cc;
+    width: 3px;
+    height: 9px;
+    transform: translate(2px, 0) rotate(-45deg);
+}
+
+/** COMMON CSS CLASSES **/
+.transform-rotate-90 {
+    transform: rotate(90deg);
+}
+
+.transform-rotate-45 {
+    transform: rotate(45deg);
+}
+
+.transform-rotate-135 {
+    transform: rotate(135deg);
+}
+
+.transform-rotate-180 {
+    transform: rotate(180deg);
+}
+
+.border-radius-50 {
+    border-radius: 50%;
+}
+
+.border-6 {
+    border-width: 6px;
+}
+
+.h-max-10vh {
+    max-height: 10vh;
+}
+
+.h-max-11vh {
+    max-height: 11vh;
+}
+
+.w-90-per {
+    width: 90%;
+}
+
+.h-90-per {
+    height: 90%;
+}
+
+.w-80-per {
+    width: 80%;
+}
+
+.h-80-per {
+    height: 80%;
+}
+
+.w-70-per {
+    width: 70%;
+}
+
+.h-70-per {
+    height: 70%;
+}
+
+.w-60-per {
+    width: 60%;
+}
+
+.h-60-per {
+    height: 60%;
+}
+
+.w-50-per {
+    width: 50%;
+}
+
+.h-50-per {
+    height: 50%;
+}
