@@ -3,7 +3,6 @@ import {
     DEFAULT_TEXT_FONT_FAMILY,
 } from '../constants/misc'
 import { generateUUID } from './misc'
-import { themeDefaultInk } from './themeColorFlip'
 import { lineHeightFor, measureTextWidth, type FontSpec } from './textLayout'
 import { reflowTextForShape } from './shapeTextFit'
 import { isFontReady, runWhenFontReady } from './fontLoading'
@@ -114,7 +113,7 @@ interface ElementCloneSource {
      */
     objectClass?: 'shape' | 'geo'
     /**
-     * geoText's zoom-resistance switch. Unlike a metadata key — which rides
+     * text's zoom-resistance switch. Unlike a metadata key — which rides
      * along inside the cloned `metadata` object for free — a column is only
      * copied if it is named here, so omitting it would silently reset every
      * pasted label to the default.
@@ -169,7 +168,7 @@ export function cloneElementData(
         baseId,
         componentType: src.componentType,
         ...(src.objectClass ? { objectClass: src.objectClass } : {}),
-        // Only when actually set: nothing but geoText reads this column, so an
+        // Only when actually set: nothing but text reads this column, so an
         // unconditional copy would stamp a value onto every pasted rectangle
         // and carry it into the share insert.
         ...(src.zoomResistant != null
@@ -587,7 +586,7 @@ export function shapeTextStyleFromMeta(meta: ShapeLike): {
     const weight = meta?.textWeight || 'normal'
     return {
         style: {
-            fill: meta?.textFill || themeDefaultInk(),
+            fill: meta?.textFill || SHAPE_DEFAULT_STROKE,
             size,
             family,
             weight,

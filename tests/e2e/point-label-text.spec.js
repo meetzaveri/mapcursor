@@ -34,7 +34,6 @@ const LADDER_XL = 32
 const pointRecord = (id, label, metadata) => ({
     id,
     componentType: 'point',
-    objectClass: 'geo',
     zoomResistant: null,
     children: null,
     metadata: { label, ...metadata },
@@ -68,11 +67,10 @@ const pointRecord = (id, label, metadata) => ({
 // hand-off worth asserting.
 const geoTextRecord = (id, content) => ({
     id,
-    componentType: 'geoText',
-    objectClass: 'geo',
+    componentType: 'text',
     zoomResistant: null,
     children: null,
-    metadata: { content, fontSize: 24, baseTypeScope: 'map' },
+    metadata: { content, fontSize: 24 },
     x: 0,
     x1: 0,
     x2: 0,
@@ -107,8 +105,7 @@ async function openMapBase(page, components) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                              type: 'map',
-                              anchor: ANCHOR,
+                                                            anchor: ANCHOR,
                           }),
                           components,
                       }
@@ -122,8 +119,8 @@ async function openMapBase(page, components) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
-        localStorage.setItem('craftbase_geo_text_zoom_hint_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_text_zoom_hint_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
     for (const label of components.map(

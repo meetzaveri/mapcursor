@@ -8,7 +8,7 @@ import PencilFactory from '../../factory/pencil'
 import { readOpacity } from '../../utils/canvasUtils'
 import { scheduleRender } from '../../utils/renderScheduler'
 import { computeCounterScale, isStrokeScaled } from '../../utils/counterScale'
-import { DEFAULT_GEO_RESIST } from '../../constants/misc'
+import { DEFAULT_RESIST } from '../../constants/misc'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ElementProps = any
@@ -28,7 +28,7 @@ function Pencil(props: ElementProps): ReactElement {
     const geoResist = isStrokeScaled(props)
     // pencil's `metadata` is the vertex array, so `.resist` is undefined and
     // falls through to the default (same expression route.tsx uses).
-    const resist = props.metadata?.resist ?? DEFAULT_GEO_RESIST
+    const resist = props.metadata?.resist ?? DEFAULT_RESIST
     const baseLinewidth = props.linewidth ?? 1
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pathRef = useRef<any>(null)

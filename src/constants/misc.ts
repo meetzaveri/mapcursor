@@ -40,83 +40,45 @@ export const ERASER_SIZE_RADIUS: Record<EraserSize, number> = {
     large: 20,
 }
 
-export const VIEWPORT_KEY_PREFIX = 'craftbase_viewport_'
-export const MOBILE_VIEWPORT_KEY_PREFIX = 'craftbase_mobile_viewport_'
+export const VIEWPORT_KEY_PREFIX = 'mapcursor_viewport_'
+export const MOBILE_VIEWPORT_KEY_PREFIX = 'mapcursor_mobile_viewport_'
 export const VIEWPORT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
-// Whiteboard-only tools hidden while a geo-flavoured base (the map) is active —
-// that workflow uses point/area/route + the map-side geoText instead.
-// 'shapes' is the mobile drawer; rectangle/circle/diamond are its
-// desktop-flattened children. 'lines' is the line/curvedLine drawer. 'text' is
-// replaced by 'geoText'. Note this hides the *tools* only: shapes already drawn
-// keep rendering and stay editable after a switch.
-//
-// 'pencil' is deliberately ABSENT: freehand is the one whiteboard tool that
-// means the same thing over a map — circling a district, scribbling a route by
-// hand — so it is offered on both bases. A stroke drawn here is tagged
-// `objectClass: 'geo'` at creation, which is what keeps map scribbles off the
-// board base and board scribbles off the map. See newCanvas's pencil commit.
-export const GEO_HIDDEN_TOOLS: ReadonlySet<string> = new Set([
-    'shapes',
-    'rectangle',
-    'circle',
-    'diamond',
-    'lines',
-    'arrowLine',
-    'text',
-])
+// Per-base map anchor — the georeference surface (0,0) is pinned to. A sidecar
+// key deliberately kept OUT of the draft blob, so the draft's size guard and
+// rescue path are unaffected by it. Shares the viewport TTL and its sweep.
+export const MAP_ANCHOR_KEY_PREFIX = 'mapcursor_map_anchor_'
 
-// Frames to keep re-applying geo-object visibility after a base switch or a
-// store change. Element components mount lazily, so a single pass can run
-// before the last geo element has landed in the Two.js scene. ~1s at 60fps.
-export const GEO_VISIBILITY_RETRIES = 60
-
-// Hard ceiling on that retry loop. The budget above is *reset* whenever the
-// scene is still growing (elements mount lazily, and a big base can take well
-// over a second to land), but `scene.children.length` also moves when selection
-// chrome and previews come and go — so without a ceiling a user fiddling on the
-// canvas could hold the loop open forever. ~10s at 60fps.
-export const GEO_VISIBILITY_MAX_FRAMES = 600
-
-// Per-base type (board / map) — a sidecar key deliberately kept OUT of the
-// draft blob so the draft's size guard and rescue path are unaffected by it,
-// and so a base that never touches the switcher writes nothing at all. Shares
-// the viewport TTL and its sweep. See src/bases/baseStorage.ts.
-export const BASE_TYPE_KEY_PREFIX = 'craftbase_base_type_'
-
+// Every component type mapcursor can author. These are `componentType` values
+// on `components.component`, and each one names the element module that renders
+// it (`components/elements/<componentType>.tsx` — see elementModules.ts).
 export const componentTypes = {
-    rectangle: 'rectangle',
-    diamond: 'diamond',
+    point: 'point',
+    area: 'area',
+    route: 'route',
     circle: 'circle',
+    pencil: 'pencil',
+    text: 'text',
+} as const
+
+/** The three placed map objects, which share the multi-click/click-to-place UI. */
+export const mapObjectTypes = {
     point: 'point',
     area: 'area',
     route: 'route',
 } as const
 
-// Geo objects (point/area/route) ride the same components_component pipeline as
-// shapes — they're just a distinct category surfaced when a consumer opts in.
-export const geoObjectTypes = {
-    point: 'point',
-    area: 'area',
-    route: 'route',
-} as const
+export type MapObjectType = keyof typeof mapObjectTypes
 
-export type GeoObjectType = keyof typeof geoObjectTypes
+export const isMapObjectType = (type: string | null | undefined): boolean =>
+    type === mapObjectTypes.point ||
+    type === mapObjectTypes.area ||
+    type === mapObjectTypes.route
 
-export const isGeoType = (type: string | null | undefined): boolean =>
-    type === geoObjectTypes.point ||
-    type === geoObjectTypes.area ||
-    type === geoObjectTypes.route
-
-// Standalone text element types: 'newText' (whiteboard) and 'geoText' (the map
-// variant). They render identically and share every text code path (properties
-// toolbar, group apply, history revert, clipboard); the only difference is that
-// geoText carries `objectClass: 'geo'`, so it shows on the map base and hides on
-// the canvas. Use this everywhere a "is this standalone text?" decision is made
-// so both stay in lockstep.
+/** Is this standalone text (as opposed to a label hanging off a point)? */
 export const isStandaloneTextType = (
     type: string | null | undefined
-): boolean => type === 'newText' || type === 'geoText'
+): boolean => type === 'text'
 
 // Draw mode localStorage keys
 export const ARROW_DRAW_MODE_KEY = 'arrowDrawMode'
@@ -129,17 +91,17 @@ export const PAN_MODE_KEY = 'panMode'
 
 // Geo draw modes. AREA/ROUTE use multi-click vertex placement; POINT is a
 // single click-to-place. The active geo type is stashed alongside the flag.
-export const GEO_DRAW_MODE_KEY = 'geoDrawMode'
-export const GEO_DRAW_TYPE_KEY = 'geoDrawType'
-export const GEO_DRAW_PROPS_KEY = 'geoDrawProps'
-export const GEO_POINT_PLACE_MODE_KEY = 'geoPointPlaceMode'
+export const DRAW_MODE_KEY = 'drawMode'
+export const DRAW_TYPE_KEY = 'drawType'
+export const DRAW_PROPS_KEY = 'drawProps'
+export const POINT_PLACE_MODE_KEY = 'pointPlaceMode'
 
 // Pin/point counter-scale: 1/scale^resist keeps the pin legible when zoomed
 // out. apparent size ∝ scale^(1 - resist), so 0 = scales with the world and
 // 1 = fully fixed on screen (see utils/counterScale.ts for the derivation).
-export const DEFAULT_GEO_RESIST = 0.9
+export const DEFAULT_RESIST = 0.9
 
-// Map text (geoText) counter-scale. Text on a map base spans 18 zoom stops
+// Map text (text) counter-scale. Text on a map base spans 18 zoom stops
 // (map zoom 1..19 against a z16 anchor), and at resist 0 an 18px label renders
 // at 18 * 2^(mapZoom - 16) px — 0.3px over a county, which is why map text was
 // unreadable anywhere but the anchor zoom. At 0.9 that same label stays within
@@ -148,18 +110,18 @@ export const DEFAULT_GEO_RESIST = 0.9
 // This is the knob to turn when tuning legibility: 1 pins text to a constant
 // screen size (true map-label behaviour), 0 restores the old scales-with-the-
 // geography model. Per-record `metadata.resist` overrides it.
-export const GEO_TEXT_RESIST = 0.9
+export const TEXT_RESIST = 0.9
 
 // The user-facing on/off switch for the above is the `zoomResistant` column,
-// not metadata: `false` means resist 0, absent/true means GEO_TEXT_RESIST. It is
-// read for geoText ONLY (resolveResist in utils/counterScale.ts) — point, area,
+// not metadata: `false` means resist 0, absent/true means TEXT_RESIST. It is
+// read for text ONLY (resolveResist in utils/counterScale.ts) — point, area,
 // route and geo pencil keep the numeric metadata.resist and ignore the column.
 //
 // Fired when that switch is toggled from the properties panel or reverted by
 // undo. ElementRenderWrapper freezes each element's props at mount, so a column
 // write never reaches the component through React — this is the same escape
 // hatch `standaloneTextReverted` uses.
-export const GEO_TEXT_RESIST_CHANGED_EVENT = 'geoTextResistChanged'
+export const TEXT_RESIST_CHANGED_EVENT = 'textResistChanged'
 
 /**
  * "Select this element" — `{ id }`. Answered by newCanvas, which owns selection.
@@ -173,7 +135,7 @@ export const SELECT_COMPONENT_EVENT = 'selectComponent'
 
 /**
  * The text-editing handshake between an element's imperative editor (the
- * `<input>`/`<textarea>` overlays in point.tsx and geoText.tsx) and the mobile
+ * `<input>`/`<textarea>` overlays in point.tsx and text.tsx) and the mobile
  * chrome that has to drive it.
  *
  * A phone has no Enter or Escape, so an open editor needs on-screen ✓/✗ — and
@@ -189,7 +151,7 @@ export const TEXT_EDIT_COMMIT_EVENT = 'commitTextEdit'
 export const TEXT_EDIT_CANCEL_EVENT = 'cancelTextEdit'
 // The generic point: a small filled circle with an editable label beside it.
 // One design, no categories. POINT_RADIUS is the circle radius in surface units
-// at scale 1 — the group counter-scales (DEFAULT_GEO_RESIST above), so the pin
+// at scale 1 — the group counter-scales (DEFAULT_RESIST above), so the pin
 // stays legible zoomed out. POINT_LABEL_GAP is the clear space between the
 // circle's edge and the start of the label.
 //
@@ -240,8 +202,8 @@ export function pointLabelSizeFor(label: string | null | undefined): number {
 // Per-type initial defaults for new geo objects (distinct, map-appropriate
 // colors from the prototypes). Users recolor afterward via the properties
 // toolbar. Kept client-side so geo creation doesn't depend on a DB round-trip.
-export const GEO_TYPE_DEFAULTS: Record<
-    GeoObjectType,
+export const ELEMENT_DEFAULTS: Record<
+    MapObjectType,
     { stroke: string; linewidth: number }
 > = {
     point: { stroke: POINT_COLOR, linewidth: 3 },
@@ -250,12 +212,12 @@ export const GEO_TYPE_DEFAULTS: Record<
 }
 
 // The map circle is componentType 'circle' + objectClass 'geo' — not a type of
-// its own — so it cannot live in GEO_TYPE_DEFAULTS, which is keyed by
-// GeoObjectType. Its fill is deliberately NOT the shared `defaultFill`: that
+// its own — so it cannot live in ELEMENT_DEFAULTS, which is keyed by
+// MapObjectType. Its fill is deliberately NOT the shared `defaultFill`: that
 // default is the whiteboard's pale shape fill, which at 50% over a basemap is
 // invisible. Stroke is not listed because a new map circle takes its fill as
 // its stroke, so the two read as one mark until the user separates them.
-export const GEO_CIRCLE_DEFAULTS = {
+export const CIRCLE_DEFAULTS = {
     fill: '#A32D2D',
     linewidth: 2,
     opacity: 0.5,
@@ -268,24 +230,21 @@ export const GEO_CIRCLE_DEFAULTS = {
 // scale far below 1 — a 4px dot and a 2px line render sub-pixel and effectively
 // disappear at the exact zoom levels where a route is easiest to trace.
 //
-// GEO_PREVIEW_MIN_STROKE_PX is a floor, not a replacement: a user who picked a
+// PREVIEW_MIN_STROKE_PX is a floor, not a replacement: a user who picked a
 // fat stroke still previews it fat.
-export const GEO_PREVIEW_DOT_PX = 5
-export const GEO_PREVIEW_MIN_STROKE_PX = 3
+export const PREVIEW_DOT_PX = 5
+export const PREVIEW_MIN_STROKE_PX = 3
 // Opacity for the committed segments vs. the live rubber-band to the cursor.
 // The rubber-band stays lighter so it reads as provisional, but not so light
 // that it vanishes against a busy basemap.
-export const GEO_PREVIEW_SEGMENT_OPACITY = 0.85
-export const GEO_PREVIEW_RUBBER_OPACITY = 0.6
+export const PREVIEW_SEGMENT_OPACITY = 0.85
+export const PREVIEW_RUBBER_OPACITY = 0.6
 
-// Minimum vertices required to finish a multi-click draw. Shared by the geo
-// area/route tools and the generic curved line (which reuses the same machinery).
-export const GEO_MIN_VERTICES: Record<'area' | 'route' | 'curvedLine', number> =
-    {
-        area: 3,
-        route: 2,
-        curvedLine: 2,
-    }
+// Minimum vertices required to finish a multi-click draw.
+export const MIN_VERTICES: Record<'area' | 'route', number> = {
+    area: 3,
+    route: 2,
+}
 
 // Default ink for strokes. Pure black so it flips cleanly to white on a theme
 // toggle (see themeColorFlip): #000 in light, #fff in dark.
@@ -293,25 +252,16 @@ export const PENCIL_DEFAULT_COLOR = '#000'
 export const SHAPE_DEFAULT_STROKE = '#000'
 
 // Draft persistence
-// Bumped whenever a localStorage key or payload shape changes; drives the
-// one-shot migration in src/utils/storageMigration.ts.
-export const STORAGE_VERSION_KEY = 'craftbase_storage_version'
-export const STORAGE_VERSION = 2
-
-export const DRAFT_STORAGE_KEY = 'craftbase_local_draft'
+export const DRAFT_STORAGE_KEY = 'mapcursor_local_draft'
 export const DRAFT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
-export const BACKGROUND_BASE_STORAGE_KEY = 'craftbase_background_base_id'
+export const BACKGROUND_BASE_STORAGE_KEY = 'mapcursor_background_base_id'
 export const STORAGE_QUOTA_ERROR_NAME = 'QuotaExceededError'
-
-// First-visit welcome sketch: once dismissed (user added their first element),
-// never seed again for this browser profile.
-export const WELCOME_DISMISSED_KEY = 'craftbase_welcome_dismissed'
 
 // One-shot tip pointing at the "Zoom resistant" switch, shown under the primary
 // toolbar the first time a user zooms a map base that has text on it. Same
-// convention as WELCOME_DISMISSED_KEY: set once, never shown again.
-export const GEO_TEXT_ZOOM_HINT_DISMISSED_KEY =
-    'craftbase_geo_text_zoom_hint_dismissed'
+// Set once, never shown again.
+export const TEXT_ZOOM_HINT_DISMISSED_KEY =
+    'mapcursor_text_zoom_hint_dismissed'
 
 // Stable identity for the local (unsaved) base at `/`.
 //
@@ -325,30 +275,20 @@ export const GEO_TEXT_ZOOM_HINT_DISMISSED_KEY =
 // written the first time an answer worth remembering is stored against the
 // local base (see `rememberLocalBaseId` in base.tsx), which keeps an untouched
 // visit byte-identical in localStorage, exactly like the base-type sidecar.
-export const LOCAL_BASE_ID_KEY = 'craftbase_local_base_id'
-
-// Feature-flag preference: connectable arrows / shape edge ports. User-toggled
-// in the Settings modal, persisted in localStorage, read live (see
-// `src/utils/featureFlags.ts`). Defaults to enabled.
-export const CONNECTORS_ENABLED_KEY = 'craftbase_connectors_enabled'
-
-// Feature-flag preference: parchment dot-grid background. User-toggled in the
-// Settings modal, persisted in localStorage, read live (see
-// `src/utils/featureFlags.ts`). Defaults to disabled.
-export const DOT_GRID_ENABLED_KEY = 'craftbase_dot_grid_enabled'
+export const LOCAL_BASE_ID_KEY = 'mapcursor_local_base_id'
 
 // Perf-testing flag: the O(N) per-frame scene scans that ride along with
 // dragging — `reanchorArrowsForShape` (legacy move path), `shapeHasBoundArrows`
 // (CSS fast-path eligibility) and the hover-detect endpoint scan. Disable to
 // isolate their cost from the Two.js render/paint cost during stress tests.
 // Read live (see `src/utils/featureFlags.ts`). Defaults to enabled.
-export const DRAG_SCANS_ENABLED_KEY = 'craftbase_drag_scans_enabled'
+export const DRAG_SCANS_ENABLED_KEY = 'mapcursor_drag_scans_enabled'
 
 // Feature-flag preference: viewport culling. Hides scene elements whose
 // screen-space bounds fall outside the viewport so the SVG renderer skips
 // painting them — the lever against the pan/zoom paint cost on dense bases.
 // Read live (see `src/utils/featureFlags.ts`). Defaults to disabled.
-export const VIEWPORT_CULLING_ENABLED_KEY = 'craftbase_viewport_culling_enabled'
+export const VIEWPORT_CULLING_ENABLED_KEY = 'mapcursor_viewport_culling_enabled'
 
 // Canvas rendering constants
 export const HOVER_THRESHOLD = 15

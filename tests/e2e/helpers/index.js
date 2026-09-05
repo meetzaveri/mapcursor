@@ -5,12 +5,12 @@
 export const GQL_MOCK_RESPONSES = {
     getComponentTypes: {
         componentTypes: [
-            { label: 'rectangle', width: 120, height: 120, fill: '#f4f4f2', textColor: '#000', metadata: {}, logo: null },
-            { label: 'circle', width: 120, height: 120, fill: '#f4f4f2', textColor: '#000', metadata: {}, logo: null },
-            { label: 'newText', width: 120, height: 120, fill: '#f4f4f2', textColor: '#000', metadata: { content: 'Your text here' }, logo: null },
-            { label: 'text', width: 120, height: 120, fill: '#f4f4f2', textColor: '#000', metadata: { content: 'Your text here' }, logo: null },
-            { label: 'arrowLine', width: 120, height: 120, fill: '#f4f4f2', textColor: '#000', metadata: {}, logo: null },
+            { label: 'point', width: 20, height: 20, fill: '#FF5630', textColor: '#000', metadata: {}, logo: null },
+            { label: 'area', width: 120, height: 120, fill: 'transparent', textColor: null, metadata: {}, logo: null },
+            { label: 'route', width: 120, height: 0, fill: 'transparent', textColor: null, metadata: {}, logo: null },
+            { label: 'circle', width: 120, height: 120, fill: '#A32D2D', textColor: '#000', metadata: {}, logo: null },
             { label: 'pencil', width: 120, height: 120, fill: '#f4f4f2', textColor: '#f4f4f2', metadata: [{}], logo: null },
+            { label: 'text', width: 120, height: 120, fill: 'transparent', textColor: '#000', metadata: { content: 'Your text here' }, logo: null },
         ],
     },
     // Revisit-count mutation — return a minimal valid shape so Apollo doesn't error
@@ -53,14 +53,13 @@ export const GQL_MOCK_RESPONSES = {
  * map georeference have to be known before the canvas mounts, so they ride the
  * query that already gates loading). Any spec that opens a persisted base must
  * therefore answer with a `base` field — `null` is valid and means "no server
- * config", which is what a board base created before these columns looks like.
+ * config", i.e. a base with no georeference yet.
  *
  * Pass `anchor`/`landing` as `{ lngLat: [lng, lat], zoom }` to describe a
  * shared map.
  */
 export function baseRow({
     id = '11111111-1111-1111-1111-111111111111',
-    type = 'board',
     isPublic = true,
     anchor = null,
     landing = null,
@@ -68,7 +67,6 @@ export function baseRow({
     return {
         __typename: 'bases_base',
         id,
-        type,
         isPublic,
         mapAnchorLng: anchor ? anchor.lngLat[0] : null,
         mapAnchorLat: anchor ? anchor.lngLat[1] : null,
@@ -85,7 +83,7 @@ export function baseRow({
  * rendering. Without proper mock data, Apollo logs cache errors that can
  * crash sidebar components and break canvas interactions.
  */
-export async function setupLocalBase(page) {
+export async function setupLocalBase(page, { seedAnchor = true } = {}) {
     await page.route('**/v1/graphql', async (route) => {
         let responseData = {}
         try {
@@ -99,15 +97,29 @@ export async function setupLocalBase(page) {
         })
     })
 
-    await page.addInitScript(() => {
+    await page.addInitScript((seed) => {
         localStorage.setItem('userId', 'test-user-id')
-        // Disable the first-visit welcome sketch for e2e: its seeded elements
-        // would inflate element counts and its entrance animation would race
-        // assertions. Setting the dismissal flag makes the base load as a
-        // returning visitor (empty canvas). Mirrors WELCOME_DISMISSED_KEY in
-        // src/constants/misc.ts.
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
-    })
+        // Every base is a map, so a base that has never settled on a place
+        // opens the "where are you mapping?" prompt — a modal that covers the
+        // toolbar and swallows every click. Claim a stable local base id and
+        // give it an anchor so the local base loads already-placed, the way a
+        // returning visitor's would. Mirrors LOCAL_BASE_ID_KEY /
+        // MAP_ANCHOR_KEY_PREFIX in src/constants/misc.ts.
+        //
+        // Pass `seedAnchor: false` to get the un-placed base instead — that is
+        // the state the start-location prompt exists for, so its own spec needs
+        // it.
+        if (!seed) return
+        const localBaseId = '99999999-9999-9999-9999-999999999999'
+        localStorage.setItem('mapcursor_local_base_id', localBaseId)
+        localStorage.setItem(
+            `mapcursor_map_anchor_${localBaseId}`,
+            JSON.stringify({
+                mapAnchor: { lngLat: [72.5714, 23.0225], zoom: 16 },
+                savedAt: Date.now(),
+            })
+        )
+    }, seedAnchor)
 
     await page.goto('/')
     await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
@@ -167,13 +179,6 @@ export async function drawShape(page, type, { startX, startY, endX, endY }) {
     await page.mouse.up()
 
     return waitForNewElement(page, countBefore)
-}
-
-/**
- * Convenience wrapper for drawing a rectangle.
- */
-export async function drawRectangle(page, coords) {
-    return drawShape(page, 'rectangle', coords)
 }
 
 /**
@@ -252,141 +257,6 @@ export async function setDefaultStrokeWidth(page, label) {
     await page.click(`#stroke-width-section button:nth-of-type(${idx})`)
 }
 
-/**
- * Clicks any top-level toolbar button by aria-label (e.g. "Pencil", "Select",
- * "Eraser"). Used by tests that need to switch the active draw mode so the
- * unified properties toolbar swaps to the matching set before tweaking a
- * default.
- */
-export async function clickToolbarButton(page, ariaLabel) {
-    await page.click(`[aria-label="${ariaLabel}"]`)
-}
-
-/**
- * Draws an arrow on the canvas (Path: arrowDrawMode in workflows doc).
- *   1. Click toolbar Arrow → handleArrowElement adds an arrowLine component
- *      immediately (off-screen at its random x/y) and sets arrowDrawMode.
- *   2. mousedown picks SCENARIO_ARROW_DRAW and positions the element at the
- *      click point.
- *   3. mousemove updates the second endpoint; mouseup finalizes.
- *
- * Returns the arrow's SVG group element handle.
- */
-export async function drawArrow(page, { startX, startY, endX, endY }) {
-    const countBefore = await page.$$eval(
-        '[data-component-id]',
-        (els) => els.length
-    )
-
-    await clickToolbarShape(page, 'Arrow')
-
-    await page.mouse.move(startX, startY)
-    await page.mouse.down()
-    await page.mouse.move(endX, endY, { steps: 10 })
-    await page.mouse.up()
-
-    return waitForNewElement(page, countBefore)
-}
-
-/**
- * Draws a pencil stroke. Pencil mode requires at least 2 raw points to commit
- * a stroke (see SCENARIO_PENCIL_MODE mouseup), so we feed multiple intermediate
- * mouse positions on the way to (endX, endY).
- *
- * Returns the pencil stroke's SVG group element handle.
- */
-export async function drawPencilStroke(page, { startX, startY, endX, endY }) {
-    const countBefore = await page.$$eval(
-        '[data-component-id]',
-        (els) => els.length
-    )
-
-    await clickToolbarShape(page, 'Pencil')
-
-    await page.mouse.move(startX, startY)
-    await page.mouse.down()
-    // 20 small steps gives the velocity-based stroke logic enough samples to
-    // accept the path as a real stroke.
-    await page.mouse.move(endX, endY, { steps: 20 })
-    await page.mouse.up()
-
-    return waitForNewElement(page, countBefore)
-}
-
-/**
- * Draws a plain straight line. Line lives inside the "Lines" drawer in the
- * shapes toolbar (main icon → drawer with Line / Curved line). A line draws
- * with the SAME drag gesture as an arrow (primary.js routes 'line' through
- * handleArrowElement / SCENARIO_ARROW_DRAW) — only the componentType differs,
- * which strips the arrowhead via the line factory.
- *
- * Returns the line's SVG group element handle.
- */
-export async function drawLine(page, { startX, startY, endX, endY }) {
-    const countBefore = await page.$$eval(
-        '[data-component-id]',
-        (els) => els.length
-    )
-
-    // Open the Lines drawer by hovering the parent icon (see drawCurvedLine),
-    // then pick the plain-line tool.
-    await page.hover('[aria-label="Lines"]')
-    await page.click('[aria-label="Line"]')
-
-    await page.mouse.move(startX, startY)
-    await page.mouse.down()
-    await page.mouse.move(endX, endY, { steps: 10 })
-    await page.mouse.up()
-
-    return waitForNewElement(page, countBefore)
-}
-
-/**
- * Draws a curved line via the multi-click flow (primary.js →
- * handleMultiClickDraw('curvedLine') → SCENARIO_GEO_DRAW). Each click places a
- * vertex; pressing Enter finishes the draw (finishGeoDraw uses every placed
- * vertex — no dropLast). Pass 3+ points to get a curvedLine with >2 vertices.
- *
- * Returns the curved line's SVG group element handle.
- */
-export async function drawCurvedLine(page, points) {
-    if (!Array.isArray(points) || points.length < 2) {
-        throw new Error('drawCurvedLine needs at least 2 points')
-    }
-    const countBefore = await page.$$eval(
-        '[data-component-id]',
-        (els) => els.length
-    )
-
-    // Open the Lines drawer by HOVERING the parent icon, then pick the
-    // curved-line tool. Hover is how the drawer is meant to be opened
-    // (HOVER_DRAWER_DEFAULT_TOOL in shapesToolbar) and it arms nothing —
-    // clicking the parent would select its default child (a plain line),
-    // arming a pending element that the curved-line click then has to cancel.
-    await page.hover('[aria-label="Lines"]')
-    await page.click('[aria-label="Curved line"]')
-
-    // Each click is a mousedown that pushes one vertex (mouseup is a no-op in
-    // geo-draw mode — the draw only finishes on Enter/Escape/double-click).
-    for (const p of points) {
-        await page.mouse.click(p.x, p.y)
-    }
-    await page.keyboard.press('Enter')
-
-    return waitForNewElement(page, countBefore)
-}
-
-/**
- * Places a text element at (x, y) (Path: textDrawMode).
- *   1. Click toolbar Text → handleTextElement adds a newText component
- *      off-screen and sets textDrawMode.
- *   2. mousedown picks SCENARIO_TEXT_DRAW and positions the element at the
- *      click point.
- *   3. mouseup dispatches the triggerTextInput event (we don't need to type
- *      anything for a smoke test — the element exists in the canvas).
- *
- * Returns the text element's SVG group element handle.
- */
 export async function placeText(page, { x, y }) {
     const countBefore = await page.$$eval(
         '[data-component-id]',
@@ -419,7 +289,7 @@ export async function placeText(page, { x, y }) {
  */
 export async function getDraftComponents(page) {
     return page.evaluate(() => {
-        const raw = localStorage.getItem('craftbase_local_draft')
+        const raw = localStorage.getItem('mapcursor_local_draft')
         if (!raw) return null
         return JSON.parse(raw).components || {}
     })
@@ -463,6 +333,109 @@ export async function clickRedoButton(page) {
  * localStorage flags during their flow), so the next mousedown on empty canvas
  * is interpreted as the start of a marquee group selection.
  */
+/**
+ * Draws a pencil stroke. Pencil mode requires at least 2 raw points to commit
+ * a stroke (see SCENARIO_PENCIL_MODE mouseup), so we feed multiple intermediate
+ * mouse positions on the way to (endX, endY).
+ *
+ * Returns the pencil stroke's SVG group element handle.
+ */
+export async function drawPencilStroke(page, { startX, startY, endX, endY }) {
+    const countBefore = await page.$$eval(
+        '[data-component-id]',
+        (els) => els.length
+    )
+
+    await clickToolbarShape(page, 'Pencil')
+
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    // 20 small steps gives the velocity-based stroke logic enough samples to
+    // accept the path as a real stroke.
+    await page.mouse.move(endX, endY, { steps: 20 })
+    await page.mouse.up()
+
+    return waitForNewElement(page, countBefore)
+}
+
+/**
+ * Draws a plain straight line. Line lives inside the "Lines" drawer in the
+ * shapes toolbar (main icon → drawer with Line / Curved line). A line draws
+ * with the SAME drag gesture as an arrow (primary.js routes 'line' through
+ * handleArrowElement / SCENARIO_ARROW_DRAW) — only the componentType differs,
+ * which strips the arrowhead via the line factory.
+ *
+ * Returns the line's SVG group element handle.
+ */
+
+/**
+ * Clicks any top-level toolbar button by aria-label (e.g. "Pencil", "Select",
+ * "Eraser"). Used by tests that need to switch the active draw mode so the
+ * unified properties toolbar swaps to the matching set before tweaking a
+ * default.
+ */
+export async function clickToolbarButton(page, ariaLabel) {
+    await page.click(`[aria-label="${ariaLabel}"]`)
+}
+
+/**
+ * Draws an arrow on the canvas (Path: arrowDrawMode in workflows doc).
+ *   1. Click toolbar Arrow → handleArrowElement adds an arrowLine component
+ *      immediately (off-screen at its random x/y) and sets arrowDrawMode.
+ *   2. mousedown picks SCENARIO_ARROW_DRAW and positions the element at the
+ *      click point.
+ *   3. mousemove updates the second endpoint; mouseup finalizes.
+ *
+ * Returns the arrow's SVG group element handle.
+ */
+
+
+/**
+ * Place a point: arm the tool, click the canvas, then commit the label editor.
+ *
+ * A point opens its label editor the moment it lands, so the click alone leaves
+ * an element with an open <input> over it — every later gesture would go to the
+ * editor instead of the canvas. Committing is part of placing one.
+ */
+export async function placePoint(page, { x, y, label = '' } = {}) {
+    await clickToolbarShape(page, 'Point')
+    await page.mouse.click(x, y)
+    // The editor is created by the element component, which mounts lazily.
+    await page.waitForSelector('.temp-input-area', { timeout: 15_000 })
+    if (label) await page.keyboard.type(label)
+    await page.keyboard.press('Enter')
+    await page
+        .locator('.temp-input-area')
+        .waitFor({ state: 'detached', timeout: 10_000 })
+    await page.waitForTimeout(150)
+}
+
+/**
+ * Multi-click draw shared by Area and Route: one click per vertex, then Enter
+ * to commit. `Escape` commits too (see finishGeoDraw in newCanvas) — Enter is
+ * used here because it is the affirmative gesture a user reaches for.
+ */
+async function multiClickDraw(page, tool, points) {
+    if (points.length < 2) throw new Error(`${tool} needs at least 2 points`)
+    await clickToolbarShape(page, tool)
+    for (const p of points) {
+        await page.mouse.click(p.x, p.y)
+        await page.waitForTimeout(60)
+    }
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(250)
+}
+
+/** Draw a closed area (polygon). Needs at least 3 vertices — see MIN_VERTICES. */
+export async function drawArea(page, points) {
+    return multiClickDraw(page, 'Area', points)
+}
+
+/** Draw a route (polyline). Needs at least 2 vertices. */
+export async function drawRoute(page, points) {
+    return multiClickDraw(page, 'Route', points)
+}
+
 export async function clickPointerTool(page) {
     await page.click('[aria-label="Select"]')
 }
@@ -491,61 +464,11 @@ export async function dragSelectArea(
     return page.$('[data-label="groupobject_coord"]')
 }
 
-/**
- * Reads the full visible text of a shape/text group as the user sees it.
- *
- * Shape-with-text and multiline standalone text render as a STACK of
- * <text> SVG nodes (one per wrapped/hard line), not a single node. A naive
- * `$eval('text', el => el.textContent)` only reads line 1 — which silently
- * truncates once text wraps (e.g. after the default text size grew from the
- * old hard-coded "S"/24 to the user default "M"/36).
- *
- * We join the per-line nodes with a single space. Word-wrap breaks at spaces
- * and the separating space is consumed by the wrap, so space-joining the
- * lines reconstructs the original space-separated content.
- */
-export async function readGroupText(handle) {
-    return handle.$$eval('text', (nodes) =>
-        nodes
-            .map((n) => n.textContent)
-            .filter((s) => s && s.length > 0)
-            .join(' ')
-    )
-}
-
-export async function addTextToRectangle(page, rectHandle, text) {
-    const box = await rectHandle.boundingBox()
-    const cx = box.x + box.width / 2
-    const cy = box.y + box.height / 2
-
-    await page.mouse.dblclick(cx, cy)
-    await page.waitForSelector('.temp-input-area')
-    await page.fill('.temp-input-area', text)
-    await page.keyboard.press('Tab')
-
-    // Wait for the Two.js <text> SVG node to appear inside the shape group
-    const groupId = await rectHandle.getAttribute('id')
-    await page.waitForFunction(
-        (id) => document.getElementById(id)?.querySelector('text') !== null,
-        groupId
-    )
-}
-
-/**
- * The live ZUI camera, read through the `window.__cbTwo` handle newCanvas
- * exposes. Pass it straight to `page.evaluate(readCamera)`.
- *
- * It THROWS when the handle is absent rather than returning nulls. The two
- * copies this replaced were optional-chained (`?? null`), which is what turned
- * a build shipping without `VITE_E2E_HOOKS` into four baffling
- * `expect(null).toBeCloseTo(...)` failures instead of one obvious one. If this
- * message ever appears, the build lacks the handles — see src/utils/e2eHooks.ts.
- */
 export const readCamera = () => {
-    const two = window.__cbTwo
+    const two = window.__mcTwo
     if (!two) {
         throw new Error(
-            '__cbTwo is missing: this build was made without VITE_E2E_HOOKS ' +
+            '__mcTwo is missing: this build was made without VITE_E2E_HOOKS ' +
                 '(see src/utils/e2eHooks.ts and netlify.toml)'
         )
     }

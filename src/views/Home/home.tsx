@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import LogoSVG from '../../assets/logo.svg'
+import LogoSVG from '../../assets/mapcursor-logo-original.svg'
 import TwitterLogoSVG from '../../assets/twitter_logo.svg'
 import GithubLogoSVG from '../../assets/github_logo.svg'
 import RightArrowWhiteSVG from '../../assets/right_arrow_white.svg'
@@ -46,10 +46,10 @@ const HomePage: React.FC = () => {
                         <div>
                             <img
                                 src={LogoSVG}
-                                alt="Craftbase"
-                                className="w-4 h-4
-                            lg:w-6 lg:h-6
-                            2xl:w-8 2xl:h-8
+                                alt="Mapcursor"
+                                className="w-6 h-auto
+                            lg:w-8
+                            2xl:w-10
                             "
                             />
                         </div>
@@ -57,7 +57,7 @@ const HomePage: React.FC = () => {
                             className="pl-2
                         text-ink text-base lg:text-xl 2xl:text-2xl font-bold font-display"
                         >
-                            craftbase
+                            mapcursor
                         </div>
                         <div className="text-ink-muted pl-2 text-sm">
                             {' '}
@@ -89,7 +89,7 @@ const HomePage: React.FC = () => {
                                 intent="primary"
                                 size="medium"
                                 name="create_canvas"
-                                label="New Canvas"
+                                label="New Map"
                                 onClick={onCreateCanvas}
                                 extendClass="font-semibold shadow-card hover:shadow-card-accent ml-4"
                             />
@@ -106,15 +106,15 @@ const HomePage: React.FC = () => {
                         <div className="w-full lg:w-5/12 h-full flex items-center justify-center">
                             <div className="text-left transition-opacity duration-300 ease-in-out">
                                 <h1 className="text-base lg:text-3xl 2xl:text-4xl font-bold font-display">
-                                    Instant Infinite Whiteboard with Unique
-                                    Shareable Canvas Links
+                                    Draw and Annotate on Maps with Unique
+                                    Shareable Links
                                 </h1>
                                 <p className="pt-4 2xl:pt-8 text-sm lg:text-lg 2xl:text-xl ">
-                                    Start brainstorming in craftbase. Create as
-                                    as many shared canvases as you like. Each
-                                    shared canvas gets a unique URL. No
-                                    accounts. No login/signup. Just start
-                                    thinking.
+                                    Sketch on maps in mapcursor. Trace routes,
+                                    mark places and drop notes on real
+                                    geography. Each shared map gets a unique
+                                    URL. No accounts. No login/signup. Just
+                                    start annotating.
                                 </p>
                                 {/* <p className="pt-4 2xl:pt-8 text-sm lg:text-lg 2xl:text-xl ">
                                     With real-time updates across all devices,
@@ -133,7 +133,7 @@ const HomePage: React.FC = () => {
                                         extendClass="font-semibold primary-btn-home shadow-card hover:shadow-card-accent"
                                     >
                                         <div className="flex items-center">
-                                            <span>Start on empty canvas</span>
+                                            <span>Start on a map</span>
                                             <img
                                                 className="ml-2 home-arrow-icon w-6 h-6"
                                                 src={RightArrowWhiteSVG}
@@ -147,7 +147,7 @@ const HomePage: React.FC = () => {
                             <div className="lg:pl-4 w-full flex items-center lg:justify-end justify-center ">
                                 <img
                                     src={Brainstorming}
-                                    alt="Craftbase brainstorming"
+                                    alt="Mapcursor annotated map"
                                     className="w-full lg:w-11/12 shadow-md"
                                 />
                             </div>
@@ -168,7 +168,7 @@ const HomePage: React.FC = () => {
                                         No sign-up(s) needed
                                     </p>
                                     <p className="mt-2">
-                                        Create as many canvases you want without
+                                        Create as many maps you want without
                                         registering or signing up on platform.
                                     </p>
                                 </div>
@@ -236,7 +236,7 @@ const HomePage: React.FC = () => {
                 flex items-center justify-between"
                 >
                     <div className="text-sm big-desktop:text-base text-ink-mid">
-                        © 2026 Craftbase. All rights reserved.
+                        © 2026 Mapcursor. All rights reserved.
                     </div>
                     <div className=" flex items-center">
                         <a href="https://twitter.com/craftbase_org">

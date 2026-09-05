@@ -85,45 +85,27 @@ const STROKE_WIDTHS = [
 
 // What sections each "set" should render, in display order.
 const SETS = {
-    SHAPE: ['fill', 'stroke', 'strokeWidth', 'strokeType', 'opacity'],
-    ARROW: ['stroke', 'strokeWidth', 'strokeType', 'opacity'],
-    // Plain line + curved (multi-point) line — stroke-centric, no fill.
-    LINE: ['stroke', 'strokeWidth', 'strokeType', 'opacity'],
     PENCIL: ['stroke', 'strokeWidth', 'strokeType', 'opacity'],
-    TEXT: ['textColor', 'textSize', 'textFont', 'opacity'],
-    // Map text. Same controls as whiteboard text plus the zoom-resistance
-    // switch, which only geoText counter-scales for — see resolveResist in
-    // utils/counterScale.ts. Keeping it out of TEXT is the point of the split:
-    // a plain newText has nothing to toggle.
-    GEO_TEXT: ['textColor', 'textSize', 'textFont', 'zoomResist', 'opacity'],
-    // Geo objects: stroke-centric. Area's fill is auto-derived from stroke, so
-    // no fill control — but its outline still takes width/type like a route.
-    // A point is a filled circle plus a label whose colour is fixed by design,
-    // so what is editable is the pin's fill and the label's size and font. Both
-    // text controls run off the point's own ladder/record — see applyProperty.
-    GEO_POINT: ['fill', 'textSize', 'textFont'],
-    GEO_AREA: ['stroke', 'strokeWidth', 'strokeType'],
-    GEO_ROUTE: ['stroke', 'strokeWidth', 'strokeType'],
-    // The map circle: the same componentType as the whiteboard circle, so this
-    // set is what separates the two in the toolbar. It keeps fill (a circle is
-    // a filled mark, unlike an area whose fill is derived) but drops opacity —
-    // a map circle is created half-transparent so the basemap reads through it,
-    // and that is the behaviour, not a knob. Omitting the section IS how the
-    // control is hidden, same as for point/area/route.
-    GEO_CIRCLE: ['fill', 'stroke', 'strokeWidth', 'strokeType'],
-    RECT_WITH_TEXT: [
-        'fill',
-        'stroke',
-        'strokeWidth',
-        'strokeType',
-        'textColor',
-        'textSize',
-        'textFont',
-        'opacity',
-    ],
-    // GROUP: union of every property — toolbar shows them all when a group
-    // is focused. applyGroupProperty silently skips children whose element
-    // type doesn't accept a given property.
+    // Text carries the zoom-resistance switch, which only text counter-scales
+    // for — see resolveResist in utils/counterScale.ts.
+    TEXT: ['textColor', 'textSize', 'textFont', 'zoomResist', 'opacity'],
+    // Placed map objects: stroke-centric. Area's fill is auto-derived from its
+    // stroke, so no fill control — but its outline still takes width/type like
+    // a route. A point is a filled circle plus a label whose colour is fixed by
+    // design, so what is editable is the pin's fill and the label's size and
+    // font. Both text controls run off the point's own ladder/record — see
+    // applyProperty.
+    POINT: ['fill', 'textSize', 'textFont'],
+    AREA: ['stroke', 'strokeWidth', 'strokeType'],
+    ROUTE: ['stroke', 'strokeWidth', 'strokeType'],
+    // A circle keeps fill (it is a filled mark, unlike an area whose fill is
+    // derived) but drops opacity — a circle is created half-transparent so the
+    // basemap reads through it, and that is the behaviour, not a knob. Omitting
+    // the section IS how the control is hidden, same as for point/area/route.
+    CIRCLE: ['fill', 'stroke', 'strokeWidth', 'strokeType'],
+    // GROUP: union of every property — toolbar shows them all when a group is
+    // focused. applyGroupProperty silently skips children whose element type
+    // doesn't accept a given property.
     GROUP: [
         'fill',
         'stroke',
@@ -137,18 +119,13 @@ const SETS = {
 }
 
 const SET_LABELS = {
-    SHAPE: 'Shape',
-    ARROW: 'Arrow',
-    LINE: 'Line',
     PENCIL: 'Pencil',
     TEXT: 'Text',
-    GEO_TEXT: 'Text',
-    RECT_WITH_TEXT: 'Shape',
     GROUP: 'Group',
-    GEO_POINT: 'Point',
-    GEO_AREA: 'Area',
-    GEO_ROUTE: 'Route',
-    GEO_CIRCLE: 'Circle',
+    POINT: 'Point',
+    AREA: 'Area',
+    ROUTE: 'Route',
+    CIRCLE: 'Circle',
 }
 
 interface ResolveSetKeyOptions {
@@ -162,10 +139,6 @@ interface ResolveSetKeyOptions {
     // Active tool from the toolbar (e.g. 'route'/'area'/'point' while a geo
     // draw is in progress, before any vertex/element is selected).
     currentElement: string | null
-    // The active base type. Needed only for the armed-tool branch: 'circle' is
-    // one tool name serving two elements, and with nothing selected yet there
-    // is no record to read objectClass off.
-    activeBaseType: string | null
 }
 
 function resolveSetKey({
@@ -175,7 +148,6 @@ function resolveSetKey({
     selectedGroup,
     isTextDrawMode,
     currentElement,
-    activeBaseType,
 }: ResolveSetKeyOptions): string | null {
     // A focused group beats every other mode — show the union toolbar.
     if (selectedGroup) return 'GROUP'
@@ -183,90 +155,32 @@ function resolveSetKey({
     if (isPencilMode) return 'PENCIL'
     if (selectedComponent) {
         const shapeType = selectedComponent?.shape?.type
-        const hasText = typeof selectedComponent?.text?.data?.value === 'string'
         const elementType =
             selectedComponent?.group?.data?.elementData?.componentType
-        // Geo objects checked first: area/route are path-typed and would
-        // otherwise fall into the SHAPE branch below, and a point's circle
-        // would read as a plain shape and offer stroke/width controls it has
-        // no use for.
-        const objectClass =
-            selectedComponent?.group?.data?.elementData?.objectClass
-        if (elementType === 'point') return 'GEO_POINT'
-        if (elementType === 'area') return 'GEO_AREA'
-        if (elementType === 'route') return 'GEO_ROUTE'
-        // The map circle shares componentType 'circle' with the whiteboard
-        // circle — objectClass is the only thing telling them apart. It has to
-        // be resolved here, above both the isShapeWithText and SHAPE branches,
-        // because either of those would hand it the opacity control it must
-        // not have.
-        if (elementType === 'circle' && objectClass === 'geo')
-            return 'GEO_CIRCLE'
-        // Map text, before the isStandaloneTextType checks below would fold it
-        // into the shared TEXT set. Both spellings are checked because
-        // `shape.type` is set from elementData.componentType for a selection
-        // made on the canvas, while the elementType fallback covers the paths
-        // that don't populate it.
-        if (shapeType === 'geoText' || elementType === 'geoText')
-            return 'GEO_TEXT'
-        // Plain + curved lines: stroke-centric panel (no fill).
-        if (elementType === 'line' || elementType === 'curvedLine')
-            return 'LINE'
-        // rectangle/diamond/circle all carry text the same way — show the
-        // shape+text toolbar (text size/color/font) for any of them.
-        const isShapeWithText =
-            hasText &&
-            (shapeType === 'rectangle' ||
-                elementType === 'rectangle' ||
-                elementType === 'diamond' ||
-                elementType === 'circle')
-        if (isShapeWithText) return 'RECT_WITH_TEXT'
-        if (
-            shapeType === 'rectangle' ||
-            shapeType === 'circle' ||
-            shapeType === 'ellipse' ||
-            shapeType === 'diamond' ||
-            shapeType === 'path' ||
-            shapeType === 'rounded-rectangle'
-        )
-            return 'SHAPE'
-        if (shapeType === 'arrowLine') return 'ARROW'
-        if (shapeType === 'line' || shapeType === 'curvedLine') return 'LINE'
-        if (isStandaloneTextType(shapeType)) return 'TEXT'
-        // Diamond is a custom Path; the elementData carries the type.
-        if (
-            elementType === 'diamond' ||
-            elementType === 'rectangle' ||
-            elementType === 'circle'
-        )
-            return 'SHAPE'
-        if (elementType === 'arrowLine') return 'ARROW'
-        if (isStandaloneTextType(elementType)) return 'TEXT'
+        // Placed map objects first: area/route are path-typed and a point's
+        // circle would otherwise read as a plain shape and offer controls it
+        // has no use for.
+        if (elementType === 'point') return 'POINT'
+        if (elementType === 'area') return 'AREA'
+        if (elementType === 'route') return 'ROUTE'
+        if (elementType === 'circle') return 'CIRCLE'
+        // Both spellings are checked because `shape.type` is set from
+        // elementData.componentType for a selection made on the canvas, while
+        // the elementType fallback covers the paths that don't populate it.
+        if (isStandaloneTextType(shapeType) || isStandaloneTextType(elementType))
+            return 'TEXT'
+        if (shapeType === 'circle' || shapeType === 'ellipse') return 'CIRCLE'
         if (elementType === 'pencil') return 'PENCIL'
-        return 'SHAPE'
+        return null
     }
-    // Arrow intentionally has no armed-mode panel: the ARROW toolbar appears
-    // only once a drawn arrow is selected (handled above), so merely picking the
-    // arrow tool doesn't surface the edit toolbar.
     if (isTextDrawMode) return 'TEXT'
-    // Geo draw modes: the toolbar tool is active but nothing is selected yet.
-    // Surface the geo property panel so stroke edits seed the next draw — the
-    // same way pencil mode shows the pencil panel before the first stroke.
+    // Draw modes: the toolbar tool is active but nothing is selected yet.
+    // Surface the property panel so stroke edits seed the next draw — the same
+    // way pencil mode shows the pencil panel before the first stroke.
     // Point is excluded: its category lives in the toolbar drawer, not here.
-    if (currentElement === 'area') return 'GEO_AREA'
-    if (currentElement === 'route') return 'GEO_ROUTE'
-    // Circle armed on a map base. Gated on the base type rather than the tool
-    // name alone, because the whiteboard circle deliberately shows no armed
-    // panel (it is drag-to-draw, and its defaults are edited via a selection).
-    if (
-        currentElement === 'circle' &&
-        activeBaseType &&
-        activeBaseType !== 'board'
-    )
-        return 'GEO_CIRCLE'
-    // Curved-line tool armed (multi-click): show the line panel so a stroke
-    // tweak seeds the next draw, mirroring pencil/geo behavior.
-    if (currentElement === 'curvedLine') return 'LINE'
+    if (currentElement === 'area') return 'AREA'
+    if (currentElement === 'route') return 'ROUTE'
+    if (currentElement === 'circle') return 'CIRCLE'
     // No selection and no active tool — hide the panel. Defaults still apply
     // to the next-created shape (the `useElementDefaults` state is unchanged);
     // users edit them by selecting a shape, which auto-syncs the default per
@@ -662,7 +576,6 @@ const ElementPropertiesToolbar = () => {
         selectedComponent,
         selectedGroup,
         currentElement,
-        activeBaseType,
         applyProperty,
         applyGroupProperty,
         reorderSelected,
@@ -689,8 +602,7 @@ const ElementPropertiesToolbar = () => {
                 selectedGroup,
                 isTextDrawMode,
                 currentElement,
-                activeBaseType,
-            }),
+                    }),
         [
             isRubberMode,
             isPencilMode,
@@ -698,8 +610,7 @@ const ElementPropertiesToolbar = () => {
             selectedGroup,
             isTextDrawMode,
             currentElement,
-            activeBaseType,
-        ]
+            ]
     )
 
     const defaults = {
@@ -715,7 +626,7 @@ const ElementPropertiesToolbar = () => {
 
     const [values, setValues] = useState(() =>
         readEffectiveValues({
-            setKey: setKey || 'SHAPE',
+            setKey: setKey || 'TEXT',
             selectedComponent,
             selectedGroup,
             isMobile,
@@ -836,7 +747,7 @@ const ElementPropertiesToolbar = () => {
                     // disappear. A map circle is half-transparent on top of
                     // that, so it needs the saturated row even more than a pin.
                     essentialColors={
-                        setKey === 'GEO_POINT' || setKey === 'GEO_CIRCLE'
+                        setKey === 'POINT' || setKey === 'CIRCLE'
                             ? pointFillEssentialShades
                             : fillEssentialShades
                     }
@@ -901,7 +812,7 @@ const ElementPropertiesToolbar = () => {
                         value={values.textSize}
                         onChange={handle('textSize')}
                         sizes={
-                            setKey === 'GEO_POINT'
+                            setKey === 'POINT'
                                 ? POINT_LABEL_SIZES
                                 : undefined
                         }

@@ -22,11 +22,10 @@ const LABEL = 'Hello Map'
 
 const geoTextRecord = () => ({
     id: TEXT_ID,
-    componentType: 'geoText',
-    objectClass: 'geo',
+    componentType: 'text',
     zoomResistant: null,
     children: null,
-    metadata: { content: LABEL, fontSize: 24, baseTypeScope: 'map' },
+    metadata: { content: LABEL, fontSize: 24 },
     x: 100,
     y: 560,
     x1: 0,
@@ -61,8 +60,7 @@ async function openMapBase(page) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                              type: 'map',
-                              anchor: ANCHOR,
+                                                            anchor: ANCHOR,
                           }),
                           components: [geoTextRecord()],
                       }
@@ -76,15 +74,15 @@ async function openMapBase(page) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
-        localStorage.setItem('craftbase_geo_text_zoom_hint_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_text_zoom_hint_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.locator(`text=${LABEL}`).first().waitFor({ timeout: 15_000 })
     // Park the camera at identity so the fixture's surface coords are screen
     // coords — the taps below aim at real pixels.
     await page.evaluate(() => {
-        const two = window.__cbTwo
+        const two = window.__mcTwo
         two.scene.translation.set(0, 0)
         two.scene.scale = 1
         two.update()
@@ -121,7 +119,7 @@ test('the delete button removes map text, canvas and all', async ({ page }) => {
     expect(
         await page.evaluate(
             (id) =>
-                !!window.__cbTwo.scene.children.find(
+                !!window.__mcTwo.scene.children.find(
                     (c) => c?.elementData?.id === id
                 ),
             TEXT_ID
@@ -164,7 +162,7 @@ test('the pencil opens the editor; ✓ keeps the edit and ✗ discards it', asyn
     expect(
         await page.evaluate(
             (id) =>
-                !!window.__cbTwo.scene.children.find(
+                !!window.__mcTwo.scene.children.find(
                     (c) => c?.elementData?.id === id
                 ),
             TEXT_ID

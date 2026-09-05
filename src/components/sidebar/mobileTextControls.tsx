@@ -32,9 +32,9 @@ import PencilIcon from '../../wireframeAssets/pencil.svg?react'
 
 /** Element kinds whose text is edited through an overlay we can drive. */
 const EDITABLE_TEXT_TYPES: ReadonlySet<string> = new Set([
-    'geoText',
+    'text',
     'point',
-    'newText',
+    'text',
 ])
 
 interface MobileTextControlsProps {
@@ -144,7 +144,7 @@ const MobileTextControls = ({
             aria-label="Edit text"
             onClick={(): void => {
                 // The same event placement uses to open a fresh element's
-                // editor; point.tsx and geoText.tsx both answer it.
+                // editor; point.tsx and text.tsx both answer it.
                 window.dispatchEvent(
                     new CustomEvent('triggerTextInput', {
                         detail: { elementId: selectedId },

@@ -15,7 +15,7 @@ export const SVG_NS = 'http://www.w3.org/2000/svg'
 // leaks into the downloaded file. We tag chrome once at its source and strip it
 // from every export clone. Two.js's renderer only writes its own known
 // attributes, so a custom data-* attribute survives subsequent re-renders.
-export const SELECTION_CHROME_ATTR = 'data-cb-selection-chrome'
+export const SELECTION_CHROME_ATTR = 'data-mc-selection-chrome'
 
 /**
  * Tag a Two.js overlay object's rendered SVG node as selection chrome so export

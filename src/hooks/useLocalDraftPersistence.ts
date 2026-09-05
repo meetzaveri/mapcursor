@@ -6,13 +6,8 @@ import {
     BACKGROUND_BASE_STORAGE_KEY,
     STORAGE_QUOTA_ERROR_NAME,
     GROUP_COMPONENT,
-    WELCOME_DISMISSED_KEY,
 } from '../constants/misc'
 import type { ComponentStore } from '../types/base'
-import {
-    buildWelcomeSketch,
-    isWelcomeComponent,
-} from '../utils/welcomeSketch'
 import {
     isRawDraftOverBudget,
     readRawDraft,
@@ -35,13 +30,6 @@ export interface LocalDraftPersistenceOptions {
      * action and surfaces the "canvas is full" modal.
      */
     onDraftOverBudgetRef?: MutableRefObject<(() => void) | null>
-    /** Opt-in onboarding seed; see BaseProps.welcomeSketch. */
-    welcomeSketch?: boolean
-    /**
-     * Forwarded to `buildWelcomeSketch` to pick the mobile vs. large-screen
-     * layout. The mobile layout points "Pick a shape" at the bottom-left
-     * toolbar instead of the top-center one and drops the zoom arrow.
-     */
     isMobile?: boolean
 }
 
@@ -76,7 +64,6 @@ export function useLocalDraftPersistence({
     setBackgroundBaseId,
     onStorageLimitRef,
     onDraftOverBudgetRef,
-    welcomeSketch,
     isMobile,
 }: LocalDraftPersistenceOptions): LocalDraftPersistenceApi {
     const [showStorageLimitModal, setShowStorageLimitModal] = useState(false)
@@ -101,7 +88,6 @@ export function useLocalDraftPersistence({
             setBackgroundBaseId(savedBgBaseId)
         }
 
-        let restoredDraft = false
         try {
             const draft = localStorage.getItem(DRAFT_STORAGE_KEY)
             if (draft) {
@@ -110,12 +96,9 @@ export function useLocalDraftPersistence({
                 // enough to stutter the page, so an over-budget draft must
                 // never be parsed on load. Stash the raw text and surface the
                 // rescue modal instead; only "Open anyway" parses it.
-                // `restoredDraft` stays true so we don't seed the welcome
-                // sketch over it.
                 if (isRawDraftOverBudget(draft)) {
                     deferredRawDraftRef.current = draft
                     setShowBaseTooLargeModal(true)
-                    restoredDraft = true
                 } else {
                     const parsed = JSON.parse(draft) as PersistedDraft
                     const age = Date.now() - (parsed.timestamp ?? 0)
@@ -128,7 +111,6 @@ export function useLocalDraftPersistence({
                         ) as ComponentStore
                         if (Object.keys(safeComponents).length > 0) {
                             setComponentStore(safeComponents)
-                            restoredDraft = true
                         }
                     } else {
                         localStorage.removeItem(DRAFT_STORAGE_KEY)
@@ -141,22 +123,6 @@ export function useLocalDraftPersistence({
             localStorage.removeItem(BACKGROUND_BASE_STORAGE_KEY)
         }
 
-        // First-visit welcome seed: only when opt-in flag is set, no draft was
-        // restored, and the user has not previously dismissed the sketch on
-        // this browser profile.
-        if (
-            welcomeSketch &&
-            !restoredDraft &&
-            !localStorage.getItem(WELCOME_DISMISSED_KEY)
-        ) {
-            setComponentStore(
-                buildWelcomeSketch(localBaseId, {
-                    width: window.innerWidth,
-                    height: window.innerHeight,
-                    isMobile,
-                })
-            )
-        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -167,14 +133,10 @@ export function useLocalDraftPersistence({
 
         const writeDraft = (): void => {
             try {
-                // Skip groupobject (transient) AND welcome-sketch seeds — the
-                // sketch is onboarding scaffolding that must never persist
-                // into the user's draft.
+                // Skip groupobject — a transient visual construct.
                 const componentsToSave = Object.fromEntries(
                     Object.entries(componentStore).filter(
-                        ([, v]) =>
-                            v?.componentType !== GROUP_COMPONENT &&
-                            !isWelcomeComponent(v)
+                        ([, v]) => v?.componentType !== GROUP_COMPONENT
                     )
                 ) as ComponentStore
                 if (Object.keys(componentsToSave).length === 0) return

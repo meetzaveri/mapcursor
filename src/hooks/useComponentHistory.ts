@@ -22,8 +22,8 @@ import {
 import {
     DRAFT_STORAGE_KEY,
     isStandaloneTextType,
-    GEO_TEXT_RESIST,
-    GEO_TEXT_RESIST_CHANGED_EVENT,
+    TEXT_RESIST,
+    TEXT_RESIST_CHANGED_EVENT,
 } from '../constants/misc'
 import type { ComponentRecord, ComponentStore } from '../types/base'
 import {
@@ -40,47 +40,6 @@ type ShapeLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
 type BulkProps = Partial<ComponentRecord> & Record<string, unknown>
-
-// Connector port-binding fields stored on an arrowLine row. They have no
-// Two.js geometry of their own (applyPropertyToTwoJSGroup skips them), so
-// undo/redo must mirror them onto `elementData` explicitly — including the fan
-// indices, which port re-anchoring/restacking reads live off `elementData`.
-const PORT_BINDING_KEYS = [
-    'tailShapeId',
-    'tailEdge',
-    'headShapeId',
-    'headEdge',
-    'tailPortIndex',
-    'headPortIndex',
-] as const
-
-// Ports whose connector fan layout is affected by reverting `props` onto this
-// arrow: each endpoint's docked (shapeId, edge) pair both before and after the
-// revert, deduped. Call BEFORE mirroring `props` onto `elementData`. Returns
-// null when `props` carries no binding keys (not a binding revert). The
-// resulting ports are announced via the `restackPorts` CustomEvent, which
-// newCanvas answers by re-gluing + re-fanning every connector docked there.
-function portsTouchedByBindingRevert(
-    elementData: ShapeLike,
-    props: BulkProps
-): { shapeId: string; edge: string }[] | null {
-    if (!PORT_BINDING_KEYS.some((k) => k in props)) return null
-    const merged = { ...elementData, ...props }
-    const ports: { shapeId: string; edge: string }[] = []
-    const seen = new Set<string>()
-    const collect = (shapeId: unknown, edge: unknown): void => {
-        if (typeof shapeId !== 'string' || typeof edge !== 'string') return
-        const key = `${shapeId}|${edge}`
-        if (seen.has(key)) return
-        seen.add(key)
-        ports.push({ shapeId, edge })
-    }
-    collect(elementData.tailShapeId, elementData.tailEdge)
-    collect(elementData.headShapeId, elementData.headEdge)
-    collect(merged.tailShapeId, merged.tailEdge)
-    collect(merged.headShapeId, merged.headEdge)
-    return ports
-}
 
 // ---- history entry discriminated union ----
 
@@ -209,18 +168,18 @@ function applyPropertyToTwoJSGroup(
             break
         case 'zoomResistant': {
             // Map text's counter-scale switch. It has no Two.js field of its
-            // own — the geoText component owns group.scale and the selection
+            // own — the text component owns group.scale and the selection
             // outline — so mirror it onto elementData (what resolveResist and
             // the group-overlay copies read) and let the component re-scale
             // itself against the live camera. Covers undo and redo alike:
             // applyBulkProps routes every reverted key through here.
-            if (group.elementData?.componentType !== 'geoText') break
+            if (group.elementData?.componentType !== 'text') break
             group.elementData.zoomResistant = value
             window.dispatchEvent(
-                new CustomEvent(GEO_TEXT_RESIST_CHANGED_EVENT, {
+                new CustomEvent(TEXT_RESIST_CHANGED_EVENT, {
                     detail: {
                         id: group.elementData.id,
-                        resist: value === false ? 0 : GEO_TEXT_RESIST,
+                        resist: value === false ? 0 : TEXT_RESIST,
                     },
                 })
             )
@@ -347,9 +306,6 @@ export function useComponentHistory({
         if (group) {
             two.remove([group])
         }
-        // Removing a docked arrow frees its fan slots — capture the ports off
-        // the row before it leaves the store so the survivors can re-fan.
-        const removedRow = stateRefForComponentStore.current[id]
         const updatedStore = { ...stateRefForComponentStore.current }
         delete updatedStore[id]
         stateRefForComponentStore.current = updatedStore
@@ -358,27 +314,6 @@ export function useComponentHistory({
         window.dispatchEvent(
             new CustomEvent('elementRemoved', { detail: { id } })
         )
-        if (removedRow?.componentType === 'arrowLine') {
-            const ports: { shapeId: string; edge: string }[] = []
-            if (removedRow.tailShapeId && removedRow.tailEdge) {
-                ports.push({
-                    shapeId: removedRow.tailShapeId,
-                    edge: removedRow.tailEdge,
-                })
-            }
-            if (removedRow.headShapeId && removedRow.headEdge) {
-                ports.push({
-                    shapeId: removedRow.headShapeId,
-                    edge: removedRow.headEdge,
-                })
-            }
-            if (ports.length) {
-                window.dispatchEvent(
-                    new CustomEvent('restackPorts', { detail: { ports } })
-                )
-            }
-        }
-
         if (isPersistedRef.current) {
             deleteComponent({
                 variables: { id },
@@ -407,15 +342,6 @@ export function useComponentHistory({
         }
         stateRefForComponentStore.current = updatedStore
         setComponentStore(updatedStore)
-        // A re-inserted docked arrow must re-join its ports' fans — wait for
-        // the fresh React mount to land in the scene, then restack.
-        if (
-            two &&
-            restoredState.componentType === 'arrowLine' &&
-            (restoredState.tailShapeId || restoredState.headShapeId)
-        ) {
-            pollUntilElement(two, id, () => dispatchRestackForComponent(id))
-        }
         if (isPersistedRef.current) {
             insertComponent({
                 variables: { object: stripTypename(restoredState) },
@@ -432,41 +358,6 @@ export function useComponentHistory({
             })
         }
         requestAnimationFrame(() => two?.update())
-    }
-
-    // Announce every port whose connector layout depends on this component —
-    // the ports its bound arrows dock to (component = a port shape) plus the
-    // ports it docks onto (component = an arrow) — so newCanvas re-glues and
-    // re-fans them. Fired after undo/redo moves/resizes a component; reads the
-    // ALREADY-UPDATED store, and the listener re-derives geometry from the live
-    // scene, so ordering only requires the store + translations to be applied.
-    const dispatchRestackForComponent = (id: string): void => {
-        const store = stateRefForComponentStore.current
-        const ports: { shapeId: string; edge: string }[] = []
-        const seen = new Set<string>()
-        const collect = (shapeId: unknown, edge: unknown): void => {
-            if (typeof shapeId !== 'string' || typeof edge !== 'string') return
-            const key = `${shapeId}|${edge}`
-            if (seen.has(key)) return
-            seen.add(key)
-            ports.push({ shapeId, edge })
-        }
-        const row = store[id]
-        if (row?.componentType === 'arrowLine') {
-            collect(row.tailShapeId, row.tailEdge)
-            collect(row.headShapeId, row.headEdge)
-        } else {
-            Object.values(store).forEach((r) => {
-                if (r?.componentType !== 'arrowLine') return
-                if (r.tailShapeId === id) collect(id, r.tailEdge)
-                if (r.headShapeId === id) collect(id, r.headEdge)
-            })
-        }
-        if (ports.length) {
-            window.dispatchEvent(
-                new CustomEvent('restackPorts', { detail: { ports } })
-            )
-        }
     }
 
     const applyVertices = (id: string, x: number, y: number): void => {
@@ -487,8 +378,6 @@ export function useComponentHistory({
             group.translation.y = y
             two?.update()
         }
-        // A moved shape's ports moved with it — re-glue any docked connectors.
-        dispatchRestackForComponent(id)
         if (isPersistedRef.current) {
             updateComponentInfo({
                 variables: { id, updateObj: { x, y } },
@@ -525,7 +414,7 @@ export function useComponentHistory({
 
         if (isStandaloneTextType(ct)) {
             // Standalone multiline text is a stack of Two.Text nodes owned by
-            // the newText/geoText component (extraLineNodesRef). Rebuilding them from
+            // the newText/text component (extraLineNodesRef). Rebuilding them from
             // here would desync that ref and orphan nodes on the next edit, so
             // let the component re-stack through its own path instead.
             if (typeof m.content !== 'string') return
@@ -695,45 +584,6 @@ export function useComponentHistory({
                         detail: { id, metadata: props.metadata },
                     })
                 )
-            }
-
-            // Connector port bindings have no Two.js geometry of their own, so
-            // applyPropertyToTwoJSGroup skips them. Mirror them onto elementData
-            // here so undo/redo of a detach restores (or re-clears) the binding
-            // that port re-anchoring reads. Then let newCanvas restack every
-            // touched port so the remaining connectors' fan layout settles.
-            if (group.elementData) {
-                const revertedPorts = portsTouchedByBindingRevert(
-                    group.elementData,
-                    props
-                )
-                PORT_BINDING_KEYS.forEach((k) => {
-                    if (k in props) {
-                        group.elementData[k] = (
-                            props as Record<string, unknown>
-                        )[k]
-                    }
-                })
-                if (revertedPorts?.length) {
-                    window.dispatchEvent(
-                        new CustomEvent('restackPorts', {
-                            detail: { ports: revertedPorts },
-                        })
-                    )
-                }
-            }
-
-            // Reverting a shape's position/size moves its edge ports, and
-            // reverting an arrow's origin moves its endpoints — either way the
-            // connectors docked to the affected ports must re-glue. Announce
-            // every port bound to/by this component so newCanvas restacks them.
-            if (
-                props.x !== undefined ||
-                props.y !== undefined ||
-                props.width !== undefined ||
-                props.height !== undefined
-            ) {
-                dispatchRestackForComponent(id)
             }
 
             two?.update()
@@ -914,37 +764,11 @@ export function useComponentHistory({
                             })
                         }
                     }
-                    // Keep elementData snapshot in sync. Capture the ports a
-                    // binding revert touches BEFORE the mirror overwrites the
-                    // old values, then let newCanvas restack their fans (e.g.
-                    // undoing a shape delete re-docks its detached arrows).
+                    // Keep the elementData snapshot in sync.
                     if (sceneGroup.elementData) {
-                        const revertedPorts = portsTouchedByBindingRevert(
-                            sceneGroup.elementData,
-                            propsToApply
-                        )
                         Object.entries(propsToApply).forEach(([k, v]) => {
                             sceneGroup.elementData[k] = v
                         })
-                        if (revertedPorts?.length) {
-                            window.dispatchEvent(
-                                new CustomEvent('restackPorts', {
-                                    detail: { ports: revertedPorts },
-                                })
-                            )
-                        }
-                    }
-                    // Position/size reverts move the component's ports (shape)
-                    // or endpoints (arrow) — re-glue docked connectors. Covers
-                    // undo/redo of a group move, whose batch is one UPDATE_BULK
-                    // of x/y per member.
-                    if (
-                        propsToApply.x !== undefined ||
-                        propsToApply.y !== undefined ||
-                        propsToApply.width !== undefined ||
-                        propsToApply.height !== undefined
-                    ) {
-                        dispatchRestackForComponent(e.id)
                     }
                     if (
                         propsToApply.metadata &&

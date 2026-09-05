@@ -14,7 +14,6 @@ import { getMainDefinition } from '@apollo/client/utilities'
 import { WebSocketLink } from '@apollo/client/link/ws'
 
 import BaseViewContainer from './views/Base'
-import LegacyBaseRedirect from './components/LegacyBaseRedirect'
 import HomePageViewContainer from './views/Home'
 import SupportViewContainer from './views/Support'
 import PrivacyViewContainer from './views/Privacy'
@@ -152,24 +151,11 @@ class App extends Component {
                             <Routes>
                                 <Route
                                     path={routes.index}
-                                    element={
-                                        <BaseViewContainer welcomeSketch />
-                                    }
-                                />
-                                <Route
-                                    path={routes.base}
                                     element={<BaseViewContainer />}
                                 />
                                 <Route
                                     path={routes.map}
-                                    element={
-                                        <BaseViewContainer pinnedBaseType="map" />
-                                    }
-                                />
-
-                                <Route
-                                    path={routes.legacyBoard}
-                                    element={<LegacyBaseRedirect />}
+                                    element={<BaseViewContainer />}
                                 />
                                 <Route
                                     path={routes.marketing}

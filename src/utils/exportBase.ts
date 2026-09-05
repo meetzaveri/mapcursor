@@ -1,7 +1,6 @@
 import type { ComponentStore } from '../types/base'
-import type { BaseTypeConfig } from '../baseTypes/types'
+import type { MapBackdropConfig } from '../baseTypes/types'
 import { GROUP_COMPONENT } from '../constants/misc'
-import { isWelcomeComponent } from './welcomeSketch'
 import { version as appVersion } from '../../package.json'
 
 interface BaseViewport {
@@ -24,26 +23,23 @@ interface BaseViewport {
 export function exportBaseAsJson(
     componentStore: ComponentStore,
     viewport: BaseViewport,
-    base?: BaseTypeConfig
+    base?: MapBackdropConfig
 ): void {
     // Same save-side filter as useLocalDraftPersistence.ts — drop transient
-    // groups and onboarding welcome-sketch seeds so they never leave the app.
+    // groups so they never leave the app.
     const components = Object.fromEntries(
         Object.entries(componentStore).filter(
-            ([, v]) =>
-                v?.componentType !== GROUP_COMPONENT &&
-                !isWelcomeComponent(v)
+            ([, v]) => v?.componentType !== GROUP_COMPONENT
         )
     ) as ComponentStore
 
     const payload = {
         formatVersion: '1.1',
-        app: 'craftbase',
+        app: 'mapcursor',
         appVersion,
         exportedAt: Date.now(),
         viewport,
-        baseType: base?.type ?? 'board',
-        baseTypeConfig: base?.mapAnchor ? { mapAnchor: base.mapAnchor } : null,
+        mapAnchor: base?.mapAnchor ?? null,
         components,
     }
     downloadJson(JSON.stringify(payload, null, 2))

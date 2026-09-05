@@ -2,7 +2,7 @@
    Pure CSS so it can also be inlined into #root in index.html and paint
    before the JS bundle loads. Keep this in sync with that inline copy. */
 
-.cb-loader {
+.mc-loader {
     position: fixed;
     inset: 0;
     z-index: 9999;
@@ -16,11 +16,11 @@
     background-color: #f5f0e8;
 }
 
-.dark .cb-loader {
+.dark .mc-loader {
     background-color: #1c1814;
 }
 
-.cb-loader .cb-mark {
+.mc-loader .mc-mark {
     width: 72px;
     height: 72px;
     overflow: visible;
@@ -30,32 +30,32 @@
    via stroke-dashoffset. pathLength="1" on each <path> normalizes the dash
    array to 1 regardless of the stroke's real length, so one keyframe set
    works for both the thin and thick bars without per-path length math. */
-.cb-loader .cb-mark-stroke {
+.mc-loader .mc-mark-stroke {
     fill: none;
     stroke: #1a1612;
     stroke-dasharray: 1;
     stroke-dashoffset: 1;
     animation: cbDraw 2.6s ease-in-out infinite;
 }
-.cb-loader .cb-mark-s1 {
+.mc-loader .mc-mark-s1 {
     animation-delay: 0s;
 }
-.cb-loader .cb-mark-s2 {
+.mc-loader .mc-mark-s2 {
     animation-delay: 0.12s;
 }
-.cb-loader .cb-mark-s3 {
+.mc-loader .mc-mark-s3 {
     animation-delay: 0.24s;
 }
-.cb-loader .cb-mark-s4 {
+.mc-loader .mc-mark-s4 {
     animation-delay: 0.36s;
 }
-.cb-loader .cb-mark-s5 {
+.mc-loader .mc-mark-s5 {
     animation-delay: 0.48s;
 }
 
 /* The filled flourish glyph can't sketch on like a stroke, so it fades/scales
    in once the frame has been drawn, then fades back out at the loop point. */
-.cb-loader .cb-mark-glyph {
+.mc-loader .mc-mark-glyph {
     fill: #1a1612;
     opacity: 0;
     transform-box: fill-box;
@@ -64,10 +64,10 @@
     animation-delay: 0.6s;
 }
 
-.dark .cb-loader .cb-mark-stroke {
+.dark .mc-loader .mc-mark-stroke {
     stroke: #c4901a;
 }
-.dark .cb-loader .cb-mark-glyph {
+.dark .mc-loader .mc-mark-glyph {
     fill: #c4901a;
 }
 
@@ -109,7 +109,7 @@
     }
 }
 
-.cb-loader .cb-wordmark {
+.mc-loader .mc-wordmark {
     font-family: 'Fraunces', Georgia, serif;
     font-weight: 600;
     font-size: 22px;
@@ -117,18 +117,18 @@
     color: #1a1612;
 }
 
-.dark .cb-loader .cb-wordmark {
+.dark .mc-loader .mc-wordmark {
     color: #f3ece0;
 }
 
-.cb-loader .cb-caption {
+.mc-loader .mc-caption {
     margin-top: -10px;
     font-family: 'Geist', system-ui, sans-serif;
     font-size: 13px;
     letter-spacing: 0.3px;
     color: #8c7e6a;
 }
-.cb-loader .cb-caption::after {
+.mc-loader .mc-caption::after {
     content: '';
     animation: cbDots 1.4s steps(4, end) infinite;
 }
@@ -149,16 +149,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .cb-loader .cb-mark-stroke {
+    .mc-loader .mc-mark-stroke {
         animation: none;
         stroke-dashoffset: 0;
     }
-    .cb-loader .cb-mark-glyph {
+    .mc-loader .mc-mark-glyph {
         animation: none;
         opacity: 1;
         transform: scale(1);
     }
-    .cb-loader .cb-caption::after {
+    .mc-loader .mc-caption::after {
         animation: none;
         content: '...';
     }

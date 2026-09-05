@@ -6,7 +6,7 @@ import ShareIcon from '../../assets/share-android.svg?react'
 import CopyIcon from '../../assets/copy.svg'
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
-import { baseTypeUrl } from '../../utils/baseRoutes'
+import { baseUrl } from '../../utils/baseRoutes'
 import { SHARE_BUTTON_ID } from './shapesToolbarId'
 
 const ShareLinkPopup = (): ReactElement => {
@@ -19,21 +19,10 @@ const ShareLinkPopup = (): ReactElement => {
         isPersisted,
         shareBase,
         baseId,
-        activeBaseType,
-        baseTypeProvider,
+        backdropReady,
         stateRefForComponentStore,
-        twoJSInstance,
     } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
-
-    // Sharing a map before its provider has mounted would record the WRONG
-    // geography, permanently. The anchor is read from the live provider, so
-    // until the (~1MB, dynamically imported) maplibre chunk lands there is
-    // nothing to read and the base would be georeferenced to a timezone guess
-    // instead of the place the user is looking at. One boolean; the whole
-    // feature's worst failure mode.
-    const baseTypeReady =
-        activeBaseType !== 'map' || baseTypeProvider?.id === 'map'
 
     // Whether there's anything to share. Gate on the actual component store,
     // NOT backgroundBaseId: that id is only minted by ensureBackgroundBase()
@@ -76,7 +65,7 @@ const ShareLinkPopup = (): ReactElement => {
         try {
             const wasPersisted = isPersisted
             const serverBaseId = await shareBase()
-            const url = baseTypeUrl(serverBaseId, activeBaseType)
+            const url = baseUrl(serverBaseId)
             setShareUrl(url)
             setShowConfirmModal(false)
             setShowLink(true)
@@ -84,15 +73,10 @@ const ShareLinkPopup = (): ReactElement => {
             // Already on this base — there is nothing to open.
             if (wasPersisted) return
 
-            // A map base carries its landing view in the base row, which is
-            // device-independent and survives a copied link; the vx/vy/vs params
-            // are neither, and would only race the better mechanism and win.
-            // They stay for board bases, which have no row-level landing view.
-            const scene = twoJSInstance?.scene
-            const openUrl =
-                scene && activeBaseType !== 'map'
-                    ? `${url}?vx=${scene.translation.x}&vy=${scene.translation.y}&vs=${scene.scale}`
-                    : url
+            // The landing view rides in the base row, which is
+            // device-independent and survives a copied link. The old vx/vy/vs
+            // params were neither, and would only race the better mechanism.
+            const openUrl = url
 
             // Mobile browsers block window.open after an await (the click's task
             // chain is long gone), so the user would get a link panel and no tab
@@ -117,9 +101,7 @@ const ShareLinkPopup = (): ReactElement => {
     // rather than a different base's id — this used to preview
     // `backgroundBaseId`, which persistBase never uses, so the URL previewed
     // was never the URL produced.
-    const previewUrl = isPersisted
-        ? baseTypeUrl(baseId, activeBaseType)
-        : `${baseTypeUrl('', activeBaseType)}...`
+    const previewUrl = isPersisted ? baseUrl(baseId) : `${baseUrl('')}...`
 
     return (
         <>
@@ -128,13 +110,13 @@ const ShareLinkPopup = (): ReactElement => {
                     id={SHARE_BUTTON_ID}
                     className="px-1 py-1 border-border-panel border  flex items-center justify-center rounded-md bg-card-bg text-ink font-semibold"
                     style={{
-                        cursor: baseTypeReady ? 'pointer' : 'progress',
-                        opacity: baseTypeReady ? 1 : 0.6,
+                        cursor: backdropReady ? 'pointer' : 'progress',
+                        opacity: backdropReady ? 1 : 0.6,
                     }}
                     title={
-                        baseTypeReady ? 'Share' : 'Preparing the map\u2026'
+                        backdropReady ? 'Share' : 'Preparing the map\u2026'
                     }
-                    onClick={baseTypeReady ? handleShareClick : undefined}
+                    onClick={backdropReady ? handleShareClick : undefined}
                 >
                     {/* <div className="pr-2 text-white">Share</div>{' '} */}
                     <div className="px-2 py-2 hover:bg-accent/50 rounded-md">

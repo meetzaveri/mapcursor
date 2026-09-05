@@ -4,7 +4,7 @@ import { useBaseContext } from '../../views/Base/baseContext'
 
 import RouteFactory from '../../factory/route'
 import { computeCounterScale } from '../../utils/counterScale'
-import { DEFAULT_GEO_RESIST } from '../../constants/misc'
+import { DEFAULT_RESIST } from '../../constants/misc'
 import {
     attachVertexHandles,
     setVertexHandlesVisible,
@@ -54,7 +54,7 @@ function Route(props: ElementProps): ReactElement {
     const two = props.twoJSInstance
     // metadata for route is the vertex array, so `.resist` is undefined and we
     // fall back to the default — same expression point.tsx uses.
-    const resist = props.metadata?.resist ?? DEFAULT_GEO_RESIST
+    const resist = props.metadata?.resist ?? DEFAULT_RESIST
     // Logical (unscaled) stroke width. We counter-scale this on zoom rather
     // than the whole group, so the polyline geometry stays glued to the world.
     const baseLinewidth = props.linewidth ?? 2.5

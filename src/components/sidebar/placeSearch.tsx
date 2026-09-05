@@ -26,15 +26,15 @@ const RIGHT_MARGIN = 10
  * canvas, so searching a new place re-anchors what the drawing sits on rather
  * than moving the drawing.
  *
- * **Desktop only.** A phone's top row is menu + base switcher + share, and that
+ * **Desktop only.** A phone's top row is menu + share, and that
  * is the whole width — this field was squeezed into what was left and ended up a
  * few characters wide. On mobile the same search is a menu entry that opens
  * `placeSearchModal.tsx`; both share `usePlaceSearch`.
  */
 const PlaceSearch = (): ReactElement | null => {
-    const { activeBaseType, goToPlace } = useBaseContext()
+    const { goToPlace } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
-    const isActive = !isMobile && activeBaseType === 'map'
+    const isActive = !isMobile
     const { query, setQuery, results, searching, reset } =
         usePlaceSearch(isActive)
     const [open, setOpen] = useState(false)

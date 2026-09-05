@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 
 import { useBaseContext } from '../views/Base/baseContext'
 import { useMediaQueryUtils } from '../constants/exportHooks'
-import { GEO_TEXT_ZOOM_HINT_DISMISSED_KEY } from '../constants/misc'
+import { TEXT_ZOOM_HINT_DISMISSED_KEY } from '../constants/misc'
 
 // How long the tip stays up before fading, and how long the fade takes (must
 // match the duration-300 class below).
@@ -26,8 +26,8 @@ const DEBOUNCE_MS = 5000
  * Shares the `top: 55px` slot with #multi-click-draw-hint (the toolbar's
  * computed bottom edge), so it stands down while a multi-click draw is armed.
  */
-const GeoTextZoomHint = (): ReactElement | null => {
-    const { activeBaseType, componentStore, currentElement } = useBaseContext()
+const TextZoomHint = (): ReactElement | null => {
+    const { componentStore, currentElement } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
 
     const [mounted, setMounted] = useState(false)
@@ -37,8 +37,8 @@ const GeoTextZoomHint = (): ReactElement | null => {
     // second showing before the localStorage write lands.
     const shownRef = useRef(false)
     // Last scale we saw. `zoomChanged` also fires for programmatic camera moves
-    // — setZoomLimits clamps on every base switch, and fitToContent on load —
-    // so a single event is not evidence of a user zooming. Requiring two
+    // — setZoomLimits clamps on mount, and fitToContent on load — so a single
+    // event is not evidence of a user zooming. Requiring two
     // distinct scales keeps those from burning the one-shot.
     const lastScaleRef = useRef<number | null>(null)
 
@@ -47,10 +47,9 @@ const GeoTextZoomHint = (): ReactElement | null => {
     const canShowRef = useRef(false)
     canShowRef.current =
         !isMobile &&
-        activeBaseType === 'map' &&
-        // Nothing to point at until the base actually has map text on it.
+        // Nothing to point at until the base actually has text on it.
         Object.values(componentStore ?? {}).some(
-            (c) => c?.componentType === 'geoText'
+            (c) => c?.componentType === 'text'
         ) &&
         // Don't fight #multi-click-draw-hint for the same slot.
         currentElement !== 'area' &&
@@ -60,7 +59,7 @@ const GeoTextZoomHint = (): ReactElement | null => {
     useEffect(() => {
         if (isMobile) return
         try {
-            if (localStorage.getItem(GEO_TEXT_ZOOM_HINT_DISMISSED_KEY)) {
+            if (localStorage.getItem(TEXT_ZOOM_HINT_DISMISSED_KEY)) {
                 shownRef.current = true
                 return
             }
@@ -96,7 +95,7 @@ const GeoTextZoomHint = (): ReactElement | null => {
                     VISIBLE_MS + FADE_MS
                 )
                 try {
-                    localStorage.setItem(GEO_TEXT_ZOOM_HINT_DISMISSED_KEY, '1')
+                    localStorage.setItem(TEXT_ZOOM_HINT_DISMISSED_KEY, '1')
                 } catch (_) {
                     // Nothing to do — worst case the tip shows again next time.
                 }
@@ -134,4 +133,4 @@ const GeoTextZoomHint = (): ReactElement | null => {
     )
 }
 
-export default GeoTextZoomHint
+export default TextZoomHint

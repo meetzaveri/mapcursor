@@ -6,7 +6,7 @@ import { useBaseContext } from '../../views/Base/baseContext'
 
 import { elementOnBlurHandler } from '../../utils/misc'
 import getEditComponents from '../utils/editWrapper'
-import NewTextFactory from '../../factory/newText'
+import TextFactory from '../../factory/text'
 import {
     TEXT_SIZES_OBJECT,
     MOBILE_TEXT_SIZES_OBJECT,
@@ -16,7 +16,7 @@ import { readOpacity } from '../../utils/canvasUtils'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import {
     DEFAULT_TEXT_FONT_FAMILY,
-    GEO_TEXT_RESIST_CHANGED_EVENT,
+    TEXT_RESIST_CHANGED_EVENT,
     TEXT_EDIT_CANCEL_EVENT,
     TEXT_EDIT_COMMIT_EVENT,
     TEXT_EDIT_END_EVENT,
@@ -25,13 +25,13 @@ import {
 import { computeCounterScale, resolveResist } from '../../utils/counterScale'
 import { isPanMode } from '../../utils/drawModeUtils'
 
-// GeoText renders exactly like NewText — same NewTextFactory, same multiline
+// Text renders exactly like NewText — same TextFactory, same multiline
 // editing, resize handles and floating-toolbar contract. What separates the two
-// is not how they draw but where they belong: geoText carries
+// is not how they draw but where they belong: text carries
 // `objectClass: 'geo'`, so it lives on the map base and hides on the board base
 // (geoVisibility.ts), while newText is whiteboard text.
 //
-// It counter-scales like a point pin (GEO_TEXT_RESIST). That was dropped once,
+// It counter-scales like a point pin (TEXT_RESIST). That was dropped once,
 // on the reasoning that annotation text should scale with the geography it
 // labels — which reads well until you price it against the map base's zoom
 // range. Surface-space text renders at `fontSize * zuiScale`, and zuiScale is
@@ -60,7 +60,7 @@ interface ResizeState {
     startSize: number
 }
 
-function GeoText(props: ElementProps): ReactElement {
+function Text(props: ElementProps): ReactElement {
     const {
         updateComponentBulkPropertiesInLocalStore,
         isPencilMode,
@@ -92,7 +92,7 @@ function GeoText(props: ElementProps): ReactElement {
     // Held in a ref, not a const: the "Zoom resistant" switch writes the
     // `zoomResistant` column, but ElementRenderWrapper freezes our props at
     // mount so that write never arrives as a re-render. The
-    // GEO_TEXT_RESIST_CHANGED_EVENT listener below is what keeps this current.
+    // TEXT_RESIST_CHANGED_EVENT listener below is what keeps this current.
     const resistRef = useRef<number>(resolveResist(props))
 
     let selectorInstance: ShapeLike = null
@@ -132,7 +132,7 @@ function GeoText(props: ElementProps): ReactElement {
         const prevY = props.y
         let handleGlobalMousedown: ((e: MouseEvent) => void) | null = null
 
-        const elementFactory = new NewTextFactory(two, prevX, prevY, props)
+        const elementFactory = new TextFactory(two, prevX, prevY, props)
         const { group, twoText } = elementFactory.createElement()
         group.elementData = { ...props.itemData, ...props }
         twoText.opacity = readOpacity(props)
@@ -707,7 +707,7 @@ function GeoText(props: ElementProps): ReactElement {
     // The "Zoom resistant" switch (and undo/redo of it) reaches us here rather
     // than through props — see resistRef above. Re-scale against the CURRENT
     // camera immediately so the label snaps to its new model on click, instead
-    // of waiting for the next zoom gesture. Filtered by id: every geoText on the
+    // of waiting for the next zoom gesture. Filtered by id: every text on the
     // base hears this event, only the toggled one acts on it.
     useEffect(() => {
         const onResistChanged = ((
@@ -722,10 +722,10 @@ function GeoText(props: ElementProps): ReactElement {
             selectorRef.current?.setScale(scale * group.scale)
             two?.update()
         }) as EventListener
-        window.addEventListener(GEO_TEXT_RESIST_CHANGED_EVENT, onResistChanged)
+        window.addEventListener(TEXT_RESIST_CHANGED_EVENT, onResistChanged)
         return (): void => {
             window.removeEventListener(
-                GEO_TEXT_RESIST_CHANGED_EVENT,
+                TEXT_RESIST_CHANGED_EVENT,
                 onResistChanged
             )
         }
@@ -828,4 +828,4 @@ function GeoText(props: ElementProps): ReactElement {
     )
 }
 
-export default GeoText
+export default Text

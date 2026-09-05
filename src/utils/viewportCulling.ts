@@ -29,7 +29,7 @@ const DEFAULT_MARGIN_PX = 300
 
 // Marks an element hidden by culling (vs. genuinely hidden by undo/group
 // bookkeeping), so `computeContentSurfaceBounds` still counts it as content.
-export const CULLED_FLAG = '__cbCulled'
+export const CULLED_FLAG = '__mcCulled'
 
 // Marks an element the ACTIVE BASE says must stay hidden (a geo object on the
 // board base, a whiteboard shape on the map base). Written only by
@@ -42,7 +42,7 @@ export const CULLED_FLAG = '__cbCulled'
 // timer fires `uncullViewport`, which faithfully reveals everything it "hid".
 // A geo route pops onto the whiteboard, and stays there. Base ownership wins:
 // culling never reveals a base-hidden element.
-export const BASE_TYPE_HIDDEN_FLAG = '__cbBaseTypeHidden'
+export const BASE_TYPE_HIDDEN_FLAG = '__mcBaseTypeHidden'
 
 interface WorldBounds {
     tx: number

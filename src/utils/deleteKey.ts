@@ -2,7 +2,7 @@
 //
 // Deleting is spread across four owners, each listening for the same keydown:
 // the selection controller (rect/circle/diamond/text), the focus-based handlers
-// on arrow / plain line / divider / geoText, the orphan handler in newCanvas
+// on arrow / plain line / divider / text, the orphan handler in newCanvas
 // (curvedLine / route / area / point), and groupobject for a multi-element
 // selection. They already guard each other against double-deletes.
 //
@@ -19,7 +19,7 @@ const DELETE_KEY_CODE = 46
  * Dispatch a Delete keydown at `target` (falling back to the window).
  *
  * Aim it at the SELECTED ELEMENT'S SVG node, not at the button: the arrow, line,
- * divider, geoText and group handlers are bound to their own node and only fire
+ * divider, text and group handlers are bound to their own node and only fire
  * when the event passes through it. The event bubbles, so the window-level
  * listeners still see it either way.
  */

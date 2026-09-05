@@ -1,6 +1,5 @@
 import type { ComponentStore } from '../types/base'
 import { GROUP_COMPONENT, DRAFT_STORAGE_KEY } from '../constants/misc'
-import { isWelcomeComponent } from './welcomeSketch'
 
 /**
  * localStorage stores strings as UTF-16 (~2 bytes/char) and the per-origin
@@ -54,7 +53,7 @@ export function selectPersistableComponents(
     return Object.fromEntries(
         Object.entries(store).filter(
             ([, v]) =>
-                v?.componentType !== GROUP_COMPONENT && !isWelcomeComponent(v)
+                v?.componentType !== GROUP_COMPONENT
         )
     ) as ComponentStore
 }
@@ -77,7 +76,7 @@ export function draftFitsForStore(store: ComponentStore): boolean {
     // Approximate the real save envelope; components dominate the size.
     const serialized = JSON.stringify({ components: persistable })
 
-    const PROBE_KEY = '__craftbase_fit_probe__'
+    const PROBE_KEY = '__mapcursor_fit_probe__'
     let current: string | null = null
     try {
         current = localStorage.getItem(DRAFT_STORAGE_KEY)

@@ -17,7 +17,7 @@
 // bundle. It's ~20 lines of arithmetic with no runtime dependency, so the copy
 // is cheaper than the chunk.
 
-import { BASE_TYPE_ZOOM_LIMITS } from './zoomLimits'
+import { MAP_ZOOM_LIMITS } from './zoomLimits'
 import type { MapAnchor } from './types'
 
 /**
@@ -106,14 +106,14 @@ export function mapZoomForScale(scale: number, anchor: MapAnchor): number {
  * The ZUI scale that renders the map at `mapZoom`, inverting
  * `mapZoom = anchor.zoom + log2(scale)`.
  *
- * Clamped to the **map's** scale range, not the board's. This used to clamp to
- * a hard-coded [0.06, 8] — the whiteboard's range — which silently truncated
+ * Clamped to the map's scale range. This used to clamp to a hard-coded
+ * [0.06, 8], which silently truncated
  * any travel outside roughly [anchor.zoom − 4.1, anchor.zoom + 3]. Landing a
  * shared link at z5 on a z16-anchored base asks for scale 2^-11 and got 0.06,
  * i.e. ~z11.9: a recipient who was sent a country landed on a city.
  */
 export function scaleForMapZoom(mapZoom: number, anchor: MapAnchor): number {
     const raw = Math.pow(2, mapZoom - anchor.zoom)
-    const { min, max } = BASE_TYPE_ZOOM_LIMITS.map
+    const { min, max } = MAP_ZOOM_LIMITS
     return Math.max(min, Math.min(max, raw))
 }

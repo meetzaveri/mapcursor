@@ -1,221 +1,121 @@
+// The opacity control, and — just as deliberately — where it is absent.
+//
+// Opacity is per-element only: `applyProperty` skips the `useElementDefaults`
+// sync for it, so dimming one element must never seed the next one. That is
+// load-bearing rather than fussy — a default of 0 would make every later
+// element invisible with no way to see what you were editing.
+//
+// A circle omits the section entirely. It is created half-transparent so the
+// basemap reads through it, and that is the behaviour, not a knob — omitting
+// the section from its property set IS how the control is hidden, the same
+// mechanism used for point/area/route.
+
 import { test, expect } from './helpers/test.js'
 import {
     setupLocalBase,
     getCanvasBox,
     drawShape,
-    drawArrow,
-    placeText,
-    addTextToRectangle,
+    drawPencilStroke,
     clickPointerTool,
-    triggerUndoKeyboard,
+    getDraftComponents,
 } from './helpers/index.js'
 
-/**
- * Opacity handling suite.
- *
- * Opacity is applied at the GROUP level (see src/utils/applyProperty.ts and the
- * *-with-text element components), NOT on the shape/text leaves. The group's own
- * `opacity` repaints reliably and uniformly dims the shape PLUS any embedded
- * text-layer nodes in one shot — a leaf-level write would only surface after the
- * next full repaint (e.g. on deselect) because the rounded-rect path is
- * double-referenced in group.children.
- *
- * Two.js renders `group.opacity` as the `opacity` attribute on the
- * <g data-component-id> element (node_modules/two.js/src/renderers/svg.js group
- * render → `elem.setAttribute('opacity', this._opacity)`). So a single read of
- * that attribute is the user-facing truth: when it reads 0.5, the shape and any
- * text inside dim together. These assertions deliberately read the rendered SVG,
- * never the draft/store.
- */
-
-// Lower-right quadrant keeps shapes clear of the top toolbar and the
-// Defaults/floating panel on the left (mirrors copy-paste.spec.js).
-function safeArea(box) {
-    return { cx: box.x + box.width * 0.65, cy: box.y + box.height * 0.6 }
+const recordsOf = async (page, type) => {
+    const draft = await getDraftComponents(page)
+    return Object.values(draft ?? {}).filter((c) => c.componentType === type)
 }
 
-/**
- * Switches to Pointer mode (clearing any leftover draw-mode flags) and clicks
- * the element's centre to select it, then waits for the opacity slider to mount
- * inside the floating toolbar. For a horizontal arrow the bounding-box centre
- * lands on the line, so the same centre-click selects it too.
- */
-async function selectElement(page, handle) {
-    await clickPointerTool(page)
-    const box = await handle.boundingBox()
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-    await page.waitForSelector('#floating-toolbar #slider-main')
+// The draft writer is debounced, so a read taken straight after a gesture sees
+// the PREVIOUS draft. Poll until the record shows up.
+async function waitForRecords(page, type, count) {
+    await expect.poll(async () => (await recordsOf(page, type)).length, {
+        timeout: 10_000,
+    }).toBe(count)
+    return recordsOf(page, type)
 }
 
-/**
- * Drags the opacity slider handle to the track's horizontal midpoint. The
- * ranger snaps to stepSize 0.1 (min 0, max 1), so the midpoint commits 0.5.
- * The drag fires the live-preview path on every move and the commit path on
- * release — exercising both, exactly like a real user.
- *
- * The floating toolbar caps its height (max-h-128) and scrolls internally, so
- * for element kinds with many property sections (e.g. RECT_WITH_TEXT) the
- * opacity slider starts below the toolbar's clipped fold. We must scroll it
- * into view first — otherwise the raw mouse coordinates land on the canvas
- * underneath and a bare-canvas mousedown deselects the element.
- */
-async function setOpacityToHalf(page) {
-    await page
-        .locator('#floating-toolbar #slider-handle')
-        .scrollIntoViewIfNeeded()
-    const track = await page
-        .locator('#floating-toolbar #slider-main')
-        .boundingBox()
-    const handle = await page
-        .locator('#floating-toolbar #slider-handle')
-        .boundingBox()
-    const y = handle.y + handle.height / 2
-    await page.mouse.move(handle.x + handle.width / 2, y)
-    await page.mouse.down()
-    await page.mouse.move(track.x + track.width * 0.5, y, { steps: 12 })
-    await page.mouse.up()
-}
-
-// Reads the rendered group opacity. A fresh element carries opacity="1" (or no
-// attribute), so treat a missing attribute as fully opaque.
-async function readGroupOpacity(page, id) {
-    return page.$eval(`[data-component-id="${id}"]`, (el) => {
-        const v = el.getAttribute('opacity')
-        return v == null ? 1 : parseFloat(v)
-    })
-}
-
-const idOf = (handle) => handle.getAttribute('data-component-id')
-
-// 0.5 ± 0.05 — confirms the drag landed on the 50% step, not merely "dimmed".
-function expectHalfOpacity(value, label) {
-    expect(value, `${label}: opacity should drop below full`).toBeLessThan(1)
-    expect(value, `${label}: opacity should read ~0.5`).toBeCloseTo(0.5, 1)
-}
-
-test.describe('Opacity — changing the slider dims the selected element', () => {
+test.describe('opacity', () => {
     test.beforeEach(async ({ page }) => {
         await setupLocalBase(page)
     })
 
-    test('shape with text: both the shape and its text dim to 50%', async ({
+    test('a pencil stroke takes an opacity, and it persists', async ({ page }) => {
+        const box = await getCanvasBox(page)
+        await drawPencilStroke(page, {
+            startX: box.x + 250,
+            startY: box.y + 250,
+            endX: box.x + 430,
+            endY: box.y + 340,
+        })
+        await clickPointerTool(page)
+
+        const [stroke] = await waitForRecords(page, 'pencil', 1)
+        await page.evaluate((id) => {
+            window.dispatchEvent(
+                new CustomEvent('selectComponent', { detail: { id } })
+            )
+        }, stroke.id)
+        // The section only renders for sets that declare it.
+        await page.waitForSelector('#floating-toolbar #slider-main')
+
+        // Drag the handle to the track's midpoint. The ranger snaps to a 0.1
+        // step over [0, 1], so the midpoint commits 0.5 — and the drag runs
+        // BOTH paths a user does: live preview on every move, commit on release.
+        await page
+            .locator('#floating-toolbar #slider-handle')
+            .scrollIntoViewIfNeeded()
+        const track = await page
+            .locator('#floating-toolbar #slider-main')
+            .boundingBox()
+        const knob = await page
+            .locator('#floating-toolbar #slider-handle')
+            .boundingBox()
+        const y = knob.y + knob.height / 2
+        await page.mouse.move(knob.x + knob.width / 2, y)
+        await page.mouse.down()
+        await page.mouse.move(track.x + track.width * 0.5, y, { steps: 12 })
+        await page.mouse.up()
+
+        await expect
+            .poll(async () => (await recordsOf(page, 'pencil'))[0]?.opacity, {
+                timeout: 10_000,
+            })
+            .toBeCloseTo(0.5, 1)
+    })
+
+    test('a circle offers no opacity control', async ({ page }) => {
+        const box = await getCanvasBox(page)
+        const circle = await drawShape(page, 'circle', {
+            startX: box.x + 260,
+            startY: box.y + 200,
+            endX: box.x + 400,
+            endY: box.y + 340,
+        })
+        await clickPointerTool(page)
+        const b = await circle.boundingBox()
+        await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
+        await page.waitForSelector('#floating-toolbar #stroke-width-section')
+
+        // Its own controls are there, but opacity is not one of them.
+        await expect(
+            page.locator('#floating-toolbar #slider-main')
+        ).toHaveCount(0)
+    })
+
+    test('a circle is created half-transparent so the basemap reads through', async ({
         page,
     }) => {
         const box = await getCanvasBox(page)
-        const { cx, cy } = safeArea(box)
-
-        const handle = await drawShape(page, 'rectangle', {
-            startX: cx - 90,
-            startY: cy - 55,
-            endX: cx + 90,
-            endY: cy + 55,
+        await drawShape(page, 'circle', {
+            startX: box.x + 260,
+            startY: box.y + 200,
+            endX: box.x + 400,
+            endY: box.y + 340,
         })
-        await addTextToRectangle(page, handle, 'Hi')
-        const id = await idOf(handle)
-
-        // Sanity: the group actually carries a <text> node, so a single
-        // group-opacity read genuinely covers "shape + text".
-        const hasText = await page.$eval(
-            `[data-component-id="${id}"]`,
-            (el) => !!el.querySelector('text') && !!el.querySelector('path')
-        )
-        expect(hasText, 'shape-with-text must render both path and text').toBe(
-            true
-        )
-
-        await selectElement(page, handle)
-        await setOpacityToHalf(page)
-
         await expect
-            .poll(() => readGroupOpacity(page, id))
-            .toBeGreaterThan(0)
-        expectHalfOpacity(await readGroupOpacity(page, id), 'shape-with-text')
-    })
-
-    test('shape without text: the shape dims to 50%', async ({ page }) => {
-        const box = await getCanvasBox(page)
-        const { cx, cy } = safeArea(box)
-
-        const handle = await drawShape(page, 'rectangle', {
-            startX: cx - 90,
-            startY: cy - 55,
-            endX: cx + 90,
-            endY: cy + 55,
-        })
-        const id = await idOf(handle)
-
-        const hasText = await page.$eval(
-            `[data-component-id="${id}"]`,
-            (el) => !!el.querySelector('text')
-        )
-        expect(hasText, 'plain shape should have no text node').toBe(false)
-
-        await selectElement(page, handle)
-        await setOpacityToHalf(page)
-
-        await expect
-            .poll(() => readGroupOpacity(page, id))
-            .toBeGreaterThan(0)
-        expectHalfOpacity(await readGroupOpacity(page, id), 'plain shape')
-    })
-
-    test('arrow: the arrow dims to 50%', async ({ page }) => {
-        const box = await getCanvasBox(page)
-        const { cx, cy } = safeArea(box)
-
-        const handle = await drawArrow(page, {
-            startX: cx - 120,
-            startY: cy,
-            endX: cx + 120,
-            endY: cy,
-        })
-        const id = await idOf(handle)
-
-        await selectElement(page, handle)
-        await setOpacityToHalf(page)
-
-        await expect
-            .poll(() => readGroupOpacity(page, id))
-            .toBeGreaterThan(0)
-        expectHalfOpacity(await readGroupOpacity(page, id), 'arrow')
-    })
-
-    test('text: the text dims to 50%', async ({ page }) => {
-        const box = await getCanvasBox(page)
-        const { cx, cy } = safeArea(box)
-
-        const handle = await placeText(page, { x: cx, y: cy })
-        const id = await idOf(handle)
-
-        await selectElement(page, handle)
-        await setOpacityToHalf(page)
-
-        await expect
-            .poll(() => readGroupOpacity(page, id))
-            .toBeGreaterThan(0)
-        expectHalfOpacity(await readGroupOpacity(page, id), 'text')
-    })
-
-    test('shape with text: undo restores opacity to 100%', async ({ page }) => {
-        const box = await getCanvasBox(page)
-        const { cx, cy } = safeArea(box)
-
-        const handle = await drawShape(page, 'rectangle', {
-            startX: cx - 90,
-            startY: cy - 55,
-            endX: cx + 90,
-            endY: cy + 55,
-        })
-        await addTextToRectangle(page, handle, 'Hi')
-        const id = await idOf(handle)
-
-        await selectElement(page, handle)
-        await setOpacityToHalf(page)
-        expectHalfOpacity(await readGroupOpacity(page, id), 'before undo')
-
-        await triggerUndoKeyboard(page)
-
-        // After undo the group must be fully opaque again (both shape and text).
-        await expect.poll(() => readGroupOpacity(page, id)).toBe(1)
+            .poll(async () => (await recordsOf(page, 'circle'))[0]?.opacity, {
+                timeout: 10_000,
+            })
+            .toBeCloseTo(0.5, 2)
     })
 })

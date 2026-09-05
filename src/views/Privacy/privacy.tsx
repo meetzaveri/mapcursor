@@ -91,9 +91,10 @@ const PrivacyPage: React.FC = () => {
                     <p className="text-xs tablet-landscape:text-sm text-ink-mid leading-relaxed mt-2">
                         One thing to note about maps. A canvas can use a map as
                         its backdrop. We ask your browser for your location only
-                        when you tap &ldquo;Use my current location&rdquo;, never
-                        automatically. And when you share a map canvas, the
-                        coordinate it is pinned to becomes public along with it.
+                        when you tap &ldquo;Use my current location&rdquo;,
+                        never automatically. And when you share a map canvas,
+                        the coordinate it is pinned to becomes public along with
+                        it.
                     </p>
                 </div>
 
@@ -102,9 +103,9 @@ const PrivacyPage: React.FC = () => {
                         When you first open Craftbase, we create an anonymous
                         identity for you. It is a random ID plus a randomly
                         picked nickname, for example
-                        &ldquo;tropical&nbsp;owl&rdquo;. We store this ID in your
-                        browser's local storage. We don't collect your name,
-                        email address, phone number or anything else that
+                        &ldquo;tropical&nbsp;owl&rdquo;. We store this ID in
+                        your browser's local storage. We don't collect your
+                        name, email address, phone number or anything else that
                         identifies you personally. There is no account and no
                         sign-up.
                     </p>
@@ -144,8 +145,8 @@ const PrivacyPage: React.FC = () => {
                 <Section title="Maps and location">
                     <p>
                         A canvas can use a map as its backdrop instead of the
-                        blank whiteboard. A map has to open somewhere, so this is
-                        the only part of Craftbase that deals with location.
+                        blank whiteboard. A map has to open somewhere, so this
+                        is the only part of Craftbase that deals with location.
                         Below is everything it does.
                     </p>
                     <p>
@@ -163,13 +164,14 @@ const PrivacyPage: React.FC = () => {
                             Your device location, only when you ask for it.
                         </strong>{' '}
                         The map has a &ldquo;Use my current location&rdquo;
-                        button. We ask your browser for your position only if you
-                        tap it, and your browser will ask you to approve that
-                        separately. We use the coordinate once, to decide where
-                        the map is pinned. After that we don't read your location
-                        again. You can decline and nothing breaks. You stay on
-                        the timezone view and can search for any place instead.
-                        There is no background tracking and no location history.
+                        button. We ask your browser for your position only if
+                        you tap it, and your browser will ask you to approve
+                        that separately. We use the coordinate once, to decide
+                        where the map is pinned. After that we don't read your
+                        location again. You can decline and nothing breaks. You
+                        stay on the timezone view and can search for any place
+                        instead. There is no background tracking and no location
+                        history.
                     </p>
                     <p>
                         <strong>Where that pin is stored.</strong> The pin is a
@@ -182,14 +184,14 @@ const PrivacyPage: React.FC = () => {
                         <strong>Sharing a map canvas publishes its pin.</strong>{' '}
                         When you share a map canvas, two coordinates go up with
                         it and become publicly viewable. One is the pin the map
-                        is anchored to. The other is the view you were looking at
-                        when you shared. Both are needed so that someone opening
-                        your link sees your drawing at the right place on Earth.
-                        Now consider the case where that pin came from &ldquo;Use
-                        my current location&rdquo;. Sharing then publishes a
-                        coordinate derived from where you were. If you don't want
-                        that, search for a nearby place first and share from
-                        there.
+                        is anchored to. The other is the view you were looking
+                        at when you shared. Both are needed so that someone
+                        opening your link sees your drawing at the right place
+                        on Earth. Now consider the case where that pin came from
+                        &ldquo;Use my current location&rdquo;. Sharing then
+                        publishes a coordinate derived from where you were. If
+                        you don't want that, search for a nearby place first and
+                        share from there.
                     </p>
                     <p>
                         <strong>Map services we don't run.</strong> Two outside
@@ -232,7 +234,7 @@ const PrivacyPage: React.FC = () => {
                     </p>
                 </Section>
 
-                <Section title="Analytics">
+                {/* <Section title="Analytics">
                     <p>
                         We use{' '}
                         <a
@@ -251,12 +253,12 @@ const PrivacyPage: React.FC = () => {
                     <p>
                         Umami doesn't use cookies and doesn't store your IP
                         address. It uses your IP momentarily on the server to
-                        estimate approximate location, then discards it. There is
-                        no cross-site tracking and no advertising profiles. This
-                        data is aggregate, and we don't join it to the anonymous
-                        in-app identity described above.
+                        estimate approximate location, then discards it. There
+                        is no cross-site tracking and no advertising profiles.
+                        This data is aggregate, and we don't join it to the
+                        anonymous in-app identity described above.
                     </p>
-                </Section>
+                </Section> */}
 
                 <Section title="What we never collect">
                     <ul className="list-disc pl-5 space-y-1">
@@ -280,8 +282,8 @@ const PrivacyPage: React.FC = () => {
                 <Section title="Your controls">
                     <p>
                         You can reset your anonymous identity and wipe every
-                        locally stored canvas at any time. Clear this site's data
-                        in your browser settings and both are gone.
+                        locally stored canvas at any time. Clear this site's
+                        data in your browser settings and both are gone.
                     </p>
                     <p>
                         Keep in mind that a canvas stays public once you have
@@ -305,9 +307,9 @@ const PrivacyPage: React.FC = () => {
                 </Section>
 
                 <p className="text-xs text-ink-muted leading-relaxed mt-8 pt-6 border-t border-border-panel">
-                    We may update this policy as Craftbase evolves. Any
-                    material change will show up in the &ldquo;last
-                    updated&rdquo; date above.
+                    We may update this policy as Craftbase evolves. Any material
+                    change will show up in the &ldquo;last updated&rdquo; date
+                    above.
                 </p>
             </main>
         </div>

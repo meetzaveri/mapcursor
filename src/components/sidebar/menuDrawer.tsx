@@ -7,11 +7,9 @@ import { downloadViewportAsImage } from '../../utils/exportViewport'
 import { exportBaseAsJson } from '../../utils/exportBase'
 import Modal from '../common/modal'
 import Button from '../common/button'
-import SettingsModal from './settingsModal'
 import ShortcutsModal from './shortcutsModal'
 import PlaceSearchModal from './placeSearchModal'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
-import SettingsIcon from '../../assets/settings.svg?react'
 import HelpIcon from '../../assets/help.svg?react'
 import ChevronRightIcon from '../../assets/chevron-right.svg?react'
 import { MENU_BUTTON_ID } from './shapesToolbarId'
@@ -145,7 +143,6 @@ const MenuDrawer = (): ReactElement => {
     const refNode = useRef<HTMLDivElement | null>(null)
     const [showMenu, setShowMenu] = useState(false)
     const [showConfirm, setShowConfirm] = useState(false)
-    const [showSettings, setShowSettings] = useState(false)
     const [showShortcuts, setShowShortcuts] = useState(false)
     const [showPlaceSearch, setShowPlaceSearch] = useState(false)
     const [isExporting, setIsExporting] = useState(false)
@@ -156,21 +153,14 @@ const MenuDrawer = (): ReactElement => {
         stateRefForComponentStore,
         twoJSInstance,
         beginBaseImport,
-        readBaseTypeConfig,
-        captureBaseTypeBackdrop,
-        activeBaseType,
+        readBackdropConfig,
+        captureBackdrop,
         goToPlace,
     } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
     // Search lives in the top bar on desktop; on a phone that row is full, so
-    // the menu carries it (and only where it means anything — the map base).
-    const showSearchEntry = isMobile && activeBaseType === 'map'
-    // Settings is board-only, because everything inside it is: connector ports
-    // live on rectangle/circle/diamond (hidden on a map by BOARD_ONLY_TYPES),
-    // and the dot grid is the parchment backdrop the map replaces. On a map base
-    // the entry opened a dialog whose two switches changed nothing you could
-    // see.
-    const showSettingsEntry = activeBaseType !== 'map'
+    // the menu carries it.
+    const showSearchEntry = isMobile
 
     useEffect(() => {
         const handleClick = (e: MouseEvent): void => {
@@ -197,11 +187,6 @@ const MenuDrawer = (): ReactElement => {
         setShowConfirm(true)
     }
 
-    const handleSettingsClick = (): void => {
-        setShowMenu(false)
-        setShowSettings(true)
-    }
-
     const handleShortcutsClick = (): void => {
         setShowMenu(false)
         setShowShortcuts(true)
@@ -216,7 +201,7 @@ const MenuDrawer = (): ReactElement => {
         setShowMenu(false)
         try {
             setIsExporting(true)
-            await downloadViewportAsImage(captureBaseTypeBackdrop)
+            await downloadViewportAsImage(captureBackdrop)
         } catch (err) {
             console.error('Failed to export viewport as image', err)
         } finally {
@@ -238,7 +223,7 @@ const MenuDrawer = (): ReactElement => {
         exportBaseAsJson(
             stateRefForComponentStore.current,
             viewport,
-            readBaseTypeConfig()
+            readBackdropConfig()
         )
         setShowExportSubmenu(false)
         setShowMenu(false)
@@ -404,24 +389,6 @@ const MenuDrawer = (): ReactElement => {
 
                         <div className="h-px bg-border-panel mx-2 mt-1 mb-1" />
 
-                        {showSettingsEntry && (
-                            <button
-                                className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                hover:bg-accent/50 rounded cursor-pointer
-                                transition-colors ease-in-out duration-150"
-                                style={{ width: 'calc(100% - 8px)' }}
-                                onClick={handleSettingsClick}
-                            >
-                                <SettingsIcon
-                                    className="w-3.5 h-3.5"
-                                    stroke="currentColor"
-                                    color="currentColor"
-                                    aria-hidden="true"
-                                />
-                                <span>Settings</span>
-                            </button>
-                        )}
-
                         <button
                             className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
                                 hover:bg-accent/30 rounded cursor-pointer
@@ -581,11 +548,6 @@ const MenuDrawer = (): ReactElement => {
                 open={showPlaceSearch}
                 onClose={(): void => setShowPlaceSearch(false)}
                 onPick={(place): void => goToPlace?.(place.anchor)}
-            />
-
-            <SettingsModal
-                open={showSettings}
-                onClose={(): void => setShowSettings(false)}
             />
 
             <ShortcutsModal

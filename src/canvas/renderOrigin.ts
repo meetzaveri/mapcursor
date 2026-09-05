@@ -64,7 +64,7 @@
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 /** Marks the wrapper so nothing mistakes it for canvas content (exports, tests). */
-export const RENDER_ORIGIN_ID = 'cb-render-origin'
+export const RENDER_ORIGIN_ID = 'mc-render-origin'
 
 /**
  * How far, in screen px, the origin is allowed to sit from the viewport centre.

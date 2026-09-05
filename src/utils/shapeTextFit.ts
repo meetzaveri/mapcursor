@@ -1,11 +1,10 @@
-import { componentTypes } from '../constants/misc'
+
 import {
     lineHeightFor,
     wrapText,
     widestCharWidth,
     type FontSpec,
 } from './textLayout'
-
 // Per-shape geometry tying a shape's box to the text it can hold. All values
 // are in Two.js surface units (the same units as shape.width / shape.height).
 //
@@ -30,9 +29,9 @@ const CIRCLE_WIDTH_FACTOR = 1 / Math.SQRT2 // largest box inscribed in ellipse
 type ShapeKind = string
 
 function pads(kind: ShapeKind): { px: number; py: number } {
-    if (kind === componentTypes.diamond)
+    if (kind === 'diamond')
         return { px: DIAMOND_PAD_X, py: DIAMOND_PAD_Y }
-    if (kind === componentTypes.circle)
+    if (kind === 'circle')
         return { px: CIRCLE_PAD_X, py: CIRCLE_PAD_Y }
     return { px: RECT_PAD_X, py: RECT_PAD_Y }
 }
@@ -41,8 +40,8 @@ function pads(kind: ShapeKind): { px: number; py: number } {
 export function usableTextWidth(kind: ShapeKind, width: number): number {
     const { px } = pads(kind)
     let inner = width
-    if (kind === componentTypes.diamond) inner = width * DIAMOND_WIDTH_FACTOR
-    else if (kind === componentTypes.circle)
+    if (kind === 'diamond') inner = width * DIAMOND_WIDTH_FACTOR
+    else if (kind === 'circle')
         inner = width * CIRCLE_WIDTH_FACTOR
     return Math.max(inner - px * 2, 1)
 }
@@ -55,9 +54,9 @@ export function requiredShapeHeight(
 ): number {
     const { py } = pads(kind)
     const blockH = Math.max(lineCount, 1) * lineHeightFor(fontSize) + py * 2
-    if (kind === componentTypes.diamond)
+    if (kind === 'diamond')
         return Math.ceil(blockH / DIAMOND_WIDTH_FACTOR)
-    if (kind === componentTypes.circle)
+    if (kind === 'circle')
         return Math.ceil(blockH / CIRCLE_WIDTH_FACTOR)
     return Math.ceil(blockH)
 }
@@ -72,8 +71,8 @@ export function minShapeWidthForText(
     const { px } = pads(kind)
     const glyph = widestCharWidth(rawText, font)
     let inner = glyph + px * 2
-    if (kind === componentTypes.diamond) inner = inner / DIAMOND_WIDTH_FACTOR
-    else if (kind === componentTypes.circle)
+    if (kind === 'diamond') inner = inner / DIAMOND_WIDTH_FACTOR
+    else if (kind === 'circle')
         inner = inner / CIRCLE_WIDTH_FACTOR
     return Math.ceil(inner)
 }
@@ -163,13 +162,13 @@ export function growShapeToFitText(
     const { px, py } = pads(kind)
     const TW = textW + px * 2
     const TH = textH + py * 2
-    if (kind === componentTypes.diamond) {
+    if (kind === 'diamond') {
         return {
             w: Math.max(currentW, Math.ceil(TW / DIAMOND_WIDTH_FACTOR)),
             h: Math.max(currentH, Math.ceil(TH / DIAMOND_WIDTH_FACTOR)),
         }
     }
-    if (kind === componentTypes.circle) {
+    if (kind === 'circle') {
         return {
             w: Math.max(currentW, Math.ceil(TW / CIRCLE_WIDTH_FACTOR)),
             h: Math.max(currentH, Math.ceil(TH / CIRCLE_WIDTH_FACTOR)),

@@ -31,10 +31,9 @@ const MAX_REASONABLE_PX = 60
 
 const geoTextRecord = (id) => ({
     id,
-    componentType: 'geoText',
-    objectClass: 'geo',
+    componentType: 'text',
     children: null,
-    metadata: { content: LABEL, fontSize: FONT_SIZE, baseTypeScope: 'map' },
+    metadata: { content: LABEL, fontSize: FONT_SIZE },
     x: 0, x1: 0, x2: 0, y: 0, y1: 0, y2: 0,
     fill: 'transparent', width: 120, height: 36,
     iconStroke: null, stroke: null, linewidth: 2, strokeType: null,
@@ -55,8 +54,7 @@ test('map text stays legible across the whole map zoom range', async ({
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                              type: 'map',
-                              anchor: ANCHOR,
+                                                            anchor: ANCHOR,
                           }),
                           components: [
                               geoTextRecord(
@@ -74,7 +72,7 @@ test('map text stays legible across the whole map zoom range', async ({
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
     })
 
     await page.goto(`/map/${BASE_ID}`)
@@ -88,7 +86,7 @@ test('map text stays legible across the whole map zoom range', async ({
     const apparentHeightAt = async (scale) =>
         page.evaluate(
             ({ s, label }) => {
-                const two = window.__cbTwo
+                const two = window.__mcTwo
                 two.scene.scale = s
                 window.dispatchEvent(
                     new CustomEvent('zoomChanged', { detail: { scale: s } })

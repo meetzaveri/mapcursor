@@ -1,11 +1,10 @@
 import { Fragment, useState, useEffect } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import { allColorShades, essentialShades } from '../../utils/constants'
-import { flipThemeColor } from '../../utils/themeColorFlip'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MIXED } from '../../utils/groupInspect'
 
-const STORAGE_KEY = 'craftbase_saved_colors'
+const STORAGE_KEY = 'mapcursor_saved_colors'
 const MAX_SAVED = 8
 
 // Checkerboard shown behind a transparent swatch so it reads as "no paint"
@@ -63,15 +62,7 @@ const ColorPicker = ({
     onToggleExpand,
     essentialColors = essentialShades,
 }: ColorPickerProps): ReactElement => {
-    // In dark mode the quick-access tray shows each essential's dark counterpart
-    // (flipThemeColor), so picking a swatch stores the theme-appropriate value —
-    // which flips back to the light essential when the theme is toggled.
-    const isDarkTheme =
-        typeof document !== 'undefined' &&
-        document.documentElement.classList.contains('dark')
-    const displayEssentials = isDarkTheme
-        ? essentialColors.map((c) => flipThemeColor(c) as string)
-        : essentialColors
+    const displayEssentials = essentialColors
     const [localExpanded, setLocalExpanded] = useState(false)
     const [savedColors, setSavedColors] = useState<string[]>(loadSavedColors)
     const [removingColor, setRemovingColor] = useState<string | null>(null)

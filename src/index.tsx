@@ -4,7 +4,6 @@ import * as Sentry from '@sentry/react'
 import './index.css'
 import App from './App'
 import * as serviceWorker from './serviceWorker'
-import { runStorageMigration } from './utils/storageMigration'
 
 Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
@@ -34,10 +33,6 @@ window.addEventListener('vite:preloadError', (event) => {
 window.addEventListener('load', () => {
     sessionStorage.removeItem(PRELOAD_RELOAD_KEY)
 })
-
-// Bring localStorage up to the current vocabulary before anything reads it.
-// One-shot and self-guarding -- see storageMigration.ts.
-runStorageMigration()
 
 const rootEl = document.getElementById('root')
 if (rootEl) {

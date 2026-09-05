@@ -1,16 +1,10 @@
-// The circle on a map base.
+// The circle.
 //
 // A circle is the natural mark for a radius — a blast radius, a catchment, a
 // hotspot — and drawing one as a polygon `area` is fiddly and never actually
-// round. Rather than a fourth geo type, the map circle reuses the whiteboard
-// circle wholesale: same componentType, same factory, same component, same
-// resize adapter. The ONLY thing separating the two is the `objectClass`
-// column, exactly as it already separates a map pencil stroke from a board one.
-//
-// That reuse is what these tests protect. Every behaviour below is either
-// "the map circle diverges here" (geo stamp, 50% opacity, stroke = fill, no
-// opacity control, no inner text, no ports, counter-scaled stroke) or "the
-// whiteboard circle did NOT change".
+// round. What these tests protect: it is created at 50% opacity with its stroke
+// seeded from its fill, carries no opacity control and no inner text, and
+// counter-scales its stroke while its geometry stays world-scaled.
 
 import { test, expect } from './helpers/test.js'
 import {
@@ -20,13 +14,6 @@ import {
     getCanvasBox,
     drawShape,
 } from './helpers/index.js'
-// The three rules below are pure predicates over a record, so they are asserted
-// directly in Node. They used to be reached with `await import('/src/…​.ts')`
-// inside page.evaluate, which only the Vite dev server can serve: against the
-// deploy preview's production bundle that path 404s.
-import { isRecordVisibleOnBaseType } from '../../src/utils/geoVisibility'
-import { isStrokeScaled } from '../../src/utils/counterScale'
-import { isPortShape } from '../../src/utils/shapePorts'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 const ANCHOR = { lngLat: [-121.95, 37.35], zoom: 16 }
@@ -42,8 +29,7 @@ async function openMapBase(page) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                              type: 'map',
-                              anchor: ANCHOR,
+                                                            anchor: ANCHOR,
                           }),
                           components: [],
                       }
@@ -57,14 +43,14 @@ async function openMapBase(page) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
-        localStorage.setItem('craftbase_geo_text_zoom_hint_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_text_zoom_hint_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
     // Surface coords become screen coords, so the drag below aims at pixels.
     await page.evaluate(() => {
-        const two = window.__cbTwo
+        const two = window.__mcTwo
         two.scene.translation.set(0, 0)
         two.scene.scale = 1
         two.update()
@@ -75,14 +61,13 @@ async function openMapBase(page) {
 /** The elementData of the most recently created component in the scene. */
 const lastRecord = (page) =>
     page.evaluate(() => {
-        const children = Array.from(window.__cbTwo.scene.children)
+        const children = Array.from(window.__mcTwo.scene.children)
         const withData = children.filter((c) => c?.elementData?.id)
         const g = withData[withData.length - 1]
         if (!g) return null
         const ed = g.elementData
         return {
             componentType: ed.componentType,
-            objectClass: ed.objectClass ?? null,
             fill: ed.fill,
             stroke: ed.stroke,
             opacity: ed.opacity ?? null,
@@ -112,8 +97,6 @@ test.describe('the map circle', () => {
         expect(rec).not.toBeNull()
         // Reuse, not a fourth geo type: it really is componentType 'circle'.
         expect(rec.componentType).toBe('circle')
-        // ...and objectClass is the entire differentiator.
-        expect(rec.objectClass).toBe('geo')
         // Half-transparent so the basemap reads through it. On the TOP-LEVEL
         // column, not metadata.opacity — that legacy spelling is what every
         // other creation path still writes, and readOpacity prefers the column.
@@ -170,7 +153,7 @@ test.describe('the map circle', () => {
                     new CustomEvent('zoomChanged', { detail: { scale: s } })
                 )
                 await new Promise((r) => setTimeout(r, 150))
-                const children = Array.from(window.__cbTwo.scene.children)
+                const children = Array.from(window.__mcTwo.scene.children)
                 const withData = children.filter((c) => c?.elementData?.id)
                 const g = withData[withData.length - 1]
                 return g?.children?.[0]?.linewidth ?? null
@@ -239,7 +222,7 @@ test.describe('the map circle', () => {
 
         const after = await page.evaluate(() => {
             const raw = localStorage.getItem('craftbase:elementDefaults')
-            const two = window.__cbTwo
+            const two = window.__mcTwo
             const children = Array.from(two.scene.children)
             const withData = children.filter((c) => c?.elementData?.id)
             return {
@@ -255,87 +238,6 @@ test.describe('the map circle', () => {
         // shape preference. Syncing it would repaint the next whiteboard
         // rectangle in map red.
         expect(after.defaultFill).toBe(fillBefore)
-    })
-})
-
-test.describe('the rules that separate the two circles', () => {
-    test.beforeEach(async ({ page }) => {
-        await setupLocalBase(page)
-    })
-
-    test('visibility: geo circle is map-only, plain circle is board-only', () => {
-        const geoCircle = { componentType: 'circle', objectClass: 'geo' }
-        const boardCircle = { componentType: 'circle' }
-
-        // This works with no change to geoVisibility at all: the objectClass
-        // check runs BEFORE the BOARD_ONLY_TYPES set that contains 'circle'.
-        expect(isRecordVisibleOnBaseType(geoCircle, 'map')).toBe(true)
-        expect(isRecordVisibleOnBaseType(geoCircle, 'board')).toBe(false)
-        expect(isRecordVisibleOnBaseType(boardCircle, 'map')).toBe(false)
-        expect(isRecordVisibleOnBaseType(boardCircle, 'board')).toBe(true)
-    })
-
-    test('only the geo circle counter-scales its stroke', () => {
-        // Geometry stays world-scaled (a 5km radius stays 5km); only the ring
-        // is held near-constant, or it is a thick band at z18 and gone at z4.
-        expect(
-            isStrokeScaled({ componentType: 'circle', objectClass: 'geo' })
-        ).toBe(true)
-        // The whiteboard circle is untouched — everything scales, as before.
-        expect(isStrokeScaled({ componentType: 'circle' })).toBe(false)
-        // The pencil rule this one is modelled on still holds.
-        expect(
-            isStrokeScaled({ componentType: 'pencil', objectClass: 'geo' })
-        ).toBe(true)
-        expect(isStrokeScaled({ componentType: 'pencil' })).toBe(false)
-        expect(isStrokeScaled({ componentType: 'area' })).toBe(true)
-    })
-
-    test('a geo circle exposes no connector ports', () => {
-        // arrowLine is hidden on a map base, so ports there dock to nothing.
-        expect(
-            isPortShape({ componentType: 'circle', objectClass: 'geo' })
-        ).toBe(false)
-        // The board shapes keep theirs.
-        expect(isPortShape({ componentType: 'circle' })).toBe(true)
-        expect(isPortShape({ componentType: 'rectangle' })).toBe(true)
-        expect(isPortShape({ componentType: 'area' })).toBe(false)
-    })
-
-    test('the whiteboard circle is unchanged: opaque, with an opacity control', async ({
-        page,
-    }) => {
-        const box = await getCanvasBox(page)
-        await drawShape(page, 'circle', {
-            startX: box.x + 300,
-            startY: box.y + 250,
-            endX: box.x + 460,
-            endY: box.y + 410,
-        })
-        await page.waitForTimeout(400)
-
-        const rec = await lastRecord(page)
-        expect(rec.componentType).toBe('circle')
-        expect(rec.objectClass).toBeNull()
-        // No geo stamp means no 50% seed and no forced stroke = fill.
-        expect(rec.paintedGroupOpacity).toBe(1)
-        await expect(page.locator('text=Opacity').first()).toBeVisible()
-
-        // And its stroke still scales with the world — the new zoomChanged
-        // listener in circle.tsx is gated on objectClass, so it must never fire
-        // for a whiteboard circle.
-        const before = rec.paintedLinewidth
-        const after = await page.evaluate(async () => {
-            window.dispatchEvent(
-                new CustomEvent('zoomChanged', { detail: { scale: 0.25 } })
-            )
-            await new Promise((r) => setTimeout(r, 150))
-            const children = Array.from(window.__cbTwo.scene.children)
-            const withData = children.filter((c) => c?.elementData?.id)
-            const g = withData[withData.length - 1]
-            return g?.children?.[0]?.linewidth ?? null
-        })
-        expect(after).toBe(before)
     })
 })
 

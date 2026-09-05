@@ -18,14 +18,14 @@
 //
 // Reference: the standalone prototype in point_two.js.
 
-import { DEFAULT_GEO_RESIST, GEO_TEXT_RESIST } from '../constants/misc'
+import { DEFAULT_RESIST, TEXT_RESIST } from '../constants/misc'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
 export function computeCounterScale(
     zuiScale: number,
-    resist: number = DEFAULT_GEO_RESIST
+    resist: number = DEFAULT_RESIST
 ): number {
     if (!Number.isFinite(zuiScale) || zuiScale <= 0) return 1
     return 1 / Math.pow(zuiScale, resist)
@@ -37,17 +37,17 @@ export function computeCounterScale(
  * width, because scaling their geometry would peel the outline off the map.
  * Don't unify them.
  *
- * geoText counter-scales its whole group too: it is a caption, and at resist 0
- * it rendered at 0.3px over a county (see GEO_TEXT_RESIST). It keeps its own
+ * text counter-scales its whole group too: it is a caption, and at resist 0
+ * it rendered at 0.3px over a county (see TEXT_RESIST). It keeps its own
  * resist constant because the two are tuned for different jobs — a pin is
  * chrome, a caption is content.
  */
-const GROUP_SCALED_TYPES: ReadonlySet<string> = new Set(['point', 'geoText'])
+const GROUP_SCALED_TYPES: ReadonlySet<string> = new Set(['point', 'text'])
 const STROKE_SCALED_TYPES: ReadonlySet<string> = new Set(['area', 'route'])
 
 /** The default resist for a type, when the record carries no `metadata.resist`. */
 function defaultResistFor(type: string): number {
-    return type === 'geoText' ? GEO_TEXT_RESIST : DEFAULT_GEO_RESIST
+    return type === 'text' ? TEXT_RESIST : DEFAULT_RESIST
 }
 
 /**
@@ -55,7 +55,7 @@ function defaultResistFor(type: string): number {
  * `zoomResistant` column is read, so a live element and the detached copy in a
  * group overlay can never disagree.
  *
- * The column is the user's on/off switch and applies to **geoText only**:
+ * The column is the user's on/off switch and applies to **text only**:
  * `false` means "scale with the map" (resist 0), absent/null/true means
  * zoom-resistant. `metadata.resist` stays the numeric strength knob underneath
  * it, and remains the sole mechanism for point / area / route / geo pencil —
@@ -63,25 +63,25 @@ function defaultResistFor(type: string): number {
  */
 export function resolveResist(item: ShapeLike): number {
     const type = item?.componentType
-    if (type === 'geoText' && item?.zoomResistant === false) return 0
+    if (type === 'text' && item?.zoomResistant === false) return 0
     return item?.metadata?.resist ?? defaultResistFor(type)
 }
 
 /**
- * Stroke-resist applies to a pencil or a circle only when it was drawn on a
- * geographic base. Both are offered on every base, so unlike area/route their
- * `componentType` does not settle the question — `objectClass` does. A
- * board-base scribble or circle must keep scaling with the world like every
- * other whiteboard mark.
+ * Which types counter-scale their STROKE only, keeping their geometry
+ * world-scaled: area, route, pencil and circle.
  *
- * A map circle marks a real-world radius, so its geometry stays world-scaled;
+ * A circle marks a real-world radius, so its geometry has to stay world-scaled;
  * only the outline is held near-constant, or the ring becomes a thick band at
- * z18 and disappears at z4.
+ * z18 and disappears at z4. The same reasoning covers a freehand stroke.
+ *
+ * This used to be split — pencil and circle were offered on the whiteboard too,
+ * so `objectClass` decided per record whether a given one was drawn on a map.
+ * With the map the only substrate, every pencil and every circle is a map mark.
  */
 export function isStrokeScaled(item: ShapeLike): boolean {
     const type = item?.componentType
     if (STROKE_SCALED_TYPES.has(type)) return true
-    if (item?.objectClass !== 'geo') return false
     return type === 'pencil' || type === 'circle'
 }
 
@@ -96,7 +96,7 @@ export function isStrokeScaled(item: ShapeLike): boolean {
  *
  * Mirrors exactly what the live components do on mount and on every
  * `zoomChanged` — see point.tsx (whole group) and area.tsx / route.tsx (stroke
- * width only). Resist comes from resolveResist, so a geoText copy honours the
+ * width only). Resist comes from resolveResist, so a text copy honours the
  * `zoomResistant` column too. `metadata` is a vertex array for area/route, so
  * `.resist` is undefined there and falls through to the default, same as in
  * those components.

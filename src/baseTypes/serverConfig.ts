@@ -11,21 +11,19 @@
 //     re-share.
 //
 // The anchor is why this has to live on the server at all. Before these
-// columns it lived only in `craftbase_base_type_<baseId>`, so a recipient —
-// who has no such key — fell back to a guess derived from their own timezone
-// and every pin landed in the wrong city.
+// columns it lived only in localStorage, so a recipient — who has no such key —
+// fell back to a guess derived from their own timezone and every pin landed in
+// the wrong city.
 //
 // The landing view is stored as lng/lat/zoom rather than the camera's own
 // tx/ty/scale because tx/ty are pixel translations: replaying them on a phone
 // lands somewhere else entirely. Geography is the device-independent form.
 
-import { isBaseType } from './registry'
-import type { BaseType, MapAnchor } from './types'
+import type { MapAnchor } from './types'
 
 /** The columns of `bases.base` this app reads. `float8` arrives as `any`. */
 export interface ServerBaseRow {
     id?: string | null
-    type?: string | null
     isPublic?: boolean | null
     mapAnchorLng?: unknown
     mapAnchorLat?: unknown
@@ -36,8 +34,6 @@ export interface ServerBaseRow {
 }
 
 export interface ServerBaseConfig {
-    /** null when the row's type isn't one this build can render. */
-    type: BaseType | null
     /** The georeference. null unless all three columns are present and finite. */
     mapAnchor: MapAnchor | null
     /** The shared view. null unless all three columns are present and finite. */
@@ -75,20 +71,15 @@ function triple(
 }
 
 /**
- * Convert a fetched base row into the shapes the base-type layer speaks.
- * Returns null for a missing row, so callers can't tell "not loaded" from
- * "loaded and empty" by accident.
- *
- * `type` is guarded by `isBaseType` rather than trusted: the Postgres enum
- * already carries `'image'`, which `registry.LOADERS` has no loader for — an
- * unguarded value would be a crash for the first user whose row says so.
+ * Convert a fetched base row into the shapes the backdrop layer speaks. Returns
+ * null for a missing row, so callers can't tell "not loaded" from "loaded and
+ * empty" by accident.
  */
 export function normalizeServerBaseConfig(
     row: ServerBaseRow | null | undefined
 ): ServerBaseConfig | null {
     if (!row) return null
     return {
-        type: isBaseType(row.type) ? row.type : null,
         mapAnchor: triple(row.mapAnchorLng, row.mapAnchorLat, row.mapAnchorZoom),
         landing: triple(row.landingLng, row.landingLat, row.landingZoom),
     }

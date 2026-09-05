@@ -47,12 +47,8 @@ const HOVER_DRAWER_DEFAULT_TOOL: Record<string, string> = {
 const HOVER_DRAWER_BRIDGE_PX = 6
 
 // Drawers that collapse into flat buttons on desktop, where there is room for
-// them. 'lines' is deliberately absent: it is a hover drawer and stays a drawer
-// on both platforms (see constants.ts).
-const DESKTOP_FLATTENED_DRAWERS: ReadonlySet<string> = new Set([
-    'shapes',
-    'geoShapes',
-])
+// them.
+const DESKTOP_FLATTENED_DRAWERS: ReadonlySet<string> = new Set(['shapes'])
 
 const flattenDrawersForDesktop = (
     elements: readonly PrimaryElement[]
@@ -88,8 +84,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
         redoLastAction,
         historyLog,
         bucketLog,
-        toolset,
-        activeBaseType,
         selectedComponent,
         eraserSize,
         setEraserSizeInBase,
@@ -98,81 +92,25 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
     const [openDrawer, setOpenDrawer] = useState<string | null>(null)
     const [drawerAnchor, setDrawerAnchor] = useState<DrawerAnchor | null>(null)
     const drawerRef = useRef<HTMLDivElement | null>(null)
-    // The active base decides the resting tool. Both shipped bases rest on
-    // 'pointer' — a map is a substrate to draw on, so the resting gesture is
-    // still select — but it stays per-base because that is a base's call to
-    // make, and the deprecated `geoObjectsEnabled` overlay still asks for pan.
-    const homeTool = toolset.homeTool
+    // The map is a substrate to draw on, not a map viewer, so the resting
+    // gesture is select and reaching for pan is the explicit act.
+    const homeTool = 'pointer'
 
     // Eraser size selector: only while the eraser is the active tool and
     // nothing on canvas is selected — a selection competing for the same
     // toolbar space would be confusing, so it steps aside.
     const showEraserSizes = currentElement === 'rubber' && !selectedComponent
 
-    const allElements = (() => {
-        const list = (
-            isMobile ? allElementsRaw : flattenDrawersForDesktop(allElementsRaw)
-        )
-            // The active base hides the tools that don't suit it (the map base
-            // drops the whiteboard shape tools in favour of the geo toolset).
-            // Only the toolbar is filtered — shapes already on the canvas keep
-            // rendering and stay editable after a base switch.
-            .filter((el) => !toolset.hiddenTools.has(el.elementName))
-            // ...and contributes its own (point/area+circle/route/geoText on
-            // the map). Flattened for desktop too, or the geo shapes drawer
-            // would stay collapsed on the one platform with room for it. Note
-            // this runs AFTER the filter, which is what lets the geo circle
-            // through even though 'circle' is in the map's hiddenTools.
-            .concat(
-                isMobile
-                    ? toolset.extraTools
-                    : flattenDrawersForDesktop(toolset.extraTools)
-            )
+    const allElements = isMobile
+        ? allElementsRaw
+        : flattenDrawersForDesktop(allElementsRaw)
 
-        // The eraser (rubber) always sits last in the toolbar order, after any
-        // geo tools appended above.
-        const rubberIdx = list.findIndex((el) => el.elementName === 'rubber')
-        if (rubberIdx !== -1) {
-            const [rubber] = list.splice(rubberIdx, 1)
-            list.push(rubber!)
-        }
-        return list
-    })()
-
-    // Re-runs on every base switch, not just on mount: switching to the map has
-    // to actually move the user onto pan, and switching back has to release it.
-    // (This was mount-only while the base was a fixed build-time prop.)
-    //
-    // Gated on the toolset having caught up with the base. Providers load
-    // through a dynamic import, so `activeBaseType` flips the instant the user
-    // picks — while `toolset.homeTool` still belongs to the base being left.
-    // Firing on `activeBaseType` alone therefore applied the OUTGOING base's home
-    // tool: switching to the map left you on pointer, and back to the board base
-    // left you on pan. `appliedForBaseType` keeps it to one application per switch
-    // once they agree.
-    const isFirstBaseTypeRun = useRef(true)
-    const appliedForBaseType = useRef<string | null>(null)
+    // Mount: highlight the resting tool. `pointer` is the resting state, so a
+    // highlight is enough — no addElement call needed to activate it.
     useEffect(() => {
-        if (toolset.baseId !== activeBaseType) return
-        if (appliedForBaseType.current === activeBaseType) return
-        appliedForBaseType.current = activeBaseType
-
-        if (isFirstBaseTypeRun.current) {
-            isFirstBaseTypeRun.current = false
-            // Mount: pan needs activating (addElement) to become the live mode;
-            // pointer is the board base's resting state, so a highlight is enough.
-            // Kept exactly as-is so a board-base load behaves as it always did.
-            if (homeTool === 'pan') addElement('pan')
-            setCurrentElementInBase(homeTool)
-            return
-        }
-        // A real switch: go through addElement either way, because that's what
-        // releases pan (`if (label !== 'pan') togglePanMode(false)`) on the way
-        // back to the board base. Highlighting alone would leave pan live.
-        addElement(homeTool)
         setCurrentElementInBase(homeTool)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeBaseType, toolset.baseId])
+    }, [])
 
     useEffect(() => {
         if (!openDrawer) return

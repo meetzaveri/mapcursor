@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 
-const STORAGE_KEY = 'craftbase:elementDefaults'
+const STORAGE_KEY = 'mapcursor:elementDefaults'
 
 export type TextSizeLabel = 'S' | 'M' | 'L' | 'XL'
 

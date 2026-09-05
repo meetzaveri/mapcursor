@@ -24,7 +24,6 @@ const PIN_LABEL = 'Pin One'
 const geoRecord = (id, componentType, extra) => ({
     id,
     componentType,
-    objectClass: 'geo',
     zoomResistant: null,
     children: null,
     x: 0,
@@ -63,12 +62,12 @@ const COMPONENTS = [
             { x: 700, y: 200 },
         ],
     }),
-    geoRecord(TEXT_ID, 'geoText', {
+    geoRecord(TEXT_ID, 'text', {
         x: 200,
         y: 420,
         stroke: null,
         linewidth: 2,
-        metadata: { content: MAP_LABEL, fontSize: 24, baseTypeScope: 'map' },
+        metadata: { content: MAP_LABEL, fontSize: 24 },
     }),
     geoRecord(POINT_ID, 'point', {
         x: 200,
@@ -91,8 +90,7 @@ async function openMapBase(page) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                              type: 'map',
-                              anchor: ANCHOR,
+                                                            anchor: ANCHOR,
                           }),
                           components: COMPONENTS,
                       }
@@ -106,13 +104,13 @@ async function openMapBase(page) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
-        localStorage.setItem('craftbase_geo_text_zoom_hint_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_text_zoom_hint_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.locator(`text=${MAP_LABEL}`).first().waitFor({ timeout: 15_000 })
     await page.evaluate(() => {
-        const two = window.__cbTwo
+        const two = window.__mcTwo
         two.scene.translation.set(0, 0)
         two.scene.scale = 1
         two.update()
@@ -184,7 +182,7 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
 
     const SCALE = 0.0625 // four map zooms below the anchor
     await page.evaluate((scale) => {
-        const two = window.__cbTwo
+        const two = window.__mcTwo
         two.scene.scale = scale
         window.dispatchEvent(
             new CustomEvent('zoomChanged', { detail: { scale } })
@@ -217,7 +215,7 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
     // And nothing jumps when the component re-applies its own counter-scale:
     // that jump on the next camera nudge was how the bug announced itself.
     await page.evaluate(() => {
-        const two = window.__cbTwo
+        const two = window.__mcTwo
         window.dispatchEvent(
             new CustomEvent('zoomChanged', {
                 detail: { scale: two.scene.scale },
@@ -231,7 +229,7 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
     expect(
         await page.evaluate(
             (id) =>
-                window.__cbTwo.scene.children.find(
+                window.__mcTwo.scene.children.find(
                     (c) => c?.elementData?.id === id
                 )?.elementData?.linewidth,
             ROUTE_ID
@@ -242,7 +240,7 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
 test('paste hands the selection to the clone', async ({ page }) => {
     await setupLocalBase(page)
     const box = await getCanvasBox(page)
-    const rect = await drawShape(page, 'rectangle', {
+    const rect = await drawShape(page, 'circle', {
         startX: box.x + 260,
         startY: box.y + 200,
         endX: box.x + 380,
@@ -255,8 +253,8 @@ test('paste hands the selection to the clone', async ({ page }) => {
 
     const sourceId = await page.evaluate(
         () =>
-            window.__cbTwo.scene.children.find(
-                (c) => c?.elementData?.componentType === 'rectangle'
+            window.__mcTwo.scene.children.find(
+                (c) => c?.elementData?.componentType === 'circle'
             )?.elementData?.id
     )
 
@@ -269,13 +267,13 @@ test('paste hands the selection to the clone', async ({ page }) => {
     // the properties panel edited the element you had copied FROM.
     const selected = async () =>
         page.evaluate(() => {
-            const chrome = document.querySelector('[data-cb-selection-chrome]')
+            const chrome = document.querySelector('[data-mc-selection-chrome]')
             if (!chrome) return null
             const c = chrome.getBoundingClientRect()
             const cx = c.x + c.width / 2
             const cy = c.y + c.height / 2
-            const rects = Array.from(window.__cbTwo.scene.children).filter(
-                (r) => r?.elementData?.componentType === 'rectangle'
+            const rects = Array.from(window.__mcTwo.scene.children).filter(
+                (r) => r?.elementData?.componentType === 'circle'
             )
             let best = null
             let bestDist = Infinity
@@ -305,8 +303,8 @@ test('paste hands the selection to the clone', async ({ page }) => {
     expect(
         await page.evaluate(
             () =>
-                Array.from(window.__cbTwo.scene.children).filter(
-                    (c) => c?.elementData?.componentType === 'rectangle'
+                Array.from(window.__mcTwo.scene.children).filter(
+                    (c) => c?.elementData?.componentType === 'circle'
                 ).length
         )
     ).toBe(2)

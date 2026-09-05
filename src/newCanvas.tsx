@@ -22,11 +22,11 @@ import Two from 'two.js'
 import { ZUI } from 'two.js/extras/jsm/zui'
 import { useBaseContext } from './views/Base/baseContext'
 import { useMediaQueryUtils } from './constants/exportHooks'
-import { BASE_ROOT_ID } from './hooks/useActiveBaseType'
+import { BASE_ROOT_ID } from './hooks/useMapBackdrop'
 import { readViewport, writeViewport } from './utils/viewportStorage'
 import type { StoredViewport } from './utils/viewportStorage'
 import { isUrlBasePath } from './utils/baseRoutes'
-import type { BaseType, MapAnchor } from './baseTypes/types'
+import type { MapAnchor } from './baseTypes/types'
 
 import {
     GROUP_COMPONENT,
@@ -50,17 +50,17 @@ import {
     LINE_HEIGHT_MULTIPLIER,
     PENCIL_DISTANCE_THROTTLE,
     DEFAULT_TEXT_SIZE,
-    GEO_DRAW_MODE_KEY,
-    GEO_DRAW_TYPE_KEY,
-    GEO_DRAW_PROPS_KEY,
-    GEO_POINT_PLACE_MODE_KEY,
+    DRAW_MODE_KEY,
+    DRAW_TYPE_KEY,
+    DRAW_PROPS_KEY,
+    POINT_PLACE_MODE_KEY,
     SELECT_COMPONENT_EVENT,
-    GEO_MIN_VERTICES,
-    DEFAULT_GEO_RESIST,
-    GEO_PREVIEW_DOT_PX,
-    GEO_PREVIEW_MIN_STROKE_PX,
-    GEO_PREVIEW_SEGMENT_OPACITY,
-    GEO_PREVIEW_RUBBER_OPACITY,
+    MIN_VERTICES,
+    DEFAULT_RESIST,
+    PREVIEW_DOT_PX,
+    PREVIEW_MIN_STROKE_PX,
+    PREVIEW_SEGMENT_OPACITY,
+    PREVIEW_RUBBER_OPACITY,
     DEFAULT_TEXT_FONT_FAMILY,
     ERASER_SIZE_KEY,
     ERASER_SIZE_RADIUS,
@@ -78,27 +78,15 @@ import { elementModules } from './elementModules'
 import Loader from './components/utils/loader'
 import SelectionController, {
     buildToolbarState,
-    PORT_GAP,
-    PORT_RADAR_RADIUS,
     SELECTION_PADDING,
 } from './canvas/selectionController'
 import { updateX1Y1Vertices, updateX2Y2Vertices } from './utils/updateVertices'
-import {
-    getShapePortPoint,
-    findNearestPort,
-    getStackedPortPoint,
-    PORT_TAIL_STACK_GAP,
-} from './utils/shapePorts'
 import { generateUUID } from './utils/misc'
 import {
     hasAbsoluteVertexMetadata,
     shiftVertexMetadata,
 } from './utils/vertexMetadata'
 import {
-    getConnectorsEnabled,
-    subscribeConnectorsEnabled,
-    getDotGridEnabled,
-    subscribeDotGridEnabled,
     getDragScansEnabled,
     getViewportCullingEnabled,
 } from './utils/featureFlags'
@@ -131,23 +119,14 @@ import {
     getGroupFill,
 } from './utils/canvasUtils'
 import { growShapeToFitText, usableTextWidth } from './utils/shapeTextFit'
-import {
-    flipThemeColor,
-    themeDefaultInk,
-    isFillableShapeType,
-    isStrokeFlippableType,
-    paintShapeFill,
-    paintElementStroke,
-} from './utils/themeColorFlip'
 import { isSelectPanMode, isPanMode } from './utils/drawModeUtils'
 import { wheelZoomStep } from './utils/wheelZoom'
 import { scheduleRender } from './utils/renderScheduler'
 import { installRenderOrigin } from './canvas/renderOrigin'
 import { E2E_HOOKS } from './utils/e2eHooks'
-import { isRecordVisibleOnBaseType } from './utils/geoVisibility'
 import { SELECTION_CHROME_ATTR } from './utils/svgExportShared'
 import { computeCounterScale } from './utils/counterScale'
-import { zoomLimitsForBaseType } from './baseTypes/zoomLimits'
+import { MAP_ZOOM_LIMITS } from './baseTypes/zoomLimits'
 import { lngLatToSurface, scaleForMapZoom } from './baseTypes/mercator'
 import { useCanvasClipboard } from './hooks/useCanvasClipboard'
 import type { HistoryEntry } from './hooks/useComponentHistory'
@@ -364,11 +343,7 @@ function addZUI(
     >,
     onCameraChangeRef: MutableRefObject<
         ((event: CameraChangeEvent) => void) | undefined
-    >,
-    // Live active base. addZUI runs once on mount, so the base a viewport is
-    // saved under must be read through a ref — a captured value would keep
-    // writing the camera to whichever type the base loaded with.
-    activeBaseTypeRef: MutableRefObject<BaseType>
+    >
 ): ZuiHandle {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let shape: any = null
@@ -550,7 +525,7 @@ function addZUI(
      *
      * The value must carry any scale the element has, because it REPLACES what
      * Two.js rendered, matrix and all. The zoom-resistant geo elements (point
-     * pins, geoText) keep their whole counter-scale there, so dropping it would
+     * pins, text) keep their whole counter-scale there, so dropping it would
      * snap them to world size mid-drag. Rotation never reaches here (rotated
      * elements are ineligible for this path).
      *
@@ -618,7 +593,7 @@ function addZUI(
     // ── Geo multi-click draw state (area / route) ────────────────────────────
     // Vertices are surface coords; preview dots/lines live in two.scene so ZUI
     // transforms them like everything else. Built into a component on finish.
-    let geoDrawType: 'area' | 'route' | 'curvedLine' | null = null
+    let geoDrawType: 'area' | 'route' | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoDrawProps: any = null
     let geoVertices: { x: number; y: number }[] = []
@@ -639,53 +614,6 @@ function addZUI(
     // the map needs a far wider one (see BaseTypeProvider.zoomLimits).
     zui.addLimits(0.06, 8)
 
-    // Parchment dot-grid camera sync. The grid is a CSS radial-gradient painted
-    // on the renderer's SVG element, which lives in screen space (Two.js
-    // transforms the scene group inside it, never the SVG itself). To make the
-    // grid feel glued to the canvas we mirror the camera onto the CSS background:
-    // scale the tile by the zoom and offset it by the scene translation. CSS
-    // tiling makes it an infinite grid for free, and the dots re-rasterize sharp
-    // at every zoom. Base tile is 24px (kept in sync with App.css).
-    const BG_TILE_BASE = 24
-    // Keep the on-screen dot spacing inside a comfortable band by stepping the
-    // tile through power-of-2 "octaves". A plain `BG_TILE_BASE * scale` shrinks
-    // the tile as you zoom out, crowding the dots into a dense mush below ~50%
-    // (and into a sparse field when zoomed far in). Doubling/halving the tile at
-    // the band edges keeps apparent spacing roughly constant. MAX must be 2*MIN
-    // so each octave wrap lands back inside the band.
-    const BG_TILE_MIN = 16
-    const BG_TILE_MAX = 32
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let bgSvgEl: any = null
-    const syncBackgroundToCamera = () => {
-        // Dot grid is behind a feature flag (default off). When disabled the CSS
-        // paints only the solid parchment color, so there's nothing to drive.
-        if (!getDotGridEnabled()) return
-        if (!bgSvgEl) {
-            const root = document.getElementById('main-two-root')
-            bgSvgEl = root?.querySelector('svg') || null
-        }
-        if (!bgSvgEl) return
-        const scale = two.scene.scale || 1
-        const tx = two.scene.translation.x
-        const ty = two.scene.translation.y
-        let size = BG_TILE_BASE * scale
-        if (size > 0) {
-            while (size < BG_TILE_MIN) size *= 2
-            while (size > BG_TILE_MAX) size /= 2
-        }
-        bgSvgEl.style.backgroundSize = `${size}px ${size}px`
-        bgSvgEl.style.backgroundPosition = `${tx}px ${ty}px`
-    }
-
-    // Toggle the `cb-dot-grid` class on the canvas root so the CSS dot-grid
-    // rule paints only when the flag is on, then re-sync the live size/position.
-    const syncDotGridClass = () => {
-        const root = document.getElementById('main-two-root')
-        if (root) root.classList.toggle('cb-dot-grid', getDotGridEnabled())
-        syncBackgroundToCamera()
-    }
-
     const setRootCursor = (cursor: string) => {
         const root = document.getElementById('main-two-root')
         if (root) root.style.cursor = cursor
@@ -702,17 +630,14 @@ function addZUI(
      * behind it, so it has to apply that factor itself. Without this the stroke
      * draws thin and visibly thickens the instant the element mounts.
      *
-     * The base test mirrors the `objectClass: 'geo'` stamp on the committed
-     * record below — the two must agree, or the jump comes straight back.
      */
     const pencilPreviewLinewidth = (): number => {
         const base = defaultLinewidthValue
-        if (activeBaseTypeRef.current === 'board') return base
         const scale = zui.scale || two.scene.scale || 1
-        return base * computeCounterScale(scale, DEFAULT_GEO_RESIST)
+        return base * computeCounterScale(scale, DEFAULT_RESIST)
     }
 
-    // ── Multi-click draw helpers (area / route / curvedLine) ─────────────────
+    // ── Multi-click draw helpers (area / route) ──────────────────────────────
     // Preview artifacts live in two.scene, so the ZUI scales them along with the
     // world. Dividing the screen-pixel sizes by the live scale cancels that out
     // and pins the drawing aid to a constant on-screen size — the committed
@@ -727,8 +652,8 @@ function addZUI(
                 geoDrawProps?.stroke ||
                 SHAPE_DEFAULT_STROKE,
             // Surface-space width that renders as `max(lw, floor)` screen px.
-            lw: Math.max(lw, GEO_PREVIEW_MIN_STROKE_PX) / scale,
-            dotRadius: GEO_PREVIEW_DOT_PX / scale,
+            lw: Math.max(lw, PREVIEW_MIN_STROKE_PX) / scale,
+            dotRadius: PREVIEW_DOT_PX / scale,
         }
     }
 
@@ -773,7 +698,7 @@ function addZUI(
         path.linewidth = lw
         path.cap = 'round'
         path.join = 'round'
-        path.opacity = GEO_PREVIEW_SEGMENT_OPACITY
+        path.opacity = PREVIEW_SEGMENT_OPACITY
         two.add(path)
         geoCurvedPreview = path
     }
@@ -789,16 +714,13 @@ function addZUI(
         dot.fill = stroke
         dot.noStroke()
         geoDots.push(dot)
-        if (geoDrawType === 'curvedLine') {
-            // Curved preview through the placed vertices (no straight segments).
-            rebuildCurvedPreview()
-        } else if (geoVertices.length >= 2) {
+        if (geoVertices.length >= 2) {
             const prev = geoVertices[geoVertices.length - 2]!
             const line = two.makeLine(prev.x, prev.y, x, y)
             line.stroke = stroke
             line.linewidth = lw
             line.cap = 'round'
-            line.opacity = GEO_PREVIEW_SEGMENT_OPACITY
+            line.opacity = PREVIEW_SEGMENT_OPACITY
             geoLines.push(line)
         }
         two.update()
@@ -807,12 +729,6 @@ function addZUI(
     const updateGeoPreview = (sx: number, sy: number) => {
         if (!geoDrawType || geoVertices.length === 0) return
         const { stroke, lw } = geoPreviewStyle()
-        if (geoDrawType === 'curvedLine') {
-            // Smooth rubber-band: the curve flows through all points + cursor.
-            rebuildCurvedPreview({ x: sx, y: sy })
-            two.update()
-            return
-        }
         const last = geoVertices[geoVertices.length - 1]!
         if (geoPreviewLine) {
             geoPreviewLine.vertices[0].set(last.x, last.y)
@@ -821,7 +737,7 @@ function addZUI(
             geoPreviewLine = two.makeLine(last.x, last.y, sx, sy)
             geoPreviewLine.stroke = stroke
             geoPreviewLine.cap = 'round'
-            geoPreviewLine.opacity = GEO_PREVIEW_RUBBER_OPACITY
+            geoPreviewLine.opacity = PREVIEW_RUBBER_OPACITY
         }
         // Re-applied every move, not just on creation: a zoom mid-draw changes
         // the scale this width was derived from.
@@ -845,9 +761,9 @@ function addZUI(
         geoDrawType = null
         geoDrawProps = null
         geoVertices = []
-        localStorage.removeItem(GEO_DRAW_MODE_KEY)
-        localStorage.removeItem(GEO_DRAW_TYPE_KEY)
-        localStorage.removeItem(GEO_DRAW_PROPS_KEY)
+        localStorage.removeItem(DRAW_MODE_KEY)
+        localStorage.removeItem(DRAW_TYPE_KEY)
+        localStorage.removeItem(DRAW_PROPS_KEY)
         domElement.removeEventListener('mousemove', mousemove, false)
     }
 
@@ -880,16 +796,13 @@ function addZUI(
         let verts = geoVertices.slice()
         if (dropLast && verts.length > 0) verts = verts.slice(0, -1)
 
-        if (verts.length < GEO_MIN_VERTICES[geoDrawType]) {
+        if (verts.length < MIN_VERTICES[geoDrawType]) {
             cancelGeoDraw()
             setPointerElement('pointer', { select: true })
             return
         }
 
         const type = geoDrawType
-        // curvedLine is a generic whiteboard shape, not a geo object — it reuses
-        // this multi-click machinery but carries no geo object-class.
-        const isGeo = type !== 'curvedLine'
         const originX = Math.floor(verts[0]!.x)
         const originY = Math.floor(verts[0]!.y)
         const finalId = generateUUID()
@@ -897,7 +810,6 @@ function addZUI(
             ...(geoDrawProps || {}),
             id: finalId,
             componentType: type,
-            ...(isGeo ? { objectClass: 'geo' } : {}),
             // Stroke/width/type come from the live element defaults so geo
             // draws honor edits made in the panel (just like pencil/shapes),
             // sharing the one default set across shapes/pencil/geo.
@@ -945,7 +857,7 @@ function addZUI(
     window.addEventListener('cancelGeoDraw', () => {
         // Not gated on geoDrawType: the multi-click hint banner is shown as
         // soon as the tool is ARMED (handleMultiClickDraw writes
-        // GEO_DRAW_TYPE_KEY to localStorage), but geoDrawType itself is only
+        // DRAW_TYPE_KEY to localStorage), but geoDrawType itself is only
         // populated lazily on the first canvas mousedown. Switching tools
         // before ever clicking the canvas left geoDrawType null, so this
         // guard skipped cancelGeoDraw() entirely and the hint stuck around
@@ -986,14 +898,6 @@ function addZUI(
             // reads stale draw-time width/height. Mirrors the font-resize
             // metadata sync in selectionController's resize-end path.
             if (g?.elementData) Object.assign(g.elementData, patch)
-            // Resize ended — persist any connectors whose ports tracked the
-            // shape so their new tail/head survive a reload.
-            if (g) persistBoundArrows(g)
-        },
-        onTransform: (group) => {
-            // Live-follow during scale/rotate: drag bound connectors with the
-            // shape's edges.
-            reanchorArrowsForShape(group)
         },
         onDelete: (group) => {
             const id = group?.elementData?.id
@@ -1054,7 +958,7 @@ function addZUI(
     //
     // The base's delete key is spread across three owners: the selection
     // controller handles SHAPE_ADAPTERS shapes (rect/circle/diamond/text);
-    // arrow, plain line, divider and geoText each carry their own focus-based
+    // arrow, plain line, divider and text each carry their own focus-based
     // handler. That left the whole geo family — route, area and point — plus
     // the curved line cloned from route with no way to delete by keyboard at
     // all: they select and show a properties panel, but the key does nothing.
@@ -1130,185 +1034,6 @@ function addZUI(
         activeGroupRef.current = null
     })
 
-    // Generic "re-glue these ports" command: fired by useComponentHistory
-    // (undo/redo of binding changes and position reverts), groupobject
-    // (group-move commit) and the clipboard (paste of bound arrows). Restack
-    // each port so the docked connectors re-anchor to the shape's current
-    // edge and their fan layout (port indices + endpoint offsets) settles.
-    // Poll first: the shape may still be mounting (undo of its delete, a
-    // freshly pasted clone); if it's gone entirely (redo of a delete) the
-    // poll times out and the restack is a no-op anyway.
-    window.addEventListener('restackPorts', ((e: CustomEvent) => {
-        if (!getConnectorsEnabled()) return
-        const ports = e.detail?.ports as
-            { shapeId: string; edge: string }[] | undefined
-        if (!ports?.length) return
-        ports.forEach(({ shapeId, edge }) => {
-            pollUntilElement(
-                two,
-                shapeId,
-                () => restackPortConnectors(shapeId, edge),
-                { maxRetries: 60 }
-            )
-        })
-    }) as EventListener)
-
-    // Connectors flag is live-toggleable from Settings. When it flips, re-sync
-    // the current selection box so its edge ports appear/disappear immediately
-    // (rather than waiting for the next transform). If the flag goes off mid
-    // arrow-drag, clear any lingering radar glow too.
-    subscribeConnectorsEnabled((enabled) => {
-        if (!enabled) selectionController.hidePortGlow()
-        selectionController.resync()
-    })
-
-    // Dot-grid flag is live-toggleable from Settings. On flip, add/remove the
-    // `cb-dot-grid` class so the dots appear/disappear immediately, and re-sync
-    // their size/position to the current camera.
-    subscribeDotGridEnabled(() => {
-        syncDotGridClass()
-    })
-
-    // Theme-toggle color flip. The theme is signalled by the `dark` class on
-    // <html> (toggled by useTheme). On each toggle we flip every element's color
-    // to its paired counterpart (flipThemeColor — a theme-independent involution:
-    // #000↔#fff, light shade↔dark shade) and PERSIST the new value to the store
-    // (skipHistory, so it survives reload and isn't clobbered by later edits).
-    // We mutate the Two.js node directly too, since the element components froze
-    // their props at mount and won't re-render from the store. Colors are never
-    // transformed at create/load/edit — only here, on an explicit toggle. The
-    // selection box stroke is UI chrome and stays theme-driven (active `ink`).
-    let prevDark = document.documentElement.classList.contains('dark')
-    const flipColorOnNodesAndStore = (
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        child: any
-    ): void => {
-        const ed = child?.elementData
-        if (!ed?.id) return
-        const ct = ed.componentType
-
-        // Geo objects sit on a basemap, not on parchment: the light/dark ink
-        // palette does not apply to them, and they are not even on screen when
-        // the theme toggle is reachable (it is board-only). The predicates
-        // below all match on componentType alone, so without this a map circle
-        // or a map pencil stroke would be silently recoloured and persisted.
-        if (ed.objectClass === 'geo') return
-
-        // Group selectors: the background rectangle (children[0]) is tinted from
-        // the theme-aware getGroupFill(), not a flippable element color, so just
-        // re-read it for the active theme. The fill is computed, not persisted.
-        if (ed.isGroupSelector) {
-            const bg = child?.children?.[0]
-            if (bg) bg.fill = getGroupFill()
-            return
-        }
-
-        // Welcome-sketch content is theme-aware too, but it is ephemeral demo
-        // content (metadata.isWelcome) — re-color its nodes to the active theme
-        // ink WITHOUT persisting. Routing it through the persisting path below
-        // would call updateComponentBulkPropertiesInLocalStore → promoteWelcome
-        // Sketch, wrongly claiming the sketch as real content on a theme toggle.
-        if (ed.metadata?.isWelcome) {
-            const ink = themeDefaultInk()
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            getShapeTextNodes(child).forEach((n: any) => {
-                n.fill = ink
-            })
-            if (ed.stroke) {
-                paintElementStroke(child, ed.stroke, ink)
-                ed.stroke = ink
-            }
-            if (ed.textColor) ed.textColor = ink
-            if (ed.metadata?.textFill) {
-                ed.metadata = { ...ed.metadata, textFill: ink }
-            }
-            return
-        }
-
-        // Text color. Standalone text (`newText`) renders from
-        // elementData.textColor; shapes-with-text render from metadata.textFill
-        // (the shapes' own `textColor` is a vestigial template value and not what
-        // renderShapeTextLayer paints), so flip the field that actually drives it.
-        if (ct === 'newText') {
-            if (ed.textColor) {
-                const flipped = flipThemeColor(ed.textColor)
-                if (flipped !== ed.textColor) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    getShapeTextNodes(child).forEach((n: any) => {
-                        n.fill = flipped
-                    })
-                    ed.textColor = flipped
-                    updateComponentBulkPropertiesInLocalStore(
-                        ed.id,
-                        { textColor: flipped },
-                        true
-                    )
-                }
-            }
-        } else if (ed.metadata?.textFill) {
-            const flipped = flipThemeColor(ed.metadata.textFill)
-            if (flipped !== ed.metadata.textFill) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                getShapeTextNodes(child).forEach((n: any) => {
-                    n.fill = flipped
-                })
-                const newMeta = { ...ed.metadata, textFill: flipped }
-                ed.metadata = newMeta
-                updateComponentBulkPropertiesInLocalStore(
-                    ed.id,
-                    { metadata: newMeta },
-                    true
-                )
-            }
-        }
-
-        // Shape fill (rectangle/circle/diamond).
-        if (isFillableShapeType(ct) && ed.fill) {
-            const flipped = flipThemeColor(ed.fill)
-            if (flipped !== ed.fill) {
-                paintShapeFill(child, flipped, findShapeTextLayer(child))
-                ed.fill = flipped
-                updateComponentBulkPropertiesInLocalStore(
-                    ed.id,
-                    { fill: flipped },
-                    true
-                )
-            }
-        }
-
-        // Arrow + pencil stroke (endpoint handles keep their fixed color).
-        if (isStrokeFlippableType(ct) && ed.stroke) {
-            const flipped = flipThemeColor(ed.stroke)
-            if (flipped !== ed.stroke) {
-                paintElementStroke(child, ed.stroke, flipped)
-                ed.stroke = flipped
-                updateComponentBulkPropertiesInLocalStore(
-                    ed.id,
-                    { stroke: flipped },
-                    true
-                )
-            }
-        }
-    }
-    const repaintForTheme = (): void => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        two.scene.children.forEach((child: any) =>
-            flipColorOnNodesAndStore(child)
-        )
-        // applyThemeStroke runs the single two.update() covering all changes.
-        selectionController.applyThemeStroke()
-    }
-    const themeObserver = new MutationObserver(() => {
-        const isDark = document.documentElement.classList.contains('dark')
-        if (isDark === prevDark) return
-        prevDark = isDark
-        repaintForTheme()
-    })
-    themeObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['class'],
-    })
-
     function dblclick(e: MouseEvent) {
         // In a multi-click geo draw, a double-click finishes it. Drop the
         // duplicate vertex the second mousedown added.
@@ -1320,7 +1045,7 @@ function addZUI(
         // "edit this" gesture — on a shape it opens the text editor, on empty
         // canvas it spawns a whole text element — and neither belongs to a tool
         // whose entire job is moving the view. The element-owned editors
-        // (point.tsx, geoText.tsx) carry the same guard, because their dblclick
+        // (point.tsx, text.tsx) carry the same guard, because their dblclick
         // listeners are bound to their own SVG nodes and never reach here.
         if (isPanMode()) return
         shape = null
@@ -1357,8 +1082,8 @@ function addZUI(
                 localStorage.getItem(RUBBER_MODE_KEY) === 'true' ||
                 localStorage.getItem(TEXT_DRAW_MODE_KEY) === 'true' ||
                 localStorage.getItem(ARROW_DRAW_MODE_KEY) === 'true' ||
-                localStorage.getItem(GEO_DRAW_MODE_KEY) === 'true' ||
-                localStorage.getItem(GEO_POINT_PLACE_MODE_KEY) === 'true' ||
+                localStorage.getItem(DRAW_MODE_KEY) === 'true' ||
+                localStorage.getItem(POINT_PLACE_MODE_KEY) === 'true' ||
                 localStorage.getItem(PENDING_SHAPE_TYPE_KEY) !== null
             if (!inDrawMode && createTextAtSurfaceRef?.current) {
                 const surfaceCoords = toSurface(e)
@@ -1601,12 +1326,7 @@ function addZUI(
                     // below it, walking line 1 upward on every newline. Shift
                     // the origin down by half the delta so the top edge stays
                     // put and the box only extends downward (matching the
-                    // standalone text editor). Rectangles only: a diamond or
-                    // circle reads as a centered figure, so symmetric growth is
-                    // the right behavior there.
-                    if (shapeKind === componentTypes.rectangle) {
-                        group.translation.y += dh / 2
-                    }
+                    // standalone text editor).
                     two.update()
                 }
             }
@@ -1737,14 +1457,6 @@ function addZUI(
                         persistPayload.y !== undefined ||
                         (rectChild && rectChild.height !== startHeight)
                     ) {
-                        ;[
-                            'n-resize',
-                            'e-resize',
-                            's-resize',
-                            'w-resize',
-                        ].forEach((edge) =>
-                            restackPortConnectors(componentId, edge)
-                        )
                         two.update()
                     }
                 }
@@ -1753,22 +1465,8 @@ function addZUI(
             })
         }
 
-        if (shape !== null && !isPencilModeRef?.current) {
-            const ct = shape.elementData?.componentType
-            // Geo objects carry no inner text — geoText is the labelling tool
-            // on a map base. Without this, double-clicking a map circle (same
-            // componentType as the whiteboard circle) opens the shape text
-            // editor, which its property set has no controls for.
-            if (
-                shape.elementData?.objectClass !== 'geo' &&
-                (ct === componentTypes.rectangle ||
-                    ct === componentTypes.diamond ||
-                    ct === componentTypes.circle)
-            ) {
-                const meta = shape.elementData.metadata || {}
-                showTextInput(shape, shape.elementData.id, meta)
-            }
-        }
+        // Map objects carry no inner text — the text tool is how a map is
+        // labelled — so a double-click on a shape has nothing to open.
     }
 
     // eraseElementAtPoint deletes whole elements via a point hit test, not
@@ -1897,7 +1595,7 @@ function addZUI(
         if (
             isMousePanning ||
             geoDrawType ||
-            localStorage.getItem(GEO_POINT_PLACE_MODE_KEY) === 'true'
+            localStorage.getItem(POINT_PLACE_MODE_KEY) === 'true'
         ) {
             return
         }
@@ -1967,534 +1665,6 @@ function addZUI(
         lastHoveredCircleGroup = found ?? null
     }
 
-    // Outward offset (surface units) from a shape's edge to its floated
-    // selection port, matching where selectionController draws the port dot:
-    // the box padding plus the screen-constant port gap divided out by zoom.
-    const portGapSurface = (): number =>
-        SELECTION_PADDING + PORT_GAP / (zui.scale || 1)
-
-    // Surface-space step between stacked connector tails (screen-constant, so it
-    // matches the port-dot spacing at the current zoom).
-    const portTailStackGapSurface = (): number =>
-        PORT_TAIL_STACK_GAP / (zui.scale || 1)
-
-    // How many connectors already leave `shapeId`'s `edge` port (tail bound
-    // there). A fresh pull-out takes the next slot, so it fans out beyond them.
-    function countPortConnectors(
-        shapeId: string | undefined,
-        edge: string
-    ): number {
-        if (!shapeId) return 0
-        let n = 0
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        two.scene.children.forEach((c: any) => {
-            const ed = c?.elementData
-            if (
-                ed?.componentType === 'arrowLine' &&
-                ed.tailShapeId === shapeId &&
-                ed.tailEdge === edge
-            ) {
-                n++
-            }
-        })
-        return n
-    }
-
-    // Re-fan a port-bound endpoint (tail = vertex[0], head = vertex[1]): place
-    // it at the stacked offset for this connector's slot, fanning toward the
-    // side its OTHER endpoint currently sits on. `port` is the live port anchor;
-    // the far endpoint is read off the line so the fan direction follows the
-    // drag (or the bound far end after a shape move).
-    function applyStackedEndpoint(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        arrowGroup: any,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        line: any,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        circle: any,
-        edge: string,
-        port: { x: number; y: number },
-        index: number,
-        endpoint: 'tail' | 'head'
-    ) {
-        const farIdx = endpoint === 'tail' ? 1 : 0
-        const far = {
-            x: arrowGroup.position.x + line.vertices[farIdx].x,
-            y: arrowGroup.position.y + line.vertices[farIdx].y,
-        }
-        const pt = getStackedPortPoint(
-            edge,
-            port,
-            far,
-            index,
-            portTailStackGapSurface()
-        )
-        const relX = pt.x - arrowGroup.position.x
-        const relY = pt.y - arrowGroup.position.y
-        if (endpoint === 'tail') {
-            updateX1Y1Vertices(Two, line, relX, relY, circle, two)
-        } else {
-            updateX2Y2Vertices(Two, line, relX, relY, circle, two)
-        }
-    }
-
-    // Which arrow endpoint a drag is moving — context for the magnetic snap.
-    type PortDragContext = {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        arrowGroup: any
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        line: any
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        circle: any
-        endpoint: 'head' | 'tail'
-    }
-
-    // Radar: while an arrow endpoint is dragging at `probeSurface` (the cursor),
-    // glow + outline the nearest landable port. When `dragContext` is supplied
-    // and a port is in range, also do the one-off magnetic pull — snap that
-    // endpoint onto the port and remember the would-be binding in
-    // `pendingPortConnection` (committed on release). The probe is the cursor,
-    // not the snapped point, so pulling past the threshold releases the magnet
-    // and clears the pending binding — the user is never forced to connect.
-    function updatePortRadar(
-        probeSurface: { x: number; y: number },
-        dragContext: PortDragContext | null = null,
-        excludeShapeId: string | null = arrowDrawTailShapeId
-    ) {
-        // No port snapping/glow while connectors are disabled (live flag).
-        if (!getConnectorsEnabled()) return
-        const threshold = PORT_RADAR_RADIUS / (zui.scale || 1)
-        const nearest = findNearestPort(
-            two.scene.children,
-            probeSurface,
-            threshold,
-            portGapSurface(),
-            excludeShapeId
-        )
-        if (nearest) {
-            // Pass the candidate group so the controller also outlines the
-            // shape the connector would attach to.
-            selectionController.showPortGlow(nearest.point, nearest.group)
-            if (dragContext && nearest.shapeId) {
-                snapEndpointToPort(dragContext, nearest.point)
-                pendingPortConnection = {
-                    arrowId: dragContext.arrowGroup?.elementData?.id,
-                    endpoint: dragContext.endpoint,
-                    edge: nearest.edge,
-                    shapeId: nearest.shapeId,
-                }
-            }
-        } else {
-            selectionController.hidePortGlow()
-            // Just undocked: the magnet overwrote the endpoint with the port's
-            // absolute position, but the endpoint-drag path advances the vertex
-            // incrementally — so re-place it exactly under the cursor, else it
-            // keeps the dock offset after release. (Harmless for the pull-out
-            // path, which already recomputes the head from the cursor.)
-            if (pendingPortConnection && dragContext) {
-                snapEndpointToPort(dragContext, probeSurface)
-            }
-            pendingPortConnection = null
-        }
-    }
-
-    // Magnetic pull: glue the dragged endpoint to the floated port anchor by
-    // rewriting its line vertex (and endpoint circle) to that surface point.
-    function snapEndpointToPort(
-        ctx: PortDragContext,
-        point: { x: number; y: number }
-    ) {
-        const relX = point.x - ctx.arrowGroup.translation.x
-        const relY = point.y - ctx.arrowGroup.translation.y
-        if (ctx.endpoint === 'head') {
-            updateX2Y2Vertices(Two, ctx.line, relX, relY, ctx.circle, two)
-        } else {
-            updateX1Y1Vertices(Two, ctx.line, relX, relY, ctx.circle, two)
-        }
-    }
-
-    // Commit a magnetic snap that was still active at release: write the
-    // tail/head binding onto the arrow (live + store) so the endpoint stays
-    // glued to the port and re-anchors when that shape later moves. Used by the
-    // pull-out path; the endpoint-drag path folds the same write into its own
-    // bulk update so detach/connect share a single undo step.
-    function applyPendingPortConnection() {
-        const pc = pendingPortConnection
-        if (!pc || !pc.arrowId || !pc.shapeId) return
-        const arrowGroup = two.scene.children.find(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (c: any) => c?.elementData?.id === pc.arrowId
-        )
-        const ed = arrowGroup?.elementData
-        if (!ed) return
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const patch: Record<string, any> = {}
-        if (pc.endpoint === 'head') {
-            ed.headShapeId = pc.shapeId
-            ed.headEdge = pc.edge
-            patch.headShapeId = pc.shapeId
-            patch.headEdge = pc.edge
-        } else {
-            ed.tailShapeId = pc.shapeId
-            ed.tailEdge = pc.edge
-            patch.tailShapeId = pc.shapeId
-            patch.tailEdge = pc.edge
-        }
-        updateComponentBulkPropertiesInLocalStore(pc.arrowId, patch)
-    }
-
-    // Pull a connector arrow out of a selection port. Mirrors the toolbar's
-    // arrow-create flow (off-screen arrowLine in the store, then drive it via
-    // SCENARIO_ARROW_DRAW), except the tail is pinned to the port's surface
-    // anchor instead of the next mousedown's cursor, and the drag starts
-    // immediately so the user only has to drop the head. The tail's binding
-    // (tailShapeId/tailEdge) is recorded so it re-anchors when the shape moves.
-    function startPortConnector(
-        anchor: { x: number; y: number },
-        tailShapeId: string | undefined,
-        tailEdge: string
-    ) {
-        const arrowId = generateUUID()
-        const userId = localStorage.getItem('userId')
-        // Slot among the connectors already leaving this port — drives the fan
-        // so this new tail doesn't bunch onto the existing ones.
-        const tailPortIndex = countPortConnectors(tailShapeId, tailEdge)
-        const arrowData = {
-            id: arrowId,
-            componentType: 'arrowLine',
-            linewidth: defaultLinewidthValue,
-            strokeType: defaultStrokeTypeValue,
-            stroke: defaultStrokeColorValue ?? '#3A342C',
-            children: {},
-            x: -9999,
-            y: -9999,
-            x1: 0,
-            x2: 0,
-            y1: 0,
-            y2: 0,
-            baseId: props.baseId,
-            baseName: null,
-            radius: null,
-            iconStroke: null,
-            isDummy: null,
-            createdAt: null,
-            opacity: 1,
-            metadata: {},
-            width: 100,
-            height: 0,
-            fill: 'transparent',
-            textColor: null,
-            updatedBy: userId,
-            // Connection binding — tail pinned to the source shape's edge port.
-            tailShapeId: tailShapeId ?? null,
-            tailEdge,
-            tailPortIndex,
-            headShapeId: null,
-            headEdge: null,
-        }
-        addToLocalComponentStore(
-            arrowId,
-            'arrowLine',
-            arrowData as unknown as ComponentRecord
-        )
-
-        // Remember the source so the radar won't glow this shape's own ports.
-        arrowDrawTailShapeId = tailShapeId ?? null
-        // Remember the port so each mousemove can re-fan the tail (direction
-        // follows the head's quadrant; magnitude is this connector's slot).
-        arrowDrawTailPort = {
-            anchor: { x: anchor.x, y: anchor.y },
-            edge: tailEdge,
-            index: tailPortIndex,
-        }
-        // Fresh drag — no magnetic dock yet.
-        pendingPortConnection = null
-
-        // Drop the source shape's selection box so it doesn't linger over the
-        // new connector while dragging.
-        selectionController.detach()
-
-        scenario = SCENARIO_ARROW_DRAW
-        domElement.addEventListener('mousemove', mousemove, false)
-        domElement.addEventListener('mouseup', mouseup, false)
-        setRootCursor('crosshair')
-
-        // The arrowLine React element mounts lazily — poll until it appears,
-        // then pin the tail to the port anchor and collapse the head onto it so
-        // the upcoming mousemove stretches it from the port.
-        pollUntilElement(
-            two,
-            arrowId,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (el: any) => {
-                arrowDrawElement = el
-                arrowDrawElement.position.x = anchor.x
-                arrowDrawElement.position.y = anchor.y
-
-                const line = arrowDrawElement.children[0]
-                const pointCircle1Group = arrowDrawElement.children[1]
-                const pointCircle2Group = arrowDrawElement.children[2]
-
-                updateX1Y1Vertices(Two, line, 0, 0, pointCircle1Group, two)
-                updateX2Y2Vertices(Two, line, 0, 0, pointCircle2Group, two)
-                two.update()
-            },
-            { maxRetries: 30 }
-        )
-    }
-
-    // Re-anchor every connector bound to `group`: recompute its tail (and/or
-    // head) so the bound endpoint stays glued to the shape's edge port. Called
-    // live during a shape drag so the connector follows in real time. The arrow
-    // group's own position stays put — only the bound vertex moves, which keeps
-    // the free endpoint fixed in surface space.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function reanchorArrowsForShape(group: any) {
-        // Bound arrows only track their shape while connectors are enabled. When
-        // off, existing bindings lie dormant (the arrow stays put) rather than
-        // being stripped — flip the flag back on to resume gluing.
-        if (!getConnectorsEnabled()) return
-        // Perf-testing lever: skip the O(N) scene scan entirely (bound arrows
-        // won't follow their shape while off).
-        if (!getDragScansEnabled()) return
-        const shapeId = group?.elementData?.id
-        if (!shapeId) return
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        two.scene.children.forEach((child: any) => {
-            if (child?.elementData?.componentType !== 'arrowLine') return
-            const ed = child.elementData
-            const line = child.children?.[0]
-            if (!line) return
-            if (ed.tailShapeId === shapeId && ed.tailEdge) {
-                const p = getShapePortPoint(
-                    group,
-                    ed.tailEdge,
-                    portGapSurface()
-                )
-                if (ed.tailPortIndex > 0) {
-                    // Keep the fan offset (direction follows the bound head).
-                    applyStackedEndpoint(
-                        child,
-                        line,
-                        child.children[1],
-                        ed.tailEdge,
-                        p,
-                        ed.tailPortIndex,
-                        'tail'
-                    )
-                } else {
-                    updateX1Y1Vertices(
-                        Two,
-                        line,
-                        p.x - child.position.x,
-                        p.y - child.position.y,
-                        child.children[1],
-                        two
-                    )
-                }
-            }
-            if (ed.headShapeId === shapeId && ed.headEdge) {
-                const p = getShapePortPoint(
-                    group,
-                    ed.headEdge,
-                    portGapSurface()
-                )
-                if (ed.headPortIndex > 0) {
-                    // Keep the fan offset (direction follows the bound tail).
-                    applyStackedEndpoint(
-                        child,
-                        line,
-                        child.children[2],
-                        ed.headEdge,
-                        p,
-                        ed.headPortIndex,
-                        'head'
-                    )
-                } else {
-                    updateX2Y2Vertices(
-                        Two,
-                        line,
-                        p.x - child.position.x,
-                        p.y - child.position.y,
-                        child.children[2],
-                        two
-                    )
-                }
-            }
-        })
-    }
-
-    // Does any connector currently dock onto this shape? Used to opt a shape out
-    // of the CSS-transform move fast-path: a bound arrow must reshape every frame
-    // to stay glued, which needs the shape's real position (not just a CSS
-    // transform), so such shapes fall back to the legacy live-render drag. O(N)
-    // scan, but run once at drag start — never per frame.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function shapeHasBoundArrows(group: any): boolean {
-        // Perf-testing lever: skip the O(N) scan; every shape then reads as
-        // unbound and stays eligible for the CSS move fast-path.
-        if (!getDragScansEnabled()) return false
-        const shapeId = group?.elementData?.id
-        if (!shapeId) return false
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return two.scene.children.some((child: any) => {
-            const ed = child?.elementData
-            if (ed?.componentType !== 'arrowLine') return false
-            return ed.tailShapeId === shapeId || ed.headShapeId === shapeId
-        })
-    }
-
-    // Persist the (already re-anchored) vertices of connectors bound to `group`
-    // so the new tail/head survive a reload. Mirrors the arrow-draw commit:
-    // prevX === position.x means the x,y branch is a no-op (the arrow group never
-    // moves), and isLineCircle drives the x1/y1/x2/y2 write.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function persistBoundArrows(group: any) {
-        if (!getConnectorsEnabled()) return
-        const shapeId = group?.elementData?.id
-        if (!shapeId) return
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        two.scene.children.forEach((child: any) => {
-            if (child?.elementData?.componentType !== 'arrowLine') return
-            const ed = child.elementData
-            if (ed.tailShapeId !== shapeId && ed.headShapeId !== shapeId) return
-            const line = child.children?.[0]
-            if (!line) return
-            updateToGlobalState(
-                {
-                    id: ed.id,
-                    prevX: parseInt(child.position.x),
-                    prevY: parseInt(child.position.y),
-                    isLineCircle: true,
-                    parentData: child,
-                    data: {
-                        x: parseInt(child.position.x),
-                        y: parseInt(child.position.y),
-                        x1: parseInt(line.vertices[0].x),
-                        y1: parseInt(line.vertices[0].y),
-                        x2: parseInt(line.vertices[1].x),
-                        y2: parseInt(line.vertices[1].y),
-                    },
-                },
-                {}
-            )
-        })
-    }
-
-    // After a connector endpoint settles on a port, re-sort EVERY endpoint
-    // docked at that port (tails pulled out of it AND heads dropped onto it) so
-    // their order matches their far endpoints' order: for side edges (e/w) by
-    // the far end's y, for top/bottom edges (n/s) by its x. Without this the
-    // slot index is frozen when the binding is made, so a later connector whose
-    // far end lands between two earlier ones still stacks past them. The
-    // endpoint whose far end is closest to the port-normal axis keeps the bare
-    // port point (index 0); the rest fan out by side in far-end order.
-    // Re-applies the fan and persists the new vertices + index so a reload
-    // (local mode) keeps the layout.
-    function restackPortConnectors(shapeId: string | undefined, edge: string) {
-        if (!shapeId) return
-        const group = two.scene.children.find(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (c: any) => c?.elementData?.id === shapeId
-        )
-        if (!group) return
-        const port = getShapePortPoint(group, edge, portGapSurface())
-        const sideEdge = edge === 'e-resize' || edge === 'w-resize'
-        const center = sideEdge ? port.y : port.x
-
-        type Entry = {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            child: any
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            line: any
-            endpoint: 'tail' | 'head'
-            coord: number
-            dist: number
-        }
-        const entries: Entry[] = []
-        // Far endpoint vertex index for ordering: a tail bound here is ordered
-        // by its head (vertex[1]); a head bound here by its tail (vertex[0]).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pushEntry = (
-            child: any,
-            line: any,
-            endpoint: 'tail' | 'head'
-        ) => {
-            const farIdx = endpoint === 'tail' ? 1 : 0
-            const coord = sideEdge
-                ? child.position.y + line.vertices[farIdx].y
-                : child.position.x + line.vertices[farIdx].x
-            entries.push({
-                child,
-                line,
-                endpoint,
-                coord,
-                dist: Math.abs(coord - center),
-            })
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        two.scene.children.forEach((child: any) => {
-            const ed = child?.elementData
-            if (ed?.componentType !== 'arrowLine') return
-            const line = child.children?.[0]
-            if (!line) return
-            if (ed.tailShapeId === shapeId && ed.tailEdge === edge)
-                pushEntry(child, line, 'tail')
-            if (ed.headShapeId === shapeId && ed.headEdge === edge)
-                pushEntry(child, line, 'head')
-        })
-        if (entries.length === 0) return
-
-        // Closest-to-center first: the nearest takes the bare port (index 0),
-        // the rest fan outward per side, increasing with distance — which keeps
-        // endpoint order aligned with far-end order within each side.
-        entries.sort((a, b) => a.dist - b.dist)
-        let beforeCount = 0
-        let afterCount = 0
-        entries.forEach((entry, i) => {
-            const index =
-                i === 0
-                    ? 0
-                    : entry.coord < center
-                      ? ++beforeCount
-                      : ++afterCount
-            const circle =
-                entry.endpoint === 'tail'
-                    ? entry.child.children[1]
-                    : entry.child.children[2]
-            if (entry.endpoint === 'tail')
-                entry.child.elementData.tailPortIndex = index
-            else entry.child.elementData.headPortIndex = index
-            applyStackedEndpoint(
-                entry.child,
-                entry.line,
-                circle,
-                edge,
-                port,
-                index,
-                entry.endpoint
-            )
-            const patch =
-                entry.endpoint === 'tail'
-                    ? {
-                          x1: parseInt(entry.line.vertices[0].x),
-                          y1: parseInt(entry.line.vertices[0].y),
-                          tailPortIndex: index,
-                      }
-                    : {
-                          x2: parseInt(entry.line.vertices[1].x),
-                          y2: parseInt(entry.line.vertices[1].y),
-                          headPortIndex: index,
-                      }
-            updateComponentBulkPropertiesInLocalStore(
-                entry.child.elementData.id,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                patch as any,
-                // Cosmetic re-layout — don't spawn an undo step per moved arrow.
-                true
-            )
-        })
-    }
 
     /**
      * Start a desktop grab-drag of the camera.
@@ -2542,8 +1712,8 @@ function addZUI(
             isDrawing === true ||
             localStorage.getItem(ARROW_DRAW_MODE_KEY) === 'true' ||
             localStorage.getItem(TEXT_DRAW_MODE_KEY) === 'true' ||
-            localStorage.getItem(GEO_POINT_PLACE_MODE_KEY) === 'true' ||
-            localStorage.getItem(GEO_DRAW_MODE_KEY) === 'true' ||
+            localStorage.getItem(POINT_PLACE_MODE_KEY) === 'true' ||
+            localStorage.getItem(DRAW_MODE_KEY) === 'true' ||
             localStorage.getItem(PENDING_SHAPE_TYPE_KEY) !== null
 
         if (inCreateMode) {
@@ -2559,27 +1729,6 @@ function addZUI(
                 }
             })
         } else if (selectionController.currentGroup) {
-            // Port check first: a click on a connection port pulls out a
-            // connector arrow (tail pinned to the port) instead of selecting or
-            // resizing. Ports sit outside the box, so they never overlap the
-            // resize handles below.
-            const portHit = selectionController.hitTestPort(
-                e.clientX,
-                e.clientY
-            )
-            if (portHit) {
-                const sourceGroup = selectionController.currentGroup
-                const tailShapeId = sourceGroup?.elementData?.id
-                // Pin the tail to the floated selection port (edge + padding +
-                // port gap) so the connector visually starts at the port dot.
-                const anchor = getShapePortPoint(
-                    sourceGroup,
-                    portHit.edge,
-                    portGapSurface()
-                )
-                startPortConnector(anchor, tailShapeId, portHit.edge)
-                return
-            }
             // Controller handle check — runs before the bare-canvas clearSelector
             // dispatch and the DOM path walk. Corner handles can extend slightly
             // beyond the element's SVG bounds, so relying on path-walking would
@@ -2637,8 +1786,8 @@ function addZUI(
         const textDrawMode = localStorage.getItem(TEXT_DRAW_MODE_KEY)
         const pendingShapeType = localStorage.getItem(PENDING_SHAPE_TYPE_KEY)
         const rubberMode = localStorage.getItem(RUBBER_MODE_KEY)
-        const geoPointPlaceMode = localStorage.getItem(GEO_POINT_PLACE_MODE_KEY)
-        const geoDrawMode = localStorage.getItem(GEO_DRAW_MODE_KEY)
+        const geoPointPlaceMode = localStorage.getItem(POINT_PLACE_MODE_KEY)
+        const geoDrawMode = localStorage.getItem(DRAW_MODE_KEY)
         if (rubberMode === 'true') {
             scenario = SCENARIO_RUBBER_MODE
         } else if (arrowDrawMode === 'true') {
@@ -2745,7 +1894,7 @@ function addZUI(
                 const pointId = localStorage.getItem(LAST_ADDED_ELEMENT_ID_KEY)
 
                 localStorage.removeItem(LAST_ADDED_ELEMENT_ID_KEY)
-                localStorage.removeItem(GEO_POINT_PLACE_MODE_KEY)
+                localStorage.removeItem(POINT_PLACE_MODE_KEY)
 
                 // The point module loads lazily on first use — poll until the
                 // pre-created element appears, then drop it at the click point.
@@ -2785,10 +1934,10 @@ function addZUI(
                 const surfaceCoords = toSurface(e)
                 // First click of this draw — capture type/props from storage.
                 if (!geoDrawType) {
-                    geoDrawType = localStorage.getItem(GEO_DRAW_TYPE_KEY) as
-                        'area' | 'route' | 'curvedLine' | null
+                    geoDrawType = localStorage.getItem(DRAW_TYPE_KEY) as
+                        'area' | 'route' | null
                     geoDrawProps = JSON.parse(
-                        localStorage.getItem(GEO_DRAW_PROPS_KEY) ?? 'null'
+                        localStorage.getItem(DRAW_PROPS_KEY) ?? 'null'
                     )
                     geoVertices = []
                     domElement.addEventListener('mousemove', mousemove, false)
@@ -2993,7 +2142,7 @@ function addZUI(
                     // All three of these, because "selected" is drawn by three
                     // different owners: the controller's box (shapes), the
                     // element-owned chrome that answers `clearSelector`
-                    // (geoText, point), and the React `selectedComponent` that
+                    // (text, point), and the React `selectedComponent` that
                     // drives the properties toolbar AND area/route's vertex
                     // handles. Only the first was cleared here; the other two
                     // relied on the `lastChild?.id === 'two-0'` test further up,
@@ -3016,14 +2165,11 @@ function addZUI(
                     if (activeTextInput) {
                         shape = {}
                         avoidDragging = true
-                    } else if (
-                        activeBaseTypeRef.current === 'map' &&
-                        !e.shiftKey
-                    ) {
-                        // Map base: a drag over empty canvas moves the
-                        // geography, the way it does on every mapping
-                        // product. Shift+drag keeps the marquee, which is
-                        // the only way to box-select on a map now.
+                    } else if (!e.shiftKey) {
+                        // A drag over empty canvas moves the geography, the
+                        // way it does on every mapping product. Shift+drag
+                        // keeps the marquee, which is the only way to
+                        // box-select.
                         //
                         // Reached only when the hit test came back empty, so
                         // a drag that starts ON a point/area/route still
@@ -3216,7 +2362,6 @@ function addZUI(
                 // here means 2x the full O(scene) renders the display can even
                 // show. scheduleRender coalesces the burst into one per frame.
                 scheduleRender(two)
-                syncBackgroundToCamera()
                 onCameraChangeRef?.current?.({
                     scale: two.scene.scale,
                     tx: two.scene.translation.x,
@@ -3272,37 +2417,6 @@ function addZUI(
                         two
                     )
 
-                    // Fan the tail off the port so stacked connectors don't
-                    // overlap — direction follows the quadrant the head is in.
-                    if (arrowDrawTailPort && arrowDrawTailPort.index > 0) {
-                        applyStackedEndpoint(
-                            arrowDrawElement,
-                            line,
-                            arrowDrawElement.children[1],
-                            arrowDrawTailPort.edge,
-                            arrowDrawTailPort.anchor,
-                            arrowDrawTailPort.index,
-                            'tail'
-                        )
-                    }
-
-                    // Radar sweep + magnetic snap for the head being pulled out.
-                    // Plain lines (noArrowhead) never dock to ports — skip the
-                    // radar so they don't snap onto nearby shapes.
-                    if (line?.noArrowhead !== true) {
-                        updatePortRadar(
-                            {
-                                x: arrowDrawElement.position.x + relX,
-                                y: arrowDrawElement.position.y + relY,
-                            },
-                            {
-                                arrowGroup: arrowDrawElement,
-                                line,
-                                circle: pointCircle2Group,
-                                endpoint: 'head',
-                            }
-                        )
-                    }
                 }
                 break
             case SCENARIO_DRAW_SHAPE: {
@@ -3548,24 +2662,6 @@ function addZUI(
                                 }
                             }
 
-                            // Radar + magnetic snap for the endpoint being
-                            // re-dragged (tail or head, per `direction`). Works
-                            // every time, not just at creation. No source
-                            // exclusion here — an existing arrow's end may dock
-                            // onto any shape in range.
-                            updatePortRadar(
-                                toSurface(e),
-                                {
-                                    arrowGroup: shape.lineData?.parent,
-                                    line: shape.lineData,
-                                    circle: shape,
-                                    endpoint:
-                                        shape.direction === 'left'
-                                            ? 'tail'
-                                            : 'head',
-                                },
-                                null
-                            )
                         }
                         // code block condition to handle normal component's dragging
                         else {
@@ -3592,12 +2688,6 @@ function addZUI(
                                 !cssMoveActive &&
                                 !cssMoveRejected
                             ) {
-                                if (
-                                    getConnectorsEnabled() &&
-                                    shapeHasBoundArrows(shape)
-                                ) {
-                                    cssMoveRejected = true
-                                }
                             }
                             const eligible = cheapEligible && !cssMoveRejected
                             if (eligible) {
@@ -3654,9 +2744,6 @@ function addZUI(
                             } else {
                                 shape.position.x += dx / zui.scale
                                 shape.position.y += dy / zui.scale
-                                // Drag any connector tails/heads pinned to this
-                                // shape's ports along with it.
-                                reanchorArrowsForShape(shape)
                             }
                         }
                     } else if (shape.elementData.isGroupSelector) {
@@ -3697,7 +2784,6 @@ function addZUI(
             if (el) {
                 el.position.x = finalX
                 el.position.y = finalY
-                reanchorArrowsForShape(el)
                 selectionController.syncToTarget()
                 two.update()
             }
@@ -3749,11 +2835,6 @@ function addZUI(
 
                     updateToGlobalState(newShapeData, {})
 
-                    // If the head was magnetically docked on a port at release,
-                    // commit the head→shape binding (the vertices were already
-                    // snapped during the drag).
-                    applyPendingPortConnection()
-
                     // Auto-select the freshly drawn arrow so its endpoint
                     // handles and the edit toolbar appear immediately — a
                     // visual cue that the arrow is editable. Arrows aren't in
@@ -3790,25 +2871,6 @@ function addZUI(
                     setSelectedComponentInBase(null)
                 }
 
-                // Radar is a draw-time affordance only — clear it on drop.
-                selectionController.hidePortGlow()
-                // Now the endpoints are firmly placed, re-sort every connector on
-                // each touched port so their order matches their far ends' order
-                // (fixes a later connector whose far end lands between earlier
-                // ones from stacking past them). Two ports may be involved: the
-                // source port a tail was pulled from, and the port a head docked
-                // onto (the latter also covers a plain toolbar arrow whose head
-                // lands on a port — no tail source).
-                if (arrowDrawTailShapeId && arrowDrawTailPort) {
-                    restackPortConnectors(
-                        arrowDrawTailShapeId,
-                        arrowDrawTailPort.edge
-                    )
-                }
-                const drawnEd = arrowDrawElement?.elementData
-                if (drawnEd?.headShapeId && drawnEd?.headEdge) {
-                    restackPortConnectors(drawnEd.headShapeId, drawnEd.headEdge)
-                }
                 arrowDrawTailShapeId = null
                 arrowDrawTailPort = null
 
@@ -3851,7 +2913,7 @@ function addZUI(
 
                 textDrawElement = null
                 setTextDrawModeOff()
-                // In geo mode the only text tool is geoText; land in pointer so
+                // In geo mode the only text tool is text; land in pointer so
                 // the placed text can be selected (no effect when geo is off).
                 setPointerElement('pointer', { select: true })
                 setRootCursor('auto')
@@ -3980,17 +3042,6 @@ function addZUI(
                     id: pencilId,
                     baseId: props.baseId,
                     componentType: 'pencil',
-                    // Which base this stroke belongs to, decided once at
-                    // creation. The pencil is the one whiteboard tool offered on
-                    // every base, so the *record* has to carry the answer —
-                    // `componentType` alone can no longer say where it lives.
-                    // `objectClass: 'geo'` is the existing marker the visibility
-                    // rule already checks ahead of BOARD_ONLY_TYPES, so a map
-                    // scribble hides on the board base and vice versa with no new
-                    // rule. Board strokes stay untagged, exactly as before.
-                    ...(activeBaseTypeRef.current !== 'board'
-                        ? { objectClass: 'geo' }
-                        : {}),
                     children: {},
                     metadata: simplifiedPoints,
                     x: 0,
@@ -4209,14 +3260,6 @@ function addZUI(
                             // Re-sort the fans on every port this release touched
                             // (the port just docked onto + any port the endpoint
                             // left), now the endpoint is firmly placed.
-                            if (connectHere && pendingPortConnection)
-                                recordPort(
-                                    pendingPortConnection.shapeId,
-                                    pendingPortConnection.edge
-                                )
-                            portsToRestack.forEach((p) =>
-                                restackPortConnectors(p.shapeId, p.edge)
-                            )
                         } else {
                             // Where the element sat before this drag. Captured
                             // BEFORE the overwrite below, because the
@@ -4369,15 +3412,6 @@ function addZUI(
                                 }
                             }
 
-                            // Save the connectors that followed this shape so
-                            // their new tail/head positions survive a reload.
-                            persistBoundArrows(shape)
-
-                            // Re-close the fans on any port this connector was
-                            // just dragged off of.
-                            bodyDetachPorts.forEach((p) =>
-                                restackPortConnectors(p.shapeId, p.edge)
-                            )
                         }
                     }
                 }
@@ -4389,12 +3423,6 @@ function addZUI(
             .forEach((el) => {
                 el.style.pointerEvents = ''
             })
-
-        // Radar is a drag-time affordance only — clear the glow on any release
-        // (covers the endpoint-drag path; the arrow-draw case clears it too).
-        // The pending snap was already consumed by the case handlers above.
-        selectionController.hidePortGlow()
-        pendingPortConnection = null
 
         shape = {}
         scenario = null
@@ -4411,7 +3439,7 @@ function addZUI(
         if (!props.baseId) return
         if (viewportSaveTimer) clearTimeout(viewportSaveTimer)
         viewportSaveTimer = setTimeout(() => {
-            writeViewport(props.baseId!, activeBaseTypeRef.current, false, {
+            writeViewport(props.baseId!, false, {
                 tx: two.scene.translation.x,
                 ty: two.scene.translation.y,
                 scale: two.scene.scale,
@@ -4432,15 +3460,7 @@ function addZUI(
         // does on every mapping product anyone arrives from. Panning there is
         // the drag (see the empty-canvas branch in mousedown).
         //
-        // The board base keeps the whiteboard idiom: a plain wheel pans and a
-        // modifier zooms — cmd (macOS), ctrl (Windows, and what trackpad
-        // pinch-zoom emits everywhere) or shift. That is what Figma, Miro and
-        // Excalidraw do, and it is the expectation users bring to a canvas.
-        const zooms =
-            activeBaseTypeRef.current === 'map' ||
-            e.shiftKey === true ||
-            e.metaKey === true ||
-            e.ctrlKey === true
+        const zooms = true
 
         if (zooms) {
             zui.zoomBy(wheelZoomStep(e), e.clientX, e.clientY)
@@ -4465,7 +3485,6 @@ function addZUI(
         // Batched — same reason as the pan handler: wheel/trackpad events fire
         // faster than the display paints.
         scheduleRender(two)
-        syncBackgroundToCamera()
 
         onCameraChangeRef?.current?.({
             scale: two.scene.scale,
@@ -4530,7 +3549,7 @@ function addZUI(
 
             // Same idea, for the *other* legacy selector: elements that draw
             // their own edit chrome inside their group (objectSelector) rather
-            // than through selectionController — geoText being the one with
+            // than through selectionController — text being the one with
             // resize handles on it.
             //
             // Those handles gate themselves on the selector being visible
@@ -4614,7 +3633,6 @@ function addZUI(
                     cullOnCameraChange()
                     // Batched — touchmove also outruns the paint rate.
                     scheduleRender(two)
-                    syncBackgroundToCamera()
                     onCameraChangeRef?.current?.({
                         scale: two.scene.scale,
                         tx: two.scene.translation.x,
@@ -4651,16 +3669,11 @@ function addZUI(
             if (isSinglePanning) {
                 isSinglePanning = false
                 if (props.baseId) {
-                    writeViewport(
-                        props.baseId,
-                        activeBaseTypeRef.current,
-                        true,
-                        {
-                            tx: two.scene.translation.x,
-                            ty: two.scene.translation.y,
-                            scale: two.scene.scale,
-                        }
-                    )
+                    writeViewport(props.baseId, true, {
+                        tx: two.scene.translation.x,
+                        ty: two.scene.translation.y,
+                        scale: two.scene.scale,
+                    })
                 }
                 const root = document.getElementById('main-two-root')
                 if (root) root.style.cursor = 'grab'
@@ -4742,7 +3755,7 @@ function addZUI(
         // distance > 0 means twoFingerStart ran (a real 2-finger gesture was active).
         if (e.touches.length < 2) {
             if (distance > 0 && props.baseId) {
-                writeViewport(props.baseId, activeBaseTypeRef.current, true, {
+                writeViewport(props.baseId, true, {
                     tx: two.scene.translation.x,
                     ty: two.scene.translation.y,
                     scale: two.scene.scale,
@@ -4815,7 +3828,6 @@ function addZUI(
         cullOnCameraChange()
         // Batched — pinchmove fires per touch sample, not per frame.
         scheduleRender(two)
-        syncBackgroundToCamera()
 
         onCameraChangeRef?.current?.({
             scale: two.scene.scale,
@@ -4876,8 +3888,6 @@ function addZUI(
 
     return {
         zui,
-        syncBackgroundToCamera,
-        syncDotGridClass,
         /**
          * Announce the current camera to `onCameraChange` subscribers (the
          * active base's backdrop, plus any consumer callback).
@@ -5008,7 +4018,6 @@ function addZUI(
             window.dispatchEvent(
                 new CustomEvent('zoomChanged', { detail: { scale: zui.scale } })
             )
-            syncBackgroundToCamera()
             onCameraChangeRef?.current?.({
                 scale: two.scene.scale,
                 tx: two.scene.translation.x,
@@ -5038,7 +4047,6 @@ function addZUI(
                         detail: { scale: zui.scale },
                     })
                 )
-                syncBackgroundToCamera()
                 onCameraChangeRef?.current?.({
                     scale: two.scene.scale as number,
                     tx: two.scene.translation.x,
@@ -5077,14 +4085,12 @@ function addZUI(
             window.dispatchEvent(
                 new CustomEvent('zoomChanged', { detail: { scale: zui.scale } })
             )
-            syncBackgroundToCamera()
             onCameraChangeRef?.current?.({
                 scale: two.scene.scale as number,
                 tx: two.scene.translation.x,
                 ty: two.scene.translation.y,
             })
         },
-        disconnectThemeObserver: () => themeObserver.disconnect(),
     }
 }
 
@@ -5103,8 +4109,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         setTextDrawModeInBase,
         setCurrentElementInBase,
         togglePanMode,
-        toolset,
-        activeBaseType,
         undoLastAction,
         redoLastAction,
         recordBatchToHistoryLog,
@@ -5127,16 +4131,7 @@ const Canvas: React.FC<CanvasProps> = (props) => {
     // must not close over `baseTypeProvider` directly. The base is switchable at
     // runtime now, and a captured provider would keep reporting the base the
     // base loaded with. See the stale-closure section in CLAUDE.md.
-    const homeToolRef = useRef<string>(toolset.homeTool)
-    useEffect(() => {
-        homeToolRef.current = toolset.homeTool
-    }, [toolset])
-
-    // Same reason: viewport saves inside addZUI must key off the *live* base.
-    const activeBaseTypeRef = useRef<BaseType>(activeBaseType)
-    useEffect(() => {
-        activeBaseTypeRef.current = activeBaseType
-    }, [activeBaseType])
+    const homeToolRef = useRef<string>('pointer')
 
     const resetToHomeTool = (
         element: CurrentElement | null,
@@ -5230,8 +4225,7 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             deleteComponentFromLocalStore,
             isPencilModeRef,
             createTextAtSurfaceRef,
-            onCameraChangeRef,
-            activeBaseTypeRef
+            onCameraChangeRef
         )
 
         // Floating render origin: keeps far-from-anchor elements from shaking
@@ -5248,11 +4242,11 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         // the specs run against one. See src/utils/e2eHooks.ts.
         if (E2E_HOOKS) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ;(window as any).__cbZui = zui_instance.zui
+            ;(window as any).__mcZui = zui_instance.zui
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ;(window as any).__cbTwo = two
+            ;(window as any).__mcTwo = two
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ;(window as any).__cbRenderOrigin = renderOrigin
+            ;(window as any).__mcRenderOrigin = renderOrigin
         }
 
         setZuiInstance(zui_instance)
@@ -5283,11 +4277,7 @@ const Canvas: React.FC<CanvasProps> = (props) => {
 
         const restoreViewport = (mobile: boolean): boolean => {
             if (!props.baseId) return false
-            const parsed = readViewport(
-                props.baseId,
-                activeBaseTypeRef.current,
-                mobile
-            )
+            const parsed = readViewport(props.baseId, mobile)
             if (!parsed) return false
             return applyViewport(parsed)
         }
@@ -5316,18 +4306,8 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                     // Seed both desktop+mobile keys for the base the link
                     // opens on (sharer and opener may be on different devices).
                     const seeded = { tx, ty, scale }
-                    writeViewport(
-                        props.baseId,
-                        activeBaseTypeRef.current,
-                        false,
-                        seeded
-                    )
-                    writeViewport(
-                        props.baseId,
-                        activeBaseTypeRef.current,
-                        true,
-                        seeded
-                    )
+                    writeViewport(props.baseId, false, seeded)
+                    writeViewport(props.baseId, true, seeded)
                 }
                 // Strip the params regardless so a reload never re-seeds.
                 window.history.replaceState({}, '', window.location.pathname)
@@ -5352,9 +4332,9 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         // link still wins.
         let landedViewport: StoredViewport | null = null
         const landing = props.initialMapLanding
-        if (props.baseId && landing && activeBaseTypeRef.current === 'map') {
+        if (props.baseId && landing) {
             const alreadyHasCamera =
-                readViewport(props.baseId, 'map', isMobile) !== null
+                readViewport(props.baseId, isMobile) !== null
             if (!alreadyHasCamera) {
                 const scale = scaleForMapZoom(landing.zoom, landing.anchor)
                 const { x, y } = lngLatToSurface(landing.lngLat, landing.anchor)
@@ -5371,7 +4351,7 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                 // form factor's key would be a wrong pan. A recipient who later
                 // crosses the breakpoint gets the landing re-derived from the
                 // geography instead, which is strictly better.
-                writeViewport(props.baseId, 'map', isMobile, landedViewport)
+                writeViewport(props.baseId, isMobile, landedViewport)
             }
         }
 
@@ -5387,7 +4367,7 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             // Read from the static table, not `baseTypeProvider`: providers load
             // through a dynamic import, so at this point the resolved provider
             // is still the board base no matter which type the base opens on.
-            const limits = zoomLimitsForBaseType(activeBaseTypeRef.current)
+            const limits = MAP_ZOOM_LIMITS
             zui_instance.setZoomLimits(limits.min, limits.max)
             // Fall back to the landing we just computed if the read comes back
             // empty. `writeViewport` swallows quota/private-mode failures by
@@ -5421,12 +4401,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         // would throw that away and reframe on content they aimed away from.
         pendingInitialFitRef.current =
             Boolean(props.baseId && isUrlBasePath()) && !landedViewport
-
-        // Reflect the stored dot-grid flag on the root (adds `cb-dot-grid` when
-        // enabled) and seed the parchment grid from the restored (or default)
-        // camera so it lands aligned on first paint, not just on the first
-        // pan/zoom. No-op visually when the flag is off.
-        zui_instance.syncDotGridClass()
 
         onCameraChangeRef.current?.({
             scale: two.scene.scale as number,
@@ -5808,8 +4782,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                           compareByZOrder
                       )
                     : []
-            ).filter((record) =>
-                isRecordVisibleOnBaseType(record, activeBaseTypeRef.current)
             )
 
             // Geometric marquee hit-test on an element's stored origin.
@@ -5997,8 +4969,8 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                 localStorage.getItem(ARROW_DRAW_MODE_KEY) === 'true' ||
                 localStorage.getItem(RUBBER_MODE_KEY) === 'true' ||
                 localStorage.getItem(PENCIL_MODE_KEY) === 'TRUE' ||
-                localStorage.getItem(GEO_DRAW_MODE_KEY) === 'true' ||
-                localStorage.getItem(GEO_POINT_PLACE_MODE_KEY) === 'true' ||
+                localStorage.getItem(DRAW_MODE_KEY) === 'true' ||
+                localStorage.getItem(POINT_PLACE_MODE_KEY) === 'true' ||
                 localStorage.getItem(PENDING_SHAPE_TYPE_KEY) !== null
             )
                 return

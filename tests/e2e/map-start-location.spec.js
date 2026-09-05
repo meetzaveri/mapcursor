@@ -37,8 +37,8 @@ async function waitForModalReady(page) {
             const el = document.querySelector('.modal-portal .modal-content')
             if (!el) return false
             const now = el.getBoundingClientRect().top
-            const prev = window.__cbModalTop
-            window.__cbModalTop = now
+            const prev = window.__mcModalTop
+            window.__mcModalTop = now
             return prev !== undefined && Math.abs(now - prev) < 0.5
         },
         undefined,
@@ -47,15 +47,13 @@ async function waitForModalReady(page) {
 }
 
 /**
- * Open the map base from a local base at `/`.
+ * Wait for the map backdrop, and (by default) for the start-location prompt.
  *
  * `expectPrompt: false` for the revisit case, where the whole point is that no
  * dialog appears — waiting for one there would fail on the correct behaviour.
  */
-async function switchToMap(page, { expectPrompt = true } = {}) {
-    await page.click('[aria-label="Switch base"]')
-    await page.click('[role="option"]:has-text("Map")')
-    await page.waitForSelector('#cb-map-bg', { timeout: 20_000 })
+async function openMap(page, { expectPrompt = true } = {}) {
+    await page.waitForSelector('#mc-map-bg', { timeout: 20_000 })
     if (expectPrompt) await waitForModalReady(page)
 }
 
@@ -69,7 +67,7 @@ async function switchToMap(page, { expectPrompt = true } = {}) {
 async function waitForStoredAnchor(page) {
     await page.waitForFunction(
         () => {
-            const prefix = 'craftbase_base_type_'
+            const prefix = 'mapcursor_map_anchor_'
             for (let i = 0; i < localStorage.length; i += 1) {
                 const key = localStorage.key(i)
                 if (!key || !key.startsWith(prefix)) continue
@@ -90,7 +88,7 @@ async function waitForStoredAnchor(page) {
 /** The anchor this base has settled on, as the app itself stores it. */
 async function readStoredAnchor(page) {
     return page.evaluate(() => {
-        const prefix = 'craftbase_base_type_'
+        const prefix = 'mapcursor_map_anchor_'
         for (let i = 0; i < localStorage.length; i += 1) {
             const key = localStorage.key(i)
             if (!key || !key.startsWith(prefix)) continue
@@ -121,8 +119,8 @@ async function denyGeolocation(page) {
 
 test.describe('the map start-location prompt', () => {
     test('offers the choice before the search box', async ({ page }) => {
-        await setupLocalBase(page)
-        await switchToMap(page)
+        await setupLocalBase(page, { seedAnchor: false })
+        await openMap(page)
 
         // Both doors, and no search field yet.
         await expect(
@@ -148,8 +146,8 @@ test.describe('the map start-location prompt', () => {
     }) => {
         await context.grantPermissions(['geolocation'])
         await context.setGeolocation(FIX)
-        await setupLocalBase(page)
-        await switchToMap(page)
+        await setupLocalBase(page, { seedAnchor: false })
+        await openMap(page)
 
         await page.getByRole('button', { name: /Use my current location/ }).click()
 
@@ -169,8 +167,8 @@ test.describe('the map start-location prompt', () => {
         page,
     }) => {
         await denyGeolocation(page)
-        await setupLocalBase(page)
-        await switchToMap(page)
+        await setupLocalBase(page, { seedAnchor: false })
+        await openMap(page)
 
         await page.getByRole('button', { name: /Use my current location/ }).click()
 
@@ -192,8 +190,8 @@ test.describe('the map start-location prompt', () => {
     }) => {
         await context.grantPermissions(['geolocation'])
         await context.setGeolocation(FIX)
-        await setupLocalBase(page)
-        await switchToMap(page)
+        await setupLocalBase(page, { seedAnchor: false })
+        await openMap(page)
 
         await page.getByRole('button', { name: /Use my current location/ }).click()
         await expect(
@@ -206,7 +204,7 @@ test.describe('the map start-location prompt', () => {
         // base id, orphan the anchor, and re-ask.
         await page.goto('/')
         await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
-        await switchToMap(page, { expectPrompt: false })
+        await openMap(page, { expectPrompt: false })
         await page.waitForTimeout(2500)
 
         await expect(
@@ -218,8 +216,8 @@ test.describe('the map start-location prompt', () => {
     test('dismissing settles on the timezone city and stops asking', async ({
         page,
     }) => {
-        await setupLocalBase(page)
-        await switchToMap(page)
+        await setupLocalBase(page, { seedAnchor: false })
+        await openMap(page)
 
         await page.getByRole('button', { name: /Skip, use/ }).click()
         await expect(

@@ -1,16 +1,14 @@
-// The camera input model is a property of the base type.
+// The camera input model: the map idiom, which is the only one there is.
 //
-// A map base speaks the map idiom: the wheel zooms, a drag over empty canvas
-// moves the geography, and shift+drag is what is left for box select. A board
-// base keeps the whiteboard idiom: the wheel pans, a modifier zooms, a drag
-// marquees. Both models run through the SAME handlers in newCanvas.tsx,
-// branching on `activeBaseTypeRef` — which is exactly why they need a test
-// each. Getting one right by breaking the other is the failure mode here.
+// The wheel zooms, a drag over empty canvas moves the geography, and shift+drag
+// is what is left for box select. This is the idiom of every mapping product a
+// user arrives from, and it replaced a whiteboard idiom (wheel pans, modifier
+// zooms, drag marquees) that shared the same handlers in newCanvas.tsx.
 //
-// Note this is the first spec in the suite to drive a real `wheel` event and a
-// real mouse drag against the camera; every other zoom test reaches in through
-// `window.__cbZui` and a synthetic `zoomChanged`, which would have passed no
-// matter what the wheel handler did.
+// Note this is the only spec in the suite that drives a real `wheel` event and
+// a real mouse drag against the camera; every other zoom test reaches in
+// through `window.__mcZui` and a synthetic `zoomChanged`, which would have
+// passed no matter what the wheel handler did.
 
 import { test, expect } from './helpers/test.js'
 import {
@@ -36,7 +34,6 @@ const POINT_ID = '22222222-2222-2222-2222-222222222222'
 const point = () => ({
     id: POINT_ID,
     componentType: 'point',
-    objectClass: 'geo',
     children: null,
     metadata: { content: 'The Old Peacock' },
     x: 0, x1: 0, x2: 0, y: 0, y1: 0, y2: 0,
@@ -57,8 +54,7 @@ async function openMapBase(page, { components = [] } = {}) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                              type: 'map',
-                              anchor: ANCHOR,
+                                                            anchor: ANCHOR,
                               landing: LANDING,
                           }),
                           components,
@@ -73,7 +69,7 @@ async function openMapBase(page, { components = [] } = {}) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
@@ -81,7 +77,7 @@ async function openMapBase(page, { components = [] } = {}) {
     await page.waitForTimeout(1200)
 }
 
-test.describe('map base: the wheel zooms', () => {
+test.describe('the wheel zooms', () => {
     test('a plain wheel changes scale, not translation alone', async ({
         page,
     }) => {
@@ -117,7 +113,7 @@ test.describe('map base: the wheel zooms', () => {
         const surfaceUnderCursor = () =>
             page.evaluate(
                 ([x, y]) => {
-                    const two = window.__cbTwo
+                    const two = window.__mcTwo
                     return {
                         x: (x - two.scene.translation.x) / two.scene.scale,
                         y: (y - two.scene.translation.y) / two.scene.scale,
@@ -137,38 +133,7 @@ test.describe('map base: the wheel zooms', () => {
     })
 })
 
-test.describe('board base: the wheel still pans', () => {
-    test('a plain wheel translates and leaves scale alone', async ({ page }) => {
-        await setupLocalBase(page)
-        const box = await getCanvasBox(page)
-
-        const before = await page.evaluate(readCamera)
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-        await page.mouse.wheel(0, -300)
-        await page.waitForTimeout(300)
-        const after = await page.evaluate(readCamera)
-
-        expect(after.scale).toBeCloseTo(before.scale, 6)
-        expect(after.ty).not.toBeCloseTo(before.ty, 1)
-    })
-
-    test('a modifier wheel still zooms', async ({ page }) => {
-        await setupLocalBase(page)
-        const box = await getCanvasBox(page)
-
-        const before = await page.evaluate(readCamera)
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-        await page.keyboard.down('Shift')
-        await page.mouse.wheel(0, -300)
-        await page.keyboard.up('Shift')
-        await page.waitForTimeout(300)
-        const after = await page.evaluate(readCamera)
-
-        expect(after.scale).toBeGreaterThan(before.scale)
-    })
-})
-
-test.describe('map base: a drag over empty canvas pans', () => {
+test.describe('a drag over empty canvas pans', () => {
     test('plain drag translates the camera and creates no group', async ({
         page,
     }) => {
@@ -226,8 +191,8 @@ test.describe('map base: a drag over empty canvas pans', () => {
         // A missing handle is a different failure and must not masquerade as it.
         const pointPos = () =>
             page.evaluate(() => {
-                const two = window.__cbTwo
-                if (!two) throw new Error('__cbTwo is missing')
+                const two = window.__mcTwo
+                if (!two) throw new Error('__mcTwo is missing')
                 const g = Array.from(two.scene.children).find(
                     (c) => c?.elementData?.componentType === 'point'
                 )

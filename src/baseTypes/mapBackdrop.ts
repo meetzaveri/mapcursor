@@ -1,28 +1,20 @@
-// The map base — an OpenStreetMap backdrop slaved to the ZUI camera.
+// The map backdrop — an OpenStreetMap basemap slaved to the ZUI camera.
 //
-// Ported from craftmaps' src/utils/mapBackground.js, which proved the camera
-// math in production. The PMTiles/self-hosting branches are deliberately gone:
-// craftbase points MapLibre at a hosted vector style (see BASEMAP_STYLE_URL).
+// The contract: **ink never moves**. Element coordinates stay in Two.js surface
+// space; instead the map is jumped so that surface (0,0) always sits over
+// `anchor.lngLat`. Pan/zoom the canvas and the map follows, which is what makes
+// annotations behave as if pinned to the geography.
 //
-// The contract that makes switching frictionless: **ink never moves**. Element
-// coordinates stay in Two.js surface space; instead the map is jumped so that
-// surface (0,0) always sits over `anchor.lngLat`. Pan/zoom the whiteboard and
-// the map follows, which is what makes annotations behave as if pinned to the
-// geography.
-//
-// maplibre-gl (~800KB) is imported dynamically here and nowhere else, so a user
-// who never opens the map base never downloads it.
+// maplibre-gl (~1MB) is imported dynamically here and nowhere else, so it lands
+// after first paint rather than blocking it.
 
 import type {
-    BaseTypeConfig,
-    BaseTypeHandle,
-    BaseTypeMountContext,
-    BaseTypeProvider,
+    MapBackdropConfig,
+    MapBackdropHandle,
+    MapBackdropMountContext,
     MapAnchor,
 } from './types'
 import type { CameraChangeEvent } from '../types/base'
-import { geoElementData } from '../utils/constants'
-import { GEO_HIDDEN_TOOLS } from '../constants/misc'
 import { E2E_HOOKS } from '../utils/e2eHooks'
 import {
     resolveTimezoneCity,
@@ -56,10 +48,10 @@ export const BASEMAP_STYLE_URL =
 // Zoom limits live in ./zoomLimits — the camera needs them before this
 // (dynamically imported) provider exists. See the note there.
 
-const OPAQUE_BACKDROP_CLASS = 'cb-base-opaque-backdrop'
-const MAP_CONTAINER_ID = 'cb-map-bg'
+const OPAQUE_BACKDROP_CLASS = 'mc-opaque-backdrop'
+const MAP_CONTAINER_ID = 'mc-map-bg'
 
-interface MapBaseTypeHandle extends BaseTypeHandle {
+interface MapHandle extends MapBackdropHandle {
     map: MapLibreMap
     anchor: MapAnchor
     /** Last camera seen, so an async anchor change can re-sync immediately. */
@@ -69,7 +61,7 @@ interface MapBaseTypeHandle extends BaseTypeHandle {
 }
 
 /**
- * Where a base opens the map when it has never been told a place.
+ * Where a base opens when it has never been told a place.
  *
  * Derived from the browser's IANA timezone — no permission prompt, no network,
  * available synchronously so the map's very first frame is already in roughly
@@ -102,7 +94,7 @@ function defaultAnchor(): MapAnchor {
  * `targetZoom = anchor.zoom + log2(scale)` keeps tile resolution in lockstep
  * with the canvas.
  */
-function syncMapToZui(handle: MapBaseTypeHandle, camera: CameraChangeEvent): void {
+function syncMapToZui(handle: MapHandle, camera: CameraChangeEvent): void {
     const { map, anchor } = handle
     if (!map || !anchor) return
 
@@ -127,33 +119,17 @@ function syncMapToZui(handle: MapBaseTypeHandle, camera: CameraChangeEvent): voi
     map.jumpTo({ center: desiredCenter, zoom: targetZoom })
 }
 
-export const mapType: BaseTypeProvider = {
-    id: 'map',
-    label: 'Map',
-
-    hiddenTools: GEO_HIDDEN_TOOLS,
-    extraTools: geoElementData,
-
-    // One whole map zoom level per click: 2^1 = double the scale. At 0.2 a user
-    // would need ~70 clicks to cross the range.
-    zoomStep: 1,
-    // Select, same as the board base. The map is a *substrate* to draw on, not a
-    // map viewer — so the resting gesture is "work with what I drew", and
-    // reaching for pan is the explicit act. Pan stays one click away in the
-    // toolbar (it is not in GEO_HIDDEN_TOOLS), and scroll still pans regardless
-    // of the active tool.
-    homeTool: 'pointer',
-
+export const mapBackdrop = {
     async mount(
         container: HTMLElement,
-        config: BaseTypeConfig,
+        config: MapBackdropConfig,
         // Unused: the anchor is resolved synchronously from the timezone, and a
         // real choice arrives later via setAnchor (the host persists it).
-        _ctx: BaseTypeMountContext
-    ): Promise<BaseTypeHandle> {
+        _ctx: MapBackdropMountContext
+    ): Promise<MapBackdropHandle> {
         const [{ default: maplibregl }] = await Promise.all([
             import('maplibre-gl'),
-            // Bundled into this lazy chunk, so board-base users never fetch it.
+            // Bundled into this lazy chunk so it lands after first paint.
             import('maplibre-gl/dist/maplibre-gl.css'),
         ])
 
@@ -199,8 +175,7 @@ export const mapType: BaseTypeProvider = {
             }),
         })
 
-        const handle: MapBaseTypeHandle = {
-            id: 'map',
+        const handle: MapHandle = {
             map,
             anchor,
             lastCamera: null,
@@ -209,37 +184,37 @@ export const mapType: BaseTypeProvider = {
         }
 
         // Debug handle for inspecting the camera mirror from the console or a
-        // headless harness — same pattern, and same gate, as __cbZui / __cbTwo
+        // headless harness — same pattern, and same gate, as __mcZui / __mcTwo
         // in newCanvas. See src/utils/e2eHooks.ts.
         if (E2E_HOOKS) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ;(window as any).__cbMap = handle
+            ;(window as any).__mcMap = handle
         }
 
         return handle
     },
 
-    syncCamera(handle: BaseTypeHandle, camera: CameraChangeEvent): void {
-        const h = handle as MapBaseTypeHandle
+    syncCamera(handle: MapBackdropHandle, camera: CameraChangeEvent): void {
+        const h = handle as MapHandle
         if (h.disposed) return
         h.lastCamera = camera
         syncMapToZui(h, camera)
     },
 
-    setAnchor(handle: BaseTypeHandle, anchor: MapAnchor): void {
-        const h = handle as MapBaseTypeHandle
+    setAnchor(handle: MapBackdropHandle, anchor: MapAnchor): void {
+        const h = handle as MapHandle
         if (h.disposed) return
         h.anchor = { lngLat: [...anchor.lngLat], zoom: anchor.zoom }
         if (h.lastCamera) syncMapToZui(h, h.lastCamera)
     },
 
-    readConfig(handle: BaseTypeHandle): Partial<BaseTypeConfig> {
-        const h = handle as MapBaseTypeHandle
+    readConfig(handle: MapBackdropHandle): Partial<MapBackdropConfig> {
+        const h = handle as MapHandle
         return { mapAnchor: h.anchor }
     },
 
-    async captureBackdrop(handle: BaseTypeHandle): Promise<string | null> {
-        const h = handle as MapBaseTypeHandle
+    async captureBackdrop(handle: MapBackdropHandle): Promise<string | null> {
+        const h = handle as MapHandle
         if (h.disposed || !h.map) return null
         try {
             // preserveDrawingBuffer keeps the last rendered frame readable, so
@@ -254,8 +229,8 @@ export const mapType: BaseTypeProvider = {
         }
     },
 
-    unmount(handle: BaseTypeHandle): void {
-        const h = handle as MapBaseTypeHandle
+    unmount(handle: MapBackdropHandle): void {
+        const h = handle as MapHandle
         if (h.disposed) return
         h.disposed = true
         document.body.classList.remove(OPAQUE_BACKDROP_CLASS)
@@ -268,4 +243,4 @@ export const mapType: BaseTypeProvider = {
     },
 }
 
-export default mapType
+export default mapBackdrop

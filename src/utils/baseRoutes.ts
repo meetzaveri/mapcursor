@@ -1,20 +1,12 @@
 // Which URL a base lives at, in one place.
 //
-// A base has two possible paths — `/base/:id` for a whiteboard and `/map/:id`
-// for a map — and several unrelated bits of the app need to ask "is this a
-// base opened from a URL?" or "what link do I hand the user?". Those questions
-// were answered by hard-coded `'/base/'` string tests scattered across the
-// canvas and the toolbar, which all silently answered "no" the moment the map
-// route existed. Answer them here instead.
+// Every base is a map, so there is exactly one path — `/map/:id`. Several
+// unrelated bits of the app need to ask "is this a base opened from a URL?" or
+// "what link do I hand the user?". Those questions were answered by hard-coded
+// string tests scattered across the canvas and the toolbar; answer them here.
 
-import { DEFAULT_BASE_TYPE } from '../baseTypes/types'
-import type { BaseType } from '../baseTypes/types'
-
-/** URL segment each base type is served under. */
-const PATH_FOR_BASE_TYPE: Record<BaseType, string> = {
-    board: '/base/',
-    map: '/map/',
-}
+/** URL segment a base is served under. */
+export const BASE_PATH_PREFIX = '/map/'
 
 /**
  * Is this path a base loaded from a URL, rather than the local draft at `/`?
@@ -29,17 +21,15 @@ export function isUrlBasePath(
         ? window.location.pathname
         : ''
 ): boolean {
-    return Object.values(PATH_FOR_BASE_TYPE).some((prefix) =>
-        pathname.startsWith(prefix)
-    )
+    return pathname.startsWith(BASE_PATH_PREFIX)
 }
 
-/** Path a base of this type lives at (no origin), e.g. `/map/<id>`. */
-export function baseTypePath(baseId: string, baseType: BaseType): string {
-    return `${PATH_FOR_BASE_TYPE[baseType] ?? PATH_FOR_BASE_TYPE[DEFAULT_BASE_TYPE]}${baseId}`
+/** Path a base lives at (no origin), e.g. `/map/<id>`. */
+export function basePath(baseId: string): string {
+    return `${BASE_PATH_PREFIX}${baseId}`
 }
 
 /** Absolute link to a base — what Share copies and what the user pastes. */
-export function baseTypeUrl(baseId: string, baseType: BaseType): string {
-    return `${window.location.origin}${baseTypePath(baseId, baseType)}`
+export function baseUrl(baseId: string): string {
+    return `${window.location.origin}${basePath(baseId)}`
 }

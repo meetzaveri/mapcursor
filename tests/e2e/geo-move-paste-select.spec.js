@@ -20,7 +20,6 @@ const ROUTE_ID = 'dddddddd-4444-4444-4444-444444444444'
 const geo = (id, componentType, extra) => ({
     id,
     componentType,
-    objectClass: 'geo',
     zoomResistant: null,
     children: null,
     x: 0,
@@ -81,8 +80,7 @@ async function openMapBase(page) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                              type: 'map',
-                              anchor: ANCHOR,
+                                                            anchor: ANCHOR,
                           }),
                           components: COMPONENTS,
                       }
@@ -96,8 +94,8 @@ async function openMapBase(page) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
-        localStorage.setItem('craftbase_geo_text_zoom_hint_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_text_zoom_hint_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.waitForSelector(`g[data-component-id="${AREA_ID}"]`, {
@@ -105,7 +103,7 @@ async function openMapBase(page) {
     })
     // Park the camera at identity so surface coords are screen coords.
     await page.evaluate(() => {
-        const two = window.__cbTwo
+        const two = window.__mcTwo
         two.scene.translation.set(0, 0)
         two.scene.scale = 1
         two.update()
@@ -121,7 +119,7 @@ async function openMapBase(page) {
  */
 const record = (page, id) =>
     page.evaluate((id) => {
-        const g = window.__cbTwo.scene.children.find(
+        const g = window.__mcTwo.scene.children.find(
             (c) => c?.elementData?.id === id
         )
         const ed = g?.elementData
@@ -239,7 +237,7 @@ test('a pasted area lands under the cursor', async ({ page }) => {
 
     const clone = async () =>
         page.evaluate((srcId) => {
-            const g = window.__cbTwo.scene.children.find(
+            const g = window.__mcTwo.scene.children.find(
                 (c) =>
                     c?.elementData?.componentType === 'area' &&
                     c.elementData.id !== srcId

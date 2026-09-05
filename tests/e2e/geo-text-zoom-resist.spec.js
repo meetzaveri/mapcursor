@@ -33,11 +33,10 @@ const MAX_REASONABLE_PX = 60
 
 const geoTextRecord = (id, content, zoomResistant) => ({
     id,
-    componentType: 'geoText',
-    objectClass: 'geo',
+    componentType: 'text',
     zoomResistant,
     children: null,
-    metadata: { content, fontSize: FONT_SIZE, baseTypeScope: 'map' },
+    metadata: { content, fontSize: FONT_SIZE },
     // Offset so the two labels never overlap and each keeps its own box.
     x: 0, x1: 0, x2: 0, y: id === SCALING_ID ? 120 : 0, y1: 0, y2: 0,
     fill: 'transparent', width: 120, height: 36,
@@ -57,8 +56,7 @@ async function openMapBase(page, components) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                              type: 'map',
-                              anchor: ANCHOR,
+                                                            anchor: ANCHOR,
                           }),
                           components,
                       }
@@ -72,10 +70,10 @@ async function openMapBase(page, components) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
         // Keep the one-shot zoom tip out of the way; it is not under test here
         // and it renders in the same corner of the viewport.
-        localStorage.setItem('craftbase_geo_text_zoom_hint_dismissed', '1')
+        localStorage.setItem('mapcursor_text_zoom_hint_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
 }
@@ -88,7 +86,7 @@ async function openMapBase(page, components) {
 const heightsAt = (page, scale, labels) =>
     page.evaluate(
         ({ s, labels }) => {
-            const two = window.__cbTwo
+            const two = window.__mcTwo
             two.scene.scale = s
             window.dispatchEvent(
                 new CustomEvent('zoomChanged', { detail: { scale: s } })
@@ -234,7 +232,7 @@ test('toggling one label re-scales only that label, with no zoom', async ({
     // replays too.
     await page.evaluate((id) => {
         window.dispatchEvent(
-            new CustomEvent('geoTextResistChanged', {
+            new CustomEvent('textResistChanged', {
                 detail: { id, resist: 0 },
             })
         )

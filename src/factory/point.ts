@@ -46,7 +46,7 @@ type ShapeLike = any
  * the drawing — without this marker every recolour would silently delete the
  * selector out from under a selected point.
  */
-export const POINT_CHROME_FLAG = '__cbPointChrome'
+export const POINT_CHROME_FLAG = '__mcPointChrome'
 
 /**
  * The colour a point's circle should render in.

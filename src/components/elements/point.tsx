@@ -14,7 +14,7 @@ import getEditComponents from '../utils/editWrapper'
 import { computeCounterScale } from '../../utils/counterScale'
 import { isPanMode } from '../../utils/drawModeUtils'
 import {
-    DEFAULT_GEO_RESIST,
+    DEFAULT_RESIST,
     POINT_LABEL_COLOR,
     POINT_LABEL_GAP,
     POINT_RADIUS,
@@ -63,7 +63,7 @@ function Point(props: ElementProps): ReactElement {
     const labelRef = useRef<string>(pointLabelOf(props))
 
     const two = props.twoJSInstance
-    const resist = props.metadata?.resist ?? DEFAULT_GEO_RESIST
+    const resist = props.metadata?.resist ?? DEFAULT_RESIST
 
     useEffect(() => {
         const prevX = props.x
@@ -163,7 +163,7 @@ function Point(props: ElementProps): ReactElement {
         // `clearSelector` during mousedown (and, on mobile, during touchstart),
         // so anything shown earlier in the gesture is hidden again a moment
         // later. Click lands after all of that has settled. Same reason
-        // geoText.tsx binds its selector here.
+        // text.tsx binds its selector here.
         interact(`#${group.id}`).on('click', syncSelector)
 
         // Clicking away hides it. `clearSelector` already covers bare-canvas
@@ -199,7 +199,7 @@ function Point(props: ElementProps): ReactElement {
          *
          * The overlay must match what's on screen, and a point's on-screen size
          * folds the group's counter-scale on top of the camera scale (mirrors
-         * geoText.tsx's editor). Anchoring off the CIRCLE rather than the label
+         * text.tsx's editor). Anchoring off the CIRCLE rather than the label
          * node matters: an empty label has no glyphs and therefore no usable
          * bounding box, which is exactly the state this opens in most often.
          */

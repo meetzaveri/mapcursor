@@ -1,3 +1,5 @@
+<img src="./src/assets/mapcursor-logo-original.svg" alt="Mapcursor" width="180" />
+
 # Craftbase
 
 A minimal online whiteboard you can open and start drawing on. No signup, no setup, no empty-state tutorial to click through — the canvas is just there waiting.

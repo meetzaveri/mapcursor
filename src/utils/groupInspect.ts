@@ -14,8 +14,8 @@ type ComponentType =
     | 'circle'
     | 'diamond'
     | 'frame'
-    | 'newText'
-    | 'geoText'
+    | 'text'
+    | 'text'
     | 'arrowLine'
     | 'pencil'
     | 'divider'
@@ -106,27 +106,27 @@ const ACCEPTS: Record<InspectableProperty, Set<string>> = {
         'diamond',
         'frame',
         'arrowLine',
-        'newText',
-        'geoText',
+        'text',
+        'text',
         'pencil',
     ]),
     textColor: new Set([
-        'newText',
-        'geoText',
+        'text',
+        'text',
         'rectangle',
         'diamond',
         'circle',
     ]),
     textSize: new Set([
-        'newText',
-        'geoText',
+        'text',
+        'text',
         'rectangle',
         'diamond',
         'circle',
     ]),
     textFontFamily: new Set([
-        'newText',
-        'geoText',
+        'text',
+        'text',
         'rectangle',
         'diamond',
         'circle',
@@ -155,8 +155,8 @@ function readChildValue(child: ChildEntry, key: InspectableProperty): unknown {
             return meta?.opacity ?? 1
         case 'textColor':
             if (
-                child.componentType === 'newText' ||
-                child.componentType === 'geoText'
+                child.componentType === 'text' ||
+                child.componentType === 'text'
             )
                 return child.textColor
             return meta?.textFill

@@ -1,6 +1,6 @@
-// Whether this build exposes the `window.__cb*` debug handles.
+// Whether this build exposes the `window.__mc*` debug handles.
 //
-// Those handles (`__cbTwo`, `__cbZui`, `__cbRenderOrigin`, `__cbMap`) are
+// Those handles (`__mcTwo`, `__mcZui`, `__mcRenderOrigin`, `__mcMap`) are
 // references to internal objects parked on `window` so something outside the
 // app can read them: the console, a perf harness, or Playwright. Playwright
 // runs in Node and reaches the page only through `page.evaluate`, which
@@ -11,7 +11,7 @@
 // camera is at scale 0.5". Reading it off the SVG is not an option either:
 // canvas/renderOrigin.ts deliberately SPLITS the camera across two <g>
 // transforms to dodge float32 cancellation at map coordinates, so the rendered
-// matrix is no longer the camera. `__cbTwo.scene.scale` is the real state.
+// matrix is no longer the camera. `__mcTwo.scene.scale` is the real state.
 //
 // This used to be a bare `import.meta.env.DEV`, which is a compile-time
 // constant: true under `yarn start`, false in a build, with the whole block

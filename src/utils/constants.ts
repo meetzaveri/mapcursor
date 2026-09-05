@@ -1,16 +1,10 @@
 import type { FunctionComponent, SVGProps } from 'react'
 import CircleIcon from '../wireframeAssets/circle.svg?react'
-import RectangleIcon from '../wireframeAssets/rectangle.svg?react'
-import DiamondIcon from '../wireframeAssets/diamond.svg?react'
-import LineIcon from '../wireframeAssets/line.svg?react'
-import CurvedLineIcon from '../wireframeAssets/curvedLine.svg?react'
-import ShapesIcon from '../wireframeAssets/shapes.svg?react'
 import TextIcon from '../wireframeAssets/text.svg?react'
 import PencilIcon from '../wireframeAssets/pencil.svg?react'
-import PointerIcon from '../wireframeAssets/cursor.svg?react'
+import PointerIcon from '../assets/favicon-amber-bg.svg?react'
 import EraserIcon from '../wireframeAssets/eraser.svg?react'
 
-import RightArrowIcon from '../assets/right_arrow.svg?react'
 import PanIcon from '../assets/pan.svg?react'
 
 import PinIcon from '../wireframeAssets/pin.svg?react'
@@ -164,6 +158,15 @@ export interface PrimarySection {
     elements: PrimaryElement[]
 }
 
+// The toolbar, in order. Every base is a map, so there is one list: the
+// navigation tools, the freehand/eraser pair, and the map objects.
+//
+// `shapes` is a drawer holding Area + Circle. On desktop it is flattened into
+// two flat buttons (see DESKTOP_FLATTENED_DRAWERS in shapesToolbar); on mobile
+// it stays a drawer, whose trigger shows the circle icon.
+//
+// The circle keeps elementName 'circle' because that is what buys the reuse:
+// addElement('circle') already lands on the drag-to-draw path.
 export const staticPrimaryElementData: PrimarySection[] = [
     {
         sectionName: 'Basic',
@@ -185,57 +188,36 @@ export const staticPrimaryElementData: PrimarySection[] = [
                 drawerData: [],
             },
             {
+                elementName: 'point',
+                elementDisplayName: 'Point',
+                elementIcon: PinIcon,
+                hasDrawer: false,
+                noAction: false,
+                drawerData: [],
+            },
+            {
                 elementName: 'shapes',
                 elementDisplayName: 'Shapes',
-                elementIcon: ShapesIcon,
+                elementIcon: CircleIcon,
                 hasDrawer: true,
                 noAction: true,
                 drawerData: [
                     {
-                        elementName: 'rectangle',
-                        elementDisplayName: 'Rectangle / Square',
-                        elementIcon: RectangleIcon,
+                        elementName: 'area',
+                        elementDisplayName: 'Area',
+                        elementIcon: PolygonIcon,
                     },
                     {
                         elementName: 'circle',
                         elementDisplayName: 'Circle',
                         elementIcon: CircleIcon,
                     },
-                    {
-                        elementName: 'diamond',
-                        elementDisplayName: 'Diamond',
-                        elementIcon: DiamondIcon,
-                    },
                 ],
             },
             {
-                // Lines live behind their own drawer (main icon = straight line);
-                // clicking it opens a secondary drawer to pick line vs. curved
-                // line. Unlike 'shapes', this drawer is NOT flattened on desktop
-                // (see flattenShapesForDesktop), so it stays a drawer on both
-                // desktop and mobile.
-                elementName: 'lines',
-                elementDisplayName: 'Lines',
-                elementIcon: LineIcon,
-                hasDrawer: true,
-                noAction: true,
-                drawerData: [
-                    {
-                        elementName: 'line',
-                        elementDisplayName: 'Line',
-                        elementIcon: LineIcon,
-                    },
-                    {
-                        elementName: 'curvedLine',
-                        elementDisplayName: 'Curved line',
-                        elementIcon: CurvedLineIcon,
-                    },
-                ],
-            },
-            {
-                elementName: 'arrowLine',
-                elementDisplayName: 'Arrow',
-                elementIcon: RightArrowIcon,
+                elementName: 'route',
+                elementDisplayName: 'Route',
+                elementIcon: PolylineIcon,
                 hasDrawer: false,
                 noAction: false,
                 drawerData: [],
@@ -265,67 +247,6 @@ export const staticPrimaryElementData: PrimarySection[] = [
                 drawerData: [],
             },
         ],
-    },
-]
-
-// Geo tools (point / area+circle / route / text). Appended to the toolbar by
-// the active base type's `extraTools` — see mapType.ts — after `hiddenTools`
-// has stripped the board tools, which is why the circle entry below survives
-// even though 'circle' is in GEO_HIDDEN_TOOLS.
-export const geoElementData: PrimaryElement[] = [
-    {
-        elementName: 'point',
-        elementDisplayName: 'Point',
-        elementIcon: PinIcon,
-        hasDrawer: false,
-        noAction: false,
-        drawerData: [],
-    },
-    {
-        // Area + Circle share one slot. On desktop this is flattened into two
-        // flat buttons (see DESKTOP_FLATTENED_DRAWERS in shapesToolbar); on
-        // mobile it stays a drawer, whose trigger shows the circle icon.
-        //
-        // The circle child keeps elementName 'circle' — the same name the
-        // whiteboard tool uses — because that is what buys the reuse:
-        // addElement('circle') already lands on the drag-to-draw path. What
-        // makes it a map object is objectClass: 'geo', stamped at creation in
-        // primary.tsx, exactly as the pencil does.
-        elementName: 'geoShapes',
-        elementDisplayName: 'Shapes',
-        elementIcon: CircleIcon,
-        hasDrawer: true,
-        noAction: true,
-        drawerData: [
-            {
-                elementName: 'area',
-                elementDisplayName: 'Area',
-                elementIcon: PolygonIcon,
-            },
-            {
-                elementName: 'circle',
-                elementDisplayName: 'Circle',
-                elementIcon: CircleIcon,
-            },
-        ],
-    },
-    {
-        elementName: 'route',
-        elementDisplayName: 'Route',
-        elementIcon: PolylineIcon,
-        hasDrawer: false,
-        noAction: false,
-        drawerData: [],
-    },
-    {
-        // Map text (see geoText.tsx): renders like the standard Text element
-        // but belongs to the map base. Replaces the Text tool in geo mode.
-        elementName: 'geoText',
-        elementDisplayName: 'Text',
-        elementIcon: TextIcon,
-        hasDrawer: false,
-        noAction: false,
-        drawerData: [],
     },
 ]
 

@@ -70,7 +70,7 @@ const MobileDeleteButton = ({
     // The selected element's own SVG node. Several delete handlers are bound
     // there rather than to the window, and on mobile the synthetic mouse events
     // never move browser focus — so aiming the key at the node is what makes
-    // arrows, lines, geoText and groups deletable at all.
+    // arrows, lines, text and groups deletable at all.
     const nodeId: string | undefined = group?.id ?? single?.group?.id
 
     // The store id of a single selection, used by the safety net below.

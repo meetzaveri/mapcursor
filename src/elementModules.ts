@@ -1,4 +1,4 @@
-// Single source of truth for the lazily-loaded whiteboard element components.
+// Single source of truth for the lazily-loaded element components.
 //
 // Each file under components/elements/*.tsx is its own dynamic chunk — Vite
 // code-splits non-eager `import.meta.glob` — and is mounted via React.lazy in

@@ -7,7 +7,7 @@
 // viewport-culled, and the live zoom. Includes a viewport-culling toggle and a
 // "seed N shapes" button so a dense base can be reproduced on demand.
 //
-// Reads the dev-only `window.__cbTwo` handle exposed by newCanvas. Rendered
+// Reads the dev-only `window.__mcTwo` handle exposed by newCanvas. Rendered
 // only under import.meta.env.DEV, so it ships in no production bundle.
 
 import { useEffect, useRef, useState } from 'react'
@@ -25,7 +25,7 @@ type Two = any
 
 function getTwo(): Two | null {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (window as any).__cbTwo ?? null
+    return (window as any).__mcTwo ?? null
 }
 
 // Count total content elements + how many are currently culled.

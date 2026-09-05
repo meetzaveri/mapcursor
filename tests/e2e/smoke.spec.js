@@ -1,106 +1,92 @@
+// Every tool mapcursor ships still draws something.
+//
+// This is the broadest, shallowest test in the suite: arm each tool in turn,
+// make its gesture, and assert a record of the right componentType landed in
+// the store. It is deliberately not picky about geometry — the per-element
+// specs own that. What it catches is a tool that stopped being wired at all:
+// a deleted factory, a renamed componentType, an element module whose filename
+// no longer matches its type (elementModules.ts keys chunks by componentType,
+// so those two drift silently and only fail at runtime).
+
 import { test, expect } from './helpers/test.js'
 import {
     setupLocalBase,
-    drawRectangle,
+    getCanvasBox,
     drawShape,
-    drawArrow,
     drawPencilStroke,
     placeText,
-    getCanvasBox,
+    placePoint,
+    drawArea,
+    drawRoute,
+    getDraftComponents,
 } from './helpers/index.js'
 
-test.describe('Smoke — base loads correctly', () => {
+/** componentTypes present in the local draft, deduped. */
+async function typesInDraft(page) {
+    const draft = await getDraftComponents(page)
+    return [...new Set(Object.values(draft ?? {}).map((c) => c.componentType))]
+}
+
+test.describe('every tool draws', () => {
     test.beforeEach(async ({ page }) => {
         await setupLocalBase(page)
     })
 
-    test('canvas SVG is rendered', async ({ page }) => {
-        await expect(page.locator('#main-two-root svg')).toBeVisible()
-    })
-
-    test('shapes toolbar is visible', async ({ page }) => {
-        // aria-label is set on the icon SVG inside each toolbar button div.
-        // On desktop, shapesToolbar.flattenShapesForDesktop hoists Rectangle /
-        // Circle / Diamond out of the "Shapes" drawer to top-level buttons.
-        // On mobile they remain nested behind the drawer parent.
-        await expect(
-            page.locator('[aria-label="Rectangle / Square"]')
-        ).toBeVisible()
-        await expect(page.locator('[aria-label="Circle"]')).toBeVisible()
-        await expect(page.locator('[aria-label="Text"]')).toBeVisible()
-    })
-
-    test('drawing a rectangle adds it to the canvas', async ({ page }) => {
-        // Measure the SVG, not #main-two-root — the wrapper div has
-        // height 0 because the SVG is absolutely positioned inside it.
+    test('point', async ({ page }) => {
         const box = await getCanvasBox(page)
-        // Draw in the lower-right quadrant — away from the top toolbar and
-        // the Defaults panel fixed to the left side.
-        const cx = box.x + box.width * 0.65
-        const cy = box.y + box.height * 0.65
-
-        await drawRectangle(page, {
-            startX: cx - 80,
-            startY: cy - 50,
-            endX: cx + 80,
-            endY: cy + 50,
+        await placePoint(page, {
+            x: box.x + 300,
+            y: box.y + 240,
+            label: 'The Old Peacock',
         })
-
-        await expect(page.locator('[data-component-id]')).toHaveCount(1)
+        await expect.poll(() => typesInDraft(page)).toContain('point')
     })
 
-    test('drawing a circle adds it to the canvas', async ({ page }) => {
+    test('area', async ({ page }) => {
         const box = await getCanvasBox(page)
-        const cx = box.x + box.width * 0.65
-        const cy = box.y + box.height * 0.65
+        await drawArea(page, [
+            { x: box.x + 240, y: box.y + 200 },
+            { x: box.x + 420, y: box.y + 220 },
+            { x: box.x + 360, y: box.y + 360 },
+        ])
+        await expect.poll(() => typesInDraft(page)).toContain('area')
+    })
 
+    test('route', async ({ page }) => {
+        const box = await getCanvasBox(page)
+        await drawRoute(page, [
+            { x: box.x + 220, y: box.y + 180 },
+            { x: box.x + 380, y: box.y + 260 },
+            { x: box.x + 520, y: box.y + 200 },
+        ])
+        await expect.poll(() => typesInDraft(page)).toContain('route')
+    })
+
+    test('circle', async ({ page }) => {
+        const box = await getCanvasBox(page)
         await drawShape(page, 'circle', {
-            startX: cx - 60,
-            startY: cy - 60,
-            endX: cx + 60,
-            endY: cy + 60,
+            startX: box.x + 260,
+            startY: box.y + 200,
+            endX: box.x + 400,
+            endY: box.y + 340,
         })
-
-        await expect(page.locator('[data-component-id]')).toHaveCount(1)
+        await expect.poll(() => typesInDraft(page)).toContain('circle')
     })
 
-    test('drawing an arrow adds it to the canvas', async ({ page }) => {
+    test('pencil', async ({ page }) => {
         const box = await getCanvasBox(page)
-        const cx = box.x + box.width * 0.65
-        const cy = box.y + box.height * 0.65
-
-        await drawArrow(page, {
-            startX: cx - 100,
-            startY: cy,
-            endX: cx + 100,
-            endY: cy,
-        })
-
-        await expect(page.locator('[data-component-id]')).toHaveCount(1)
-    })
-
-    test('drawing a pencil stroke adds it to the canvas', async ({ page }) => {
-        const box = await getCanvasBox(page)
-        const cx = box.x + box.width * 0.65
-        const cy = box.y + box.height * 0.65
-
         await drawPencilStroke(page, {
-            startX: cx - 80,
-            startY: cy - 30,
-            endX: cx + 80,
-            endY: cy + 30,
+            startX: box.x + 250,
+            startY: box.y + 250,
+            endX: box.x + 420,
+            endY: box.y + 330,
         })
-
-        await expect(page.locator('[data-component-id]')).toHaveCount(1)
+        await expect.poll(() => typesInDraft(page)).toContain('pencil')
     })
 
-    test('drawing a text element adds it to the canvas', async ({ page }) => {
+    test('text', async ({ page }) => {
         const box = await getCanvasBox(page)
-        const cx = box.x + box.width * 0.65
-        const cy = box.y + box.height * 0.65
-
-        await placeText(page, { x: cx, y: cy })
-
-        await expect(page.locator('[data-component-id]')).toHaveCount(1)
+        await placeText(page, { x: box.x + 300, y: box.y + 300 })
+        await expect.poll(() => typesInDraft(page)).toContain('text')
     })
 })

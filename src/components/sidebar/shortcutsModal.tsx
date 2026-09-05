@@ -120,26 +120,15 @@ const GROUPS: ShortcutGroup[] = [
     },
 ]
 
-// Navigation is the one group that differs per base type, because the camera
-// input model does. The map base speaks the map idiom (wheel zooms, drag moves
-// the geography); the board base keeps the whiteboard idiom (wheel pans, a
-// modifier zooms). See the wheel handler and the empty-canvas mousedown branch
-// in newCanvas.tsx — this table has to be read alongside them.
+// The map idiom: wheel zooms, drag moves the geography, shift+drag box-selects.
+// See the wheel handler and the empty-canvas mousedown branch in newCanvas.tsx —
+// this table has to be read alongside them.
 const MAP_NAVIGATION: ShortcutGroup = {
     title: 'Canvas navigation',
     items: [
         { label: 'Zoom', combos: [[key('scroll')]] },
         { label: 'Pan', combos: [[key('drag')]] },
         { label: 'Box select', combos: [[shift(), key('drag')]] },
-        { label: 'Open context menu', combos: [[key('right-click')]] },
-    ],
-}
-
-const BOARD_NAVIGATION: ShortcutGroup = {
-    title: 'Canvas navigation',
-    items: [
-        { label: 'Pan', combos: [[key('scroll')]] },
-        { label: 'Zoom', combos: [[mod(), key('scroll')]] },
         { label: 'Open context menu', combos: [[key('right-click')]] },
     ],
 }
@@ -166,11 +155,7 @@ const ShortcutsModal = ({
     open,
     onClose,
 }: ShortcutsModalProps): ReactElement => {
-    const { activeBaseType } = useBaseContext()
-    const groups = [
-        ...GROUPS,
-        activeBaseType === 'map' ? MAP_NAVIGATION : BOARD_NAVIGATION,
-    ]
+    const groups = [...GROUPS, MAP_NAVIGATION]
 
     return (
         <Modal open={open} onClose={onClose}>

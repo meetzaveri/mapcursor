@@ -2,21 +2,21 @@ import Main from './main'
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 import { scheduleRender } from '../utils/renderScheduler'
 
-export interface NewTextMetadata {
+export interface TextMetadata {
     content?: string
     fontSize?: number
     textFontFamily?: string
 }
 
-export interface NewTextProperties {
+export interface TextProperties {
     textColor?: string
-    metadata?: NewTextMetadata
+    metadata?: TextMetadata
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
-export default class NewTextFactory extends Main<NewTextProperties> {
+export default class TextFactory extends Main<TextProperties> {
     createElement(): { group: ShapeLike; twoText: ShapeLike } {
         const two = this.two
         const prevX = this.x

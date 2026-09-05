@@ -69,7 +69,7 @@ export interface ApplyGroupPropertyDeps {
 }
 
 const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
-    // Standalone text (newText/geoText) has no background-fill concept — its
+    // Standalone text (newText/text) has no background-fill concept — its
     // color is `textColor`. Excluded so a group fill leaves text untouched and
     // never stamps a spurious `fill` onto a text row.
     fill: new Set(['rectangle', 'circle', 'diamond', 'frame']),
@@ -108,24 +108,24 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
         'diamond',
         'frame',
         'arrowLine',
-        'newText',
-        'geoText',
+        'text',
+        'text',
         'pencil',
     ]),
     // rectangle, diamond AND circle all carry text the same way (see
     // applyShapeText / the *-with-text components), so a group text edit
     // must reach every one of them.
     textColor: new Set([
-        'newText',
-        'geoText',
+        'text',
+        'text',
         'rectangle',
         'diamond',
         'circle',
     ]),
-    textSize: new Set(['newText', 'geoText', 'rectangle', 'diamond', 'circle']),
+    textSize: new Set(['text', 'rectangle', 'diamond', 'circle']),
     textFontFamily: new Set([
-        'newText',
-        'geoText',
+        'text',
+        'text',
         'rectangle',
         'diamond',
         'circle',
@@ -355,7 +355,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
             }
 
             if (propertyKey === 'textColor') {
-                if (type === 'newText' || type === 'geoText') {
+                if (type === 'text') {
                     const sceneTexts = sceneEl
                         ? findTextNodesInside(sceneEl)
                         : []
@@ -425,7 +425,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                           : {}
                 const updatedMeta = { ...existingMeta, [metaKey]: value }
 
-                if (type === 'newText' || type === 'geoText') {
+                if (type === 'text') {
                     // Standalone text has no container box to fit — just restyle
                     // every line node. A size change also changes the per-line
                     // vertical offset, so re-lay the stack out (matching how the

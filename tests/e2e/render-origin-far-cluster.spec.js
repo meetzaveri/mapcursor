@@ -34,7 +34,6 @@ const MAX_RENDER_WANDER_PX = 0.5
 const pin = (id, x, y, label) => ({
     id,
     componentType: 'point',
-    objectClass: 'geo',
     children: null,
     metadata: { content: label, label },
     x, x1: 0, x2: 0, y, y1: 0, y2: 0,
@@ -69,7 +68,7 @@ async function openBase(page) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.locator(`[data-component-id="${FAR_ID}"]`).first().waitFor({ timeout: 15_000 })
@@ -83,8 +82,8 @@ async function openBase(page) {
 const renderWander = (page, target, id, baseScale) =>
     page.evaluate(
         ({ target, id, baseScale }) => {
-            const two = window.__cbTwo
-            const zui = window.__cbZui
+            const two = window.__mcTwo
+            const zui = window.__mcZui
             let lo = Infinity
             let hi = -Infinity
             for (let i = 0; i <= 120; i++) {
@@ -142,8 +141,8 @@ test.describe('render origin keeps far-from-anchor content steady', () => {
         await openBase(page)
 
         const structure = await page.evaluate(() => {
-            const two = window.__cbTwo
-            const wrapper = document.getElementById('cb-render-origin')
+            const two = window.__mcTwo
+            const wrapper = document.getElementById('mc-render-origin')
             const sceneEl = two.scene._renderer.elem
             return {
                 wrapperExists: !!wrapper,
@@ -151,7 +150,7 @@ test.describe('render origin keeps far-from-anchor content steady', () => {
                 // The scene graph must not know the wrapper exists: every
                 // component enumeration in the app reads scene.children.
                 inSceneChildren: Array.from(two.scene.children).some(
-                    (c) => c?.id === 'cb-render-origin'
+                    (c) => c?.id === 'mc-render-origin'
                 ),
                 everyChildIsRenderable: Array.from(two.scene.children).every(
                     (c) => !!c && typeof c.id === 'string'
@@ -172,7 +171,7 @@ test.describe('render origin keeps far-from-anchor content steady', () => {
         // render-space, so a far element's translation still reads as the exact
         // value stored on its row.
         const coords = await page.evaluate((id) => {
-            const two = window.__cbTwo
+            const two = window.__mcTwo
             const el = Array.from(two.scene.children).find(
                 (c) => c?.elementData?.id === id
             )

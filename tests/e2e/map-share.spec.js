@@ -1,11 +1,10 @@
 // Shareable map bases.
 //
-// A map base's ink is meaningless without its georeference: surface (0,0) IS
-// the base's anchor lng/lat, and elements store surface pixels. Before these
-// tests' feature, that anchor lived only in the author's localStorage, so a
-// recipient fell back to a guess made from THEIR timezone and every pin landed
-// in the wrong city — while the shared base itself arrived typed 'board',
-// which hides every geo object anyway.
+// A base's ink is meaningless without its georeference: surface (0,0) IS the
+// base's anchor lng/lat, and elements store surface pixels. Before these tests'
+// feature, that anchor lived only in the author's localStorage, so a recipient
+// fell back to a guess made from THEIR timezone and every pin landed in the
+// wrong city.
 //
 // So there are two separate things to prove: the geography is carried on the
 // base row, and the recipient's camera opens on the shared view — once.
@@ -32,15 +31,12 @@ const GQL_BASE_MOCKS = GQL_MOCK_RESPONSES
 const point = (id, x, y) => ({
     id,
     componentType: 'point',
-    objectClass: 'geo',
     children: null,
     metadata: { content: 'The Old Peacock' },
     x, x1: 0, x2: 0, y, y1: 0, y2: 0,
     fill: '#e5484d', width: 10, height: 10,
     iconStroke: null, stroke: '#e5484d', linewidth: 2, strokeType: null,
     textColor: '#3A342C', opacity: 1, position: 1,
-    tailShapeId: null, tailEdge: null, headShapeId: null, headEdge: null,
-    tailPortIndex: null, headPortIndex: null,
 })
 
 /**
@@ -67,7 +63,7 @@ async function mockBase(page, { base, components = [] } = {}) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
     })
     return requests
 }
@@ -83,7 +79,7 @@ async function expectedCamera(page, anchor, landing) {
     const scale = scaleForMapZoom(landing.zoom, anchor)
     const { x, y } = lngLatToSurface(landing.lngLat, anchor)
     const { vw, vh } = await page.evaluate(() => {
-        const two = window.__cbTwo
+        const two = window.__mcTwo
         return {
             vw: two.width || window.innerWidth,
             vh: two.height || window.innerHeight,
@@ -95,7 +91,7 @@ async function expectedCamera(page, anchor, landing) {
 test.describe('a shared map lands the recipient on the shared spot', () => {
     test('first open uses the base row, not the origin', async ({ page }) => {
         await mockBase(page, {
-            base: baseRow({ id: BASE_ID, type: 'map', anchor: ANCHOR, landing: LANDING }),
+            base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
         await page.goto(`/map/${BASE_ID}`)
         await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
@@ -115,7 +111,7 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
 
     test('a second visit keeps the recipient’s own camera', async ({ page }) => {
         await mockBase(page, {
-            base: baseRow({ id: BASE_ID, type: 'map', anchor: ANCHOR, landing: LANDING }),
+            base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
         await page.goto(`/map/${BASE_ID}`)
         await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
@@ -123,18 +119,18 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
 
         // Move the camera and let the debounced save-as-you-go writer run.
         await page.evaluate(() => {
-            window.__cbTwo.scene.translation.x -= 400
-            window.__cbTwo.update()
+            window.__mcTwo.scene.translation.x -= 400
+            window.__mcTwo.update()
         })
         const moved = await page.evaluate(() => {
             const vp = {
-                scale: window.__cbTwo.scene.scale,
-                tx: window.__cbTwo.scene.translation.x,
-                ty: window.__cbTwo.scene.translation.y,
+                scale: window.__mcTwo.scene.scale,
+                tx: window.__mcTwo.scene.translation.x,
+                ty: window.__mcTwo.scene.translation.y,
                 savedAt: Date.now(),
             }
             localStorage.setItem(
-                `craftbase_viewport_${'11111111-1111-1111-1111-111111111111'}__map`,
+                `mapcursor_viewport_${'11111111-1111-1111-1111-111111111111'}`,
                 JSON.stringify(vp)
             )
             return vp
@@ -151,7 +147,7 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
 
     test('the landing seeds only this device’s viewport key', async ({ page }) => {
         await mockBase(page, {
-            base: baseRow({ id: BASE_ID, type: 'map', anchor: ANCHOR, landing: LANDING }),
+            base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
         await page.goto(`/map/${BASE_ID}`)
         await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
@@ -162,8 +158,8 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
         )
         // tx/ty are pixel translations computed against THIS viewport, so
         // copying them under the other form factor's key would be a wrong pan.
-        expect(keys).toContain(`craftbase_viewport_${BASE_ID}__map`)
-        expect(keys.some((k) => k.startsWith('craftbase_mobile_viewport_'))).toBe(false)
+        expect(keys).toContain(`mapcursor_viewport_${BASE_ID}`)
+        expect(keys.some((k) => k.startsWith('mapcursor_mobile_viewport_'))).toBe(false)
     })
 
     test('a row missing its geography falls back, it does not half-apply', async ({
@@ -184,63 +180,30 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
     })
 })
 
-test.describe('the /map route', () => {
-    test('pins the base type and hides the switcher', async ({ page }) => {
+test.describe('the base route', () => {
+    test('renders a working canvas with the map backdrop', async ({ page }) => {
         await mockBase(page, {
-            base: baseRow({ id: BASE_ID, type: 'map', anchor: ANCHOR, landing: LANDING }),
+            base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
         await page.goto(`/map/${BASE_ID}`)
         await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
         await page.waitForTimeout(800)
 
-        // The URL names the type, so a switcher could only make it lie.
-        await expect(page.locator('#cb-base-switcher')).toHaveCount(0)
-        // Still a working canvas, not a stripped-down viewer.
-        await expect(page.locator('#cb-shapes-toolbar')).toHaveCount(1)
-        // Place search is map-base chrome, so its presence proves the pin took.
-        await expect(page.locator('#cb-map-bg')).toHaveCount(1)
-    })
-
-    test('/base/:id on a map base canonicalizes to /map/:id', async ({ page }) => {
-        await mockBase(page, {
-            base: baseRow({ id: BASE_ID, type: 'map', anchor: ANCHOR, landing: LANDING }),
-        })
-        await page.goto(`/base/${BASE_ID}?vx=1&vy=2&vs=3`)
-        await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
-
-        await expect(page).toHaveURL(new RegExp(`/map/${BASE_ID}`))
-        await page.waitForTimeout(1000)
-
-        // The query string has to survive the hop, or a link shared before this
-        // feature loses its viewport hand-off in transit. It is not still IN the
-        // URL — the canvas consumes vx/vy/vs once and strips them by design — so
-        // the proof is that the camera honoured it: an explicit param view
-        // outranks the row's landing view, being the more specific request.
-        const camera = await page.evaluate(readCamera)
-        expect(camera.scale).toBeCloseTo(3, 5)
-        expect(camera.tx).toBeCloseTo(1, 5)
-        expect(camera.ty).toBeCloseTo(2, 5)
-    })
-
-    test('a board base is left on /base/:id', async ({ page }) => {
-        await mockBase(page, { base: baseRow({ id: BASE_ID, type: 'board' }) })
-        await page.goto(`/base/${BASE_ID}`)
-        await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
-        await page.waitForTimeout(500)
-
-        await expect(page).toHaveURL(new RegExp(`/base/${BASE_ID}`))
-        await expect(page.locator('#cb-base-switcher')).toHaveCount(1)
+        // A working canvas, not a stripped-down viewer...
+        await expect(page.locator('#mc-shapes-toolbar')).toHaveCount(1)
+        // ...drawn on the map backdrop.
+        await expect(page.locator('#mc-map-bg')).toHaveCount(1)
     })
 
     test('share and place search do not overlap on a map base', async ({ page }) => {
         await mockBase(page, {
-            base: baseRow({ id: BASE_ID, type: 'map', anchor: ANCHOR, landing: LANDING }),
+            base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
         await page.goto(`/map/${BASE_ID}`)
         await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
         await page.waitForTimeout(1000)
 
-        const share = await page.locator('#cb-share-button').boundingBox()
+        const share = await page.locator('#mc-share-button').boundingBox()
         const search = await page.locator('input[type="text"]').first().boundingBox()
         expect(share).not.toBeNull()
         expect(search).not.toBeNull()
@@ -261,50 +224,42 @@ test.describe('sharing a map stamps its geography on the base row', () => {
     // past the default per-test budget on a cold dev server.
     test.setTimeout(90_000)
 
-    test('createBase carries the type, the anchor and the landing view', async ({
+    test('createBase carries the anchor and the landing view', async ({
         page,
         context,
     }) => {
         const requests = await mockBase(page, { base: null })
         await page.goto('/')
         await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
+        await page.waitForSelector('#mc-map-bg', { timeout: 20_000 })
 
-        // Draw something first: Share refuses an empty canvas.
-        await page.click('[aria-label="Rectangle / Square"]')
-        await page.mouse.move(400, 300)
-        await page.mouse.down()
-        await page.mouse.move(560, 420, { steps: 8 })
-        await page.mouse.up()
-        await page.waitForTimeout(300)
-
-        // Switch to the map and let the (~1MB) maplibre chunk land — sharing
-        // before it does is exactly what the button's readiness guard prevents.
-        await page.click('[aria-label="Switch base"]')
-        await page.click('[role="option"]:has-text("Map")')
-        await page.waitForSelector('#cb-map-bg', { timeout: 20_000 })
-
-        // First visit to a map base asks where to start. Skipping accepts the
-        // timezone city as the anchor — which is precisely the case that used to
-        // break sharing: that anchor was never persisted anywhere, so a
-        // recipient re-derived a different one from their own timezone.
-        // It renders only once the provider state flips to 'map', a beat after
-        // the container appears — so wait for the button itself, then confirm
-        // the portal actually emptied before touching anything behind it.
+        // A base that has never settled on a place asks where to start.
+        // Skipping accepts the timezone city as the anchor — precisely the case
+        // that used to break sharing: that anchor was never persisted anywhere,
+        // so a recipient re-derived a different one from their own timezone.
         await page.waitForFunction(
             () =>
-                Array.from(document.querySelectorAll('.modal-portal button')).some(
-                    (b) => (b.textContent || '').includes('Skip, use')
-                ),
+                Array.from(
+                    document.querySelectorAll('.modal-portal button')
+                ).some((b) => (b.textContent || '').includes('Skip, use')),
             { timeout: 20_000 }
         )
         await page.getByRole('button', { name: /Skip, use/ }).click()
         await page
             .getByRole('button', { name: /Skip, use/ })
             .waitFor({ state: 'detached', timeout: 10_000 })
-        await page.waitForTimeout(1500)
+        await page.waitForTimeout(800)
+
+        // Draw something: Share refuses an empty canvas.
+        await page.click('[aria-label="Circle"]')
+        await page.mouse.move(400, 300)
+        await page.mouse.down()
+        await page.mouse.move(560, 420, { steps: 8 })
+        await page.mouse.up()
+        await page.waitForTimeout(400)
 
         context.on('page', (p) => void p.close().catch(() => {}))
-        await page.click('#cb-share-button')
+        await page.click('#mc-share-button')
         await page.click('button:has-text("Yes, share")')
         await page.waitForTimeout(1500)
 
@@ -315,10 +270,6 @@ test.describe('sharing a map stamps its geography on the base row', () => {
             .at(-1)
         expect(createBase).toBeTruthy()
         const object = createBase.variables.object
-
-        // Without the type, the row takes the 'board' default and the recipient
-        // opens a whiteboard with every geo object hidden.
-        expect(object.type).toBe('map')
 
         // The georeference. Elements store surface pixels measured against it,
         // so a null here is the difference between pins on Elland Road and pins
@@ -340,39 +291,6 @@ test.describe('sharing a map stamps its geography on the base row', () => {
         // The link points at the map route.
         await expect(page.locator('text=/\\/map\\//')).toHaveCount(1)
     })
-
-    test('a board base still shares as a board, with no geo columns', async ({
-        page,
-        context,
-    }) => {
-        const requests = await mockBase(page, { base: null })
-        await page.goto('/')
-        await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
-
-        await page.click('[aria-label="Rectangle / Square"]')
-        await page.mouse.move(400, 300)
-        await page.mouse.down()
-        await page.mouse.move(560, 420, { steps: 8 })
-        await page.mouse.up()
-        await page.waitForTimeout(300)
-
-        context.on('page', (p) => void p.close().catch(() => {}))
-        await page.click('#cb-share-button')
-        await page.click('button:has-text("Yes, share")')
-        await page.waitForTimeout(1200)
-
-        // ensureBackgroundBase fires its own createBase on the first canvas
-        // mutation, so the share-time call is the LAST one.
-        const createBase = requests
-            .filter((r) => r.operationName === 'createBase')
-            .at(-1)
-        expect(createBase).toBeTruthy()
-        const object = createBase.variables.object
-        expect(object.type).toBe('board')
-        // A whiteboard has no geography; the columns stay null.
-        expect(object.mapAnchorLng).toBeUndefined()
-        expect(object.landingLng).toBeUndefined()
-    })
 })
 
 test.describe('re-sharing an already-persisted base', () => {
@@ -383,8 +301,7 @@ test.describe('re-sharing an already-persisted base', () => {
         const requests = await mockBase(page, {
             base: baseRow({
                 id: BASE_ID,
-                type: 'map',
-                isPublic: false,
+                                isPublic: false,
                 anchor: ANCHOR,
                 landing: LANDING,
             }),
@@ -397,7 +314,7 @@ test.describe('re-sharing an already-persisted base', () => {
         await page.waitForTimeout(1200)
 
         context.on('page', (p) => void p.close().catch(() => {}))
-        await page.click('#cb-share-button')
+        await page.click('#mc-share-button')
         await page.click('button:has-text("Yes, share")')
         await page.waitForTimeout(1200)
 
@@ -417,10 +334,10 @@ test.describe('re-sharing an already-persisted base', () => {
         // The prompt gates on "this base has never settled on a place". A base
         // carrying a server anchor very much has — just not by this person.
         await mockBase(page, {
-            base: baseRow({ id: BASE_ID, type: 'map', anchor: ANCHOR, landing: LANDING }),
+            base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
         await page.goto(`/map/${BASE_ID}`)
-        await page.waitForSelector('#cb-map-bg', { timeout: 20_000 })
+        await page.waitForSelector('#mc-map-bg', { timeout: 20_000 })
         await page.waitForTimeout(2500)
 
         await expect(

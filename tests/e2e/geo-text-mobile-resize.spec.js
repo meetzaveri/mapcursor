@@ -36,10 +36,9 @@ const MIN_TOUCH_TARGET_PX = 20
 
 const geoTextRecord = (id) => ({
     id,
-    componentType: 'geoText',
-    objectClass: 'geo',
+    componentType: 'text',
     children: null,
-    metadata: { content: LABEL, fontSize: 18, baseTypeScope: 'map' },
+    metadata: { content: LABEL, fontSize: 18 },
     x: 0, x1: 0, x2: 0, y: 0, y1: 0, y2: 0,
     fill: 'transparent', width: 120, height: 36,
     iconStroke: null, stroke: null, linewidth: 2, strokeType: null,
@@ -69,7 +68,7 @@ async function openMapWithLabel(page) {
     })
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
-        localStorage.setItem('craftbase_welcome_dismissed', '1')
+        localStorage.setItem('mapcursor_welcome_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.locator(`text=${LABEL}`).first().waitFor({ timeout: 15_000 })
@@ -77,9 +76,9 @@ async function openMapWithLabel(page) {
     // Zoom out through the ZUI — never by writing scene.scale/translation
     // directly, which desyncs the ZUI's own camera and corrupts clientToSurface.
     await page.evaluate((s) => {
-        window.__cbZui.zoomSet(s, 0, 0)
+        window.__mcZui.zoomSet(s, 0, 0)
         window.dispatchEvent(new CustomEvent('zoomChanged', { detail: { scale: s } }))
-        window.__cbTwo.update()
+        window.__mcTwo.update()
     }, COUNTY_SCALE)
 
     // Centre the label so the gesture has room on every side.
@@ -88,11 +87,11 @@ async function openMapWithLabel(page) {
             (n) => n.textContent === label
         )
         const r = el.getBoundingClientRect()
-        window.__cbZui.translateSurface(
+        window.__mcZui.translateSurface(
             window.innerWidth / 2 - (r.left + r.width / 2),
             window.innerHeight / 2 - (r.top + r.height / 2)
         )
-        window.__cbTwo.update()
+        window.__mcTwo.update()
     }, LABEL)
 }
 

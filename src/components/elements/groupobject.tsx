@@ -250,44 +250,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         if (batchEntries.length > 0) {
             recordBatchToHistoryLog(batchEntries)
 
-            // The move relocated every member's ports (shapes) and endpoints
-            // (arrows), but connectors that cross the group boundary weren't
-            // translated with it: an outside arrow docked to a moved shape is
-            // still at the old port, and a moved arrow docked to an outside
-            // shape dragged its endpoint off that port. Announce every port
-            // bound to/by a member so newCanvas re-glues + re-fans them (for
-            // fully-internal connectors the restack is an idempotent no-op).
-            const ports: { shapeId: string; edge: string }[] = []
-            const seen = new Set<string>()
-            const collect = (shapeId: unknown, edge: unknown): void => {
-                if (typeof shapeId !== 'string' || typeof edge !== 'string') {
-                    return
-                }
-                const key = `${shapeId}|${edge}`
-                if (seen.has(key)) return
-                seen.add(key)
-                ports.push({ shapeId, edge })
-            }
-            const store = stateRefForComponentStore?.current ?? {}
-            childrenIds.forEach((childId: string) => {
-                const row = store[childId]
-                if (!row) return
-                if (row.componentType === 'arrowLine') {
-                    collect(row.tailShapeId, row.tailEdge)
-                    collect(row.headShapeId, row.headEdge)
-                    return
-                }
-                Object.values(store).forEach((r: ShapeLike) => {
-                    if (r?.componentType !== 'arrowLine') return
-                    if (r.tailShapeId === childId) collect(childId, r.tailEdge)
-                    if (r.headShapeId === childId) collect(childId, r.headEdge)
-                })
-            })
-            if (ports.length) {
-                window.dispatchEvent(
-                    new CustomEvent('restackPorts', { detail: { ports } })
-                )
-            }
         }
         // Advance the baseline even if nothing recorded, so we don't re-scan on
         // every subsequent mouseup at the same position.
@@ -573,7 +535,7 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 coreObject.elementData = item
                 // Seed zoom-resistance on the copy from the current camera. The
                 // originals get this from their own component; a copy is raw
-                // factory output, so without it a grouped pin/geoText collapses
+                // factory output, so without it a grouped pin/text collapses
                 // to world size for the life of the selection.
                 applyCounterScaleToCopy(
                     coreObject,
@@ -657,41 +619,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             x: O.x + s * (px - O.x),
             y: O.y + s * (py - O.y),
         })
-
-        // Collect every port bound to/by a member so newCanvas re-glues the
-        // connectors after the members move/resize (mirrors commitGroupMove).
-        const restackMemberPorts = (childrenIds: string[]): void => {
-            const store = stateRefForComponentStore?.current ?? {}
-            const ports: { shapeId: string; edge: string }[] = []
-            const seen = new Set<string>()
-            const collect = (shapeId: unknown, edge: unknown): void => {
-                if (typeof shapeId !== 'string' || typeof edge !== 'string')
-                    return
-                const key = `${shapeId}|${edge}`
-                if (seen.has(key)) return
-                seen.add(key)
-                ports.push({ shapeId, edge })
-            }
-            childrenIds.forEach((childId) => {
-                const row = store[childId]
-                if (!row) return
-                if (row.componentType === 'arrowLine') {
-                    collect(row.tailShapeId, row.tailEdge)
-                    collect(row.headShapeId, row.headEdge)
-                    return
-                }
-                Object.values(store).forEach((r: ShapeLike) => {
-                    if (r?.componentType !== 'arrowLine') return
-                    if (r.tailShapeId === childId) collect(childId, r.tailEdge)
-                    if (r.headShapeId === childId) collect(childId, r.headEdge)
-                })
-            })
-            if (ports.length) {
-                window.dispatchEvent(
-                    new CustomEvent('restackPorts', { detail: { ports } })
-                )
-            }
-        }
 
         // Bake a finished uniform scale `s` (anchored at surface point `O`) into
         // every real member: update the store, mutate the live Two.js object,
@@ -899,7 +826,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
 
             if (batchEntries.length > 0) {
                 recordBatchToHistoryLog(batchEntries)
-                restackMemberPorts(childrenIds)
             }
             two.update()
         }

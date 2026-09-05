@@ -8,8 +8,8 @@ import { getPointCircle, getPointLabelNode } from '../factory/point'
 import { POINT_LABEL_SIZES } from '../constants/misc'
 import { capCenterOffset } from '../utils/fontMetrics'
 import {
-    GEO_TEXT_RESIST,
-    GEO_TEXT_RESIST_CHANGED_EVENT,
+    TEXT_RESIST,
+    TEXT_RESIST_CHANGED_EVENT,
 } from '../constants/misc'
 import {
     computeCounterScale,
@@ -105,13 +105,10 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             setDefaultTextFontFamily,
         } = deps
 
-        // The map circle: componentType 'circle' carrying objectClass 'geo'.
         // Needed before the default sync below, which is why it is read here
         // rather than alongside the other selection lookups further down.
         const selectedElementData = selectedComponent?.group?.data?.elementData
-        const isGeoCircle =
-            selectedElementData?.componentType === 'circle' &&
-            selectedElementData?.objectClass === 'geo'
+        const isCircle = selectedElementData?.componentType === 'circle'
 
         // 1. Update the matching default. Opacity is deliberately excluded — it
         // is a per-element property only and must never persist as a default,
@@ -124,15 +121,12 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         // so the same default reads correctly against the point's own ladder
         // and the whiteboard's. Skipped entirely in preview mode.
         //
-        // A map circle's fill opts out too, for the same per-element reason:
-        // it is that circle's identity on the basemap, not a shape preference.
-        // Syncing it would repaint the next whiteboard rectangle in map red,
-        // and the reverse would seed the next map circle with the whiteboard's
-        // pale #f4f4f2 — which at 50% over a basemap is invisible. Only fill,
-        // not stroke/width/type: those keep syncing, matching area and route.
+        // A circle's fill opts out too, for the same per-element reason: it is
+        // that circle's identity on the basemap, not a shape preference. Only
+        // fill, not stroke/width/type: those keep syncing, like area and route.
         if (!opts?.preview) {
             if (propertyKey === 'fill') {
-                if (!isGeoCircle) setDefaultFill(value)
+                if (!isCircle) setDefaultFill(value)
             } else if (propertyKey === 'stroke') setDefaultStrokeColor(value)
             else if (propertyKey === 'linewidth') setDefaultLinewidth(value)
             else if (propertyKey === 'strokeType')
@@ -150,15 +144,15 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         if (!id) return
 
         // Zoom-resistance is a real column, so this is a plain scalar write —
-        // no metadata merge. The type gate matters: nothing but geoText reads
+        // no metadata merge. The type gate matters: nothing but text reads
         // the column, and letting it onto another componentType would put a
         // value on a row that ignores it and then ship that value into every
         // export and every share insert.
         if (propertyKey === 'zoomResistant') {
-            const geoTextGroup = selectedComponent?.group?.data
-            if (geoTextGroup?.elementData?.componentType !== 'geoText') return
-            if (geoTextGroup.elementData) {
-                geoTextGroup.elementData.zoomResistant = value
+            const textGroup = selectedComponent?.group?.data
+            if (textGroup?.elementData?.componentType !== 'text') return
+            if (textGroup.elementData) {
+                textGroup.elementData.zoomResistant = value
             }
             updateComponentBulkPropertiesInLocalStore(id, {
                 zoomResistant: value,
@@ -168,8 +162,8 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             // selector instance. Filtered by id on the far side, so the other
             // labels on this base are untouched.
             window.dispatchEvent(
-                new CustomEvent(GEO_TEXT_RESIST_CHANGED_EVENT, {
-                    detail: { id, resist: value ? GEO_TEXT_RESIST : 0 },
+                new CustomEvent(TEXT_RESIST_CHANGED_EVENT, {
+                    detail: { id, resist: value ? TEXT_RESIST : 0 },
                 })
             )
             return

@@ -7,7 +7,6 @@ import ZoomOutIcon from '../assets/zoom-out.svg?react'
 type ZuiWrapperLike = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     zui: any
-    syncBackgroundToCamera?: () => void
     notifyCameraChange?: () => void
 } | null
 
@@ -15,10 +14,8 @@ const ZoomControls = (): ReactElement => {
     const {
         zuiInBase,
         twoJSInstance,
-        scaleToDisplay,
         zoomStep,
-        activeBaseType,
-        readBaseTypeConfig,
+        readBackdropConfig,
     } = useBaseContext()
     const zui = zuiInBase as ZuiWrapperLike
     const [scale, setScale] = useState(1)
@@ -40,15 +37,13 @@ const ZoomControls = (): ReactElement => {
 
     const zoom = (direction: 1 | -1): void => {
         if (!zui || !twoJSInstance) return
-        // Step size belongs to the base: a whole map zoom level on the map,
-        // finer grain on the whiteboard (BaseTypeProvider.zoomStep).
-        const delta = direction * (zoomStep || 0.2)
+        // One whole map zoom level per click (MAP_ZOOM_STEP).
+        const delta = direction * (zoomStep || 1)
         zui.zui.zoomBy(delta, window.innerWidth / 2, window.innerHeight / 2)
         twoJSInstance.update()
-        zui.syncBackgroundToCamera?.()
         // This zoom happens outside addZUI's event handlers, so nothing else
-        // will announce it — without this the active base's backdrop (e.g. the
-        // map) stays frozen at the previous camera.
+        // will announce it — without this the map backdrop stays frozen at the
+        // previous camera.
         zui.notifyCameraChange?.()
         window.dispatchEvent(
             new CustomEvent('zoomChanged', {
@@ -57,16 +52,14 @@ const ZoomControls = (): ReactElement => {
         )
     }
 
-    // On the map, a percentage of an arbitrary surface is meaningless — and
-    // once the range reaches whole-world zoom it reads "0%". Show the map zoom
-    // level instead, which is the number the camera is actually expressed in
+    // A percentage of an arbitrary surface is meaningless on a map — and once
+    // the range reaches whole-world zoom it reads "0%". Show the map zoom level
+    // instead, which is the number the camera is actually expressed in
     // (mapZoom = anchor.zoom + log2(scale)).
-    const mapAnchor = activeBaseType === 'map' ? readBaseTypeConfig().mapAnchor : null
-    const label = scaleToDisplay
-        ? scaleToDisplay(scale)
-        : mapAnchor
-          ? `z${Math.round(mapAnchor.zoom + Math.log2(scale))}`
-          : `${Math.round(scale * 100)}%`
+    const mapAnchor = readBackdropConfig().mapAnchor
+    const label = mapAnchor
+        ? `z${Math.round(mapAnchor.zoom + Math.log2(scale))}`
+        : `${Math.round(scale * 100)}%`
 
     return (
         <div
