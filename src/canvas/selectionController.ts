@@ -12,7 +12,7 @@ import {
     measureTextWidth,
     type FontSpec,
 } from '../utils/textLayout'
-import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
+import { DEFAULT_TEXT_FONT_FAMILY, HANDLE_STROKE } from '../constants/misc'
 import { markSelectionChrome } from '../utils/svgExportShared'
 
 // Two.js scene shapes carry codebase-specific bookkeeping (elementData,
@@ -37,6 +37,14 @@ interface ShapeAdapter {
     // drag scales the font size of a standalone text block (no w/h change). The
     // box still tracks the rendered block via getLocalSize.
     resizeMode?: 'dimension' | 'font'
+    // Aspect ratio is held for the whole gesture, on every handle — what shift
+    // does on a corner, permanently. Set for the circle, which is a proximity
+    // radius and so has no oval state to be dragged into.
+    lockAspect?: boolean
+    // Ring colour for the 4 corner handles, when this shape wants something
+    // other than the theme ink the box is drawn in. The circle takes the shared
+    // geo handle indigo so its grab points match route's and area's.
+    handleStroke?: string
 }
 
 // Font spec for a single standalone text line node.
@@ -97,9 +105,18 @@ const TEXT_ADAPTER: ShapeAdapter = {
     minHeight: 20,
 }
 
+// A circle is drawn centre-out as a radius (see isRadialDraw in newCanvas), so
+// it is round by construction — resize has to keep it that way or the mark
+// stops meaning "everything within this distance".
+const CIRCLE_ADAPTER: ShapeAdapter = {
+    ...DEFAULT_ADAPTER,
+    lockAspect: true,
+    handleStroke: HANDLE_STROKE,
+}
+
 const SHAPE_ADAPTERS: Record<string, ShapeAdapter> = {
     rectangle: DEFAULT_ADAPTER,
-    circle: DEFAULT_ADAPTER,
+    circle: CIRCLE_ADAPTER,
     diamond: DEFAULT_ADAPTER,
     newText: TEXT_ADAPTER,
 }
@@ -405,6 +422,7 @@ export default class SelectionController {
         this.targets.add(group)
 
         this._bringToFront()
+        this._applyHandleStroke()
         this.ui.visible = true
         // Per-shape `.dragger-picker { cursor: pointer }` (common.css) sits on
         // the SVG node directly under the cursor and beats the root's inline
@@ -456,8 +474,21 @@ export default class SelectionController {
     applyThemeStroke(): void {
         const stroke = getSelectionStroke()
         if (this.box) this.box.stroke = stroke
-        if (this.endpoints) this.endpoints.stroke = stroke
+        this._applyHandleStroke()
         this.two.update()
+    }
+
+    /**
+     * Ring the 4 corner handles: the active adapter's colour if it names one,
+     * the theme ink otherwise. The `ui` overlay is built once and reused for
+     * every selection, so this has to run on each attach — not just at build
+     * time — or a circle's indigo would follow the selection onto the next
+     * shape, and the theme toggle would repaint it as ink.
+     */
+    private _applyHandleStroke(): void {
+        if (!this.endpoints) return
+        this.endpoints.stroke =
+            this.currentAdapter?.handleStroke ?? getSelectionStroke()
     }
 
     // For CSS-transform move-drags: hand back the selection-chrome SVG node and
@@ -863,8 +894,18 @@ export default class SelectionController {
             'e-resize',
             'w-resize',
         ].includes(corner.name)
-        if (e.shiftKey && !isEdgeOnly) {
-            const ratio = Math.min(Math.abs(scaleX), Math.abs(scaleY))
+        // Locked either by the gesture (shift on a corner) or by the shape
+        // itself (a circle, always). The edge arm is a guard, not a live path:
+        // hitTest only offers edge handles on a rectangle, so a circle carries
+        // the 4 corners alone. It matters if that ever widens, because an edge
+        // handle drives ONE dimension and the corner rule — min of both — would
+        // pick up the untouched axis's ratio of 1 and freeze the drag dead.
+        if (this.currentAdapter.lockAspect || (e.shiftKey && !isEdgeOnly)) {
+            const isVerticalEdge =
+                corner.name === 'n-resize' || corner.name === 's-resize'
+            const ratio = isEdgeOnly
+                ? Math.abs(isVerticalEdge ? scaleY : scaleX)
+                : Math.min(Math.abs(scaleX), Math.abs(scaleY))
             scaleX = scaleX >= 0 ? ratio : -ratio
             scaleY = scaleY >= 0 ? ratio : -ratio
             newWidth = initialWidth * scaleX

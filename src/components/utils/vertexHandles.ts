@@ -21,6 +21,7 @@ import {
     attachStrokeCounterScale,
 } from '../../utils/handleScale'
 import { scheduleRender } from '../../utils/renderScheduler'
+import { HANDLE_STROKE } from '../../constants/misc'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
@@ -34,7 +35,6 @@ const HANDLE_RADIUS = 5
 const DEFAULT_HIT_BAND_PX = 22
 
 const HANDLE_FILL = '#f4f4f2'
-const HANDLE_STROKE = '#6965db'
 
 /**
  * Fired when undo/redo reverts a vertex array. Element components freeze their

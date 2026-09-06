@@ -2,4 +2,4 @@
 User-agent: *
 Disallow:
 
-Sitemap: https://craftbase.org/sitemap.xml
+Sitemap: https://mapcursor.com/sitemap.xml

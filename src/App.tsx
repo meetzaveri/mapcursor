@@ -17,7 +17,7 @@ import BaseViewContainer from './views/Base'
 import HomePageViewContainer from './views/Home'
 import SupportViewContainer from './views/Support'
 import PrivacyViewContainer from './views/Privacy'
-import CraftbaseLoader from './components/common/craftbaseLoader'
+import MapcursorLoader from './components/common/mapcursorLoader'
 
 import routes from './routes'
 import { INSERT_USER_ONE } from './schema/mutations'
@@ -132,7 +132,7 @@ function AppInit({ children }: { children: React.ReactNode }) {
         }
     }, [])
 
-    if (!userReady) return <CraftbaseLoader />
+    if (!userReady) return <MapcursorLoader />
 
     return <>{children}</>
 }

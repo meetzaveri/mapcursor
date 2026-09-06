@@ -125,8 +125,6 @@ const PrimarySidebar = (): ReactElement => {
                         y2: 0,
                         baseId,
                         baseName: null,
-                        radius: null,
-                        iconStroke: null,
                         isDummy: null,
                         createdAt: null,
                         metadata: {
@@ -166,8 +164,6 @@ const PrimarySidebar = (): ReactElement => {
                 y2: 0,
                 baseId,
                 baseName: null,
-                radius: null,
-                iconStroke: null,
                 isDummy: null,
                 createdAt: null,
                 metadata: {
@@ -244,8 +240,6 @@ const PrimarySidebar = (): ReactElement => {
             y2: 0,
             baseId,
             baseName: null,
-            radius: null,
-            iconStroke: null,
             isDummy: null,
             createdAt: null,
             metadata: {
@@ -365,7 +359,12 @@ const PrimarySidebar = (): ReactElement => {
 
                 setTimeout(() => {
                     if (DRAW_SHAPE_TYPES.includes(label)) {
-                        setHintText('Click and drag to draw shape')
+                        // Circle is the only drag-to-draw tool, and it draws
+                        // centre-out as a radius — say so, or the first drag
+                        // reads as a bounding box that mysteriously recentres.
+                        setHintText(
+                            'Click the centre, then drag out the radius'
+                        )
                     } else {
                         setHintText('Click anywhere to place element there.')
                     }
@@ -411,8 +410,6 @@ const PrimarySidebar = (): ReactElement => {
                                 y2: 0,
                                 baseId,
                                 baseName: null,
-                                radius: null,
-                                iconStroke: null,
                                 isDummy: null,
                                 createdAt: null,
                                 metadata: {
@@ -465,8 +462,6 @@ const PrimarySidebar = (): ReactElement => {
                         y2: 0,
                         baseId,
                         baseName: null,
-                        radius: null,
-                        iconStroke: null,
                         isDummy: null,
                         createdAt: null,
                         metadata: {

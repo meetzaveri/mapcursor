@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import routes from '../../routes'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 
-const LAST_UPDATED = 'August 30, 2026'
+const LAST_UPDATED = 'September 6, 2026'
 
 const ChevronLeft = (): ReactNode => (
     <svg
@@ -46,7 +46,7 @@ const PrivacyPage: React.FC = () => {
             <nav className="sticky top-0 z-10 bg-sidebar border-b border-border-panel shadow-sm">
                 <div className="w-full max-w-2xl laptop:max-w-full mx-auto px-4 tablet-landscape:px-6 py-3 flex items-center justify-between">
                     <span className="text-ink font-bold text-sm tablet-landscape:text-base tracking-tight font-display">
-                        Craftbase
+                        Mapcursor
                     </span>
                     <Link
                         to={routes.index}
@@ -80,27 +80,26 @@ const PrivacyPage: React.FC = () => {
                         In short
                     </div>
                     <p className="text-xs tablet-landscape:text-sm text-ink-mid leading-relaxed">
-                        Craftbase doesn't ask for your name, email or any
+                        Mapcursor doesn't ask for your name, email or any
                         sign-up. You get an anonymous identity with a random
                         name, and it is stored in your own browser. Whatever you
                         draw stays in your browser until you choose to share a
                         canvas. Once you share it, anyone with the link can view
-                        it. For analytics we use a tool that doesn't set cookies
-                        and doesn't store your IP address.
+                        it.
                     </p>
                     <p className="text-xs tablet-landscape:text-sm text-ink-mid leading-relaxed mt-2">
-                        One thing to note about maps. A canvas can use a map as
-                        its backdrop. We ask your browser for your location only
-                        when you tap &ldquo;Use my current location&rdquo;,
-                        never automatically. And when you share a map canvas,
-                        the coordinate it is pinned to becomes public along with
-                        it.
+                        One thing to note about maps. Every canvas is drawn on a
+                        map, so a canvas always has to open somewhere on Earth.
+                        We ask your browser for your location only when you tap
+                        &ldquo;Use my current location&rdquo;, never
+                        automatically. And when you share a canvas, the
+                        coordinate it is pinned to becomes public along with it.
                     </p>
                 </div>
 
                 <Section title="Who you are to us">
                     <p>
-                        When you first open Craftbase, we create an anonymous
+                        When you first open Mapcursor, we create an anonymous
                         identity for you. It is a random ID plus a randomly
                         picked nickname, for example
                         &ldquo;tropical&nbsp;owl&rdquo;. We store this ID in
@@ -111,10 +110,10 @@ const PrivacyPage: React.FC = () => {
                     </p>
                     <p>
                         We keep this anonymous ID in our database along with a
-                        counter of how many times Craftbase has been opened from
-                        your browser. The app needs both to function. It is not
-                        linked to your real identity, and we don't share or sell
-                        it.
+                        counter of how many times Mapcursor has been opened from
+                        your browser and the time of your most recent visit. The
+                        app needs these to function. None of it is linked to
+                        your real identity, and we don't share or sell it.
                     </p>
                     <p>
                         Since this identity lives in your browser's storage, you
@@ -144,20 +143,22 @@ const PrivacyPage: React.FC = () => {
 
                 <Section title="Maps and location">
                     <p>
-                        A canvas can use a map as its backdrop instead of the
-                        blank whiteboard. A map has to open somewhere, so this
-                        is the only part of Craftbase that deals with location.
-                        Below is everything it does.
+                        Every canvas in Mapcursor is drawn on a map &mdash; that
+                        is the whole point of it. A map has to open somewhere,
+                        so a canvas is always pinned to a place on Earth. That
+                        makes location part of how Mapcursor works rather than
+                        an optional extra, so below is everything it does with
+                        one.
                     </p>
                     <p>
                         <strong>Your timezone, to pick an opening view.</strong>{' '}
-                        When you switch a canvas to a map for the first time, we
-                        read your browser's timezone (for example{' '}
-                        <em>Asia/Kolkata</em>) and open the map near a city in
-                        that zone. This needs no permission, and the value stays
-                        inside your browser. We never receive it. A timezone
-                        covers a country-sized region, so treat it as a rough
-                        guess and not as your location.
+                        When you open a new canvas, we read your browser's
+                        timezone (for example <em>Asia/Kolkata</em>) and open
+                        the map near a city in that zone. This needs no
+                        permission, and the value stays inside your browser. We
+                        never receive it. A timezone covers a country-sized
+                        region, so treat it as a rough guess and not as your
+                        location.
                     </p>
                     <p>
                         <strong>
@@ -181,21 +182,21 @@ const PrivacyPage: React.FC = () => {
                         you share.
                     </p>
                     <p>
-                        <strong>Sharing a map canvas publishes its pin.</strong>{' '}
-                        When you share a map canvas, two coordinates go up with
-                        it and become publicly viewable. One is the pin the map
-                        is anchored to. The other is the view you were looking
-                        at when you shared. Both are needed so that someone
-                        opening your link sees your drawing at the right place
-                        on Earth. Now consider the case where that pin came from
+                        <strong>Sharing a canvas publishes its pin.</strong>{' '}
+                        When you share a canvas, two coordinates go up with it
+                        and become publicly viewable. One is the pin the map is
+                        anchored to. The other is the view you were looking at
+                        when you shared. Both are needed so that someone opening
+                        your link sees your drawing at the right place on Earth.
+                        Now consider the case where that pin came from
                         &ldquo;Use my current location&rdquo;. Sharing then
                         publishes a coordinate derived from where you were. If
                         you don't want that, search for a nearby place first and
                         share from there.
                     </p>
                     <p>
-                        <strong>Map services we don't run.</strong> Two outside
-                        services make the map work. Your browser contacts them
+                        <strong>Services we don't run.</strong> A few outside
+                        services make the app work. Your browser contacts them
                         directly, so they can see your IP address and we never
                         see the request:
                     </p>
@@ -211,7 +212,8 @@ const PrivacyPage: React.FC = () => {
                             </a>{' '}
                             serves the map imagery, built on OpenStreetMap data.
                             It receives requests for the map area you are
-                            currently viewing.
+                            currently viewing. Because every canvas is a map,
+                            this happens whenever you open one.
                         </li>
                         <li>
                             <a
@@ -224,14 +226,23 @@ const PrivacyPage: React.FC = () => {
                             </a>
                             , run by the OpenStreetMap Foundation, answers place
                             searches. Whatever you type in the place-search box
-                            is sent to them to look up. We don't log or store
-                            your searches.
+                            is sent to them to look up. This happens only while
+                            you are actually typing in that box. We don't log or
+                            store your searches.
+                        </li>
+                        <li>
+                            <a
+                                href="https://policies.google.com/privacy"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-accent-dark font-semibold no-underline border-b border-accent-dark"
+                            >
+                                Google&nbsp;Fonts
+                            </a>{' '}
+                            serves the typefaces the interface is set in. Your
+                            browser fetches them when the page loads.
                         </li>
                     </ul>
-                    <p>
-                        Neither service is contacted unless you open a map
-                        canvas.
-                    </p>
                 </Section>
 
                 {/* <Section title="Analytics">
@@ -264,13 +275,18 @@ const PrivacyPage: React.FC = () => {
                     <ul className="list-disc pl-5 space-y-1">
                         <li>Your name, email or phone number</li>
                         <li>
-                            Background or continuous location tracking. On a map
-                            canvas we ask for your location only when you tap
-                            &ldquo;Use my current location&rdquo;, and only at
-                            that moment. We don't follow you after that. See{' '}
+                            Background or continuous location tracking. We ask
+                            for your location only when you tap &ldquo;Use my
+                            current location&rdquo;, and only at that moment. We
+                            don't follow you after that. See{' '}
                             <em>Maps and location</em> above.
                         </li>
                         <li>Device fingerprints or cross-site trackers</li>
+                        <li>
+                            Analytics of any kind. We run no analytics or
+                            tracking scripts at all. If that ever changes, this
+                            page will say so before it does.
+                        </li>
                         <li>
                             The contents of canvases you keep in local mode and
                             never share
@@ -297,17 +313,17 @@ const PrivacyPage: React.FC = () => {
                     <p>
                         Questions about this policy or a data request? Email{' '}
                         <a
-                            href="mailto:support@craftbase.org"
+                            href="mailto:support@mapcursor.com"
                             className="text-accent-dark font-semibold no-underline border-b border-accent-dark"
                         >
-                            support@craftbase.org
+                            support@mapcursor.com
                         </a>
                         .
                     </p>
                 </Section>
 
                 <p className="text-xs text-ink-muted leading-relaxed mt-8 pt-6 border-t border-border-panel">
-                    We may update this policy as Craftbase evolves. Any material
+                    We may update this policy as Mapcursor evolves. Any material
                     change will show up in the &ldquo;last updated&rdquo; date
                     above.
                 </p>

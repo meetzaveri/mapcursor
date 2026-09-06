@@ -125,7 +125,7 @@ const SET_LABELS = {
     POINT: 'Point',
     AREA: 'Area',
     ROUTE: 'Route',
-    CIRCLE: 'Circle',
+    CIRCLE: 'Radius Map',
 }
 
 interface ResolveSetKeyOptions {

@@ -129,8 +129,6 @@ interface ElementCloneSource {
     stroke: string | null
     strokeType: string | null
     linewidth: number | null
-    radius: number | null
-    iconStroke: string | null
     textColor: string | null
     opacity?: number | null
     metadata: unknown
@@ -186,8 +184,6 @@ export function cloneElementData(
         stroke: src.stroke,
         strokeType: src.strokeType,
         linewidth: src.linewidth,
-        radius: src.radius,
-        iconStroke: src.iconStroke,
         textColor: src.textColor,
         opacity: readOpacity(src),
         metadata: Array.isArray(src.metadata)

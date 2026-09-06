@@ -1,0 +1,221 @@
+/* Mapcursor startup loader — the cursor tracing a route across a folded map.
+   Keep this in sync with the copy inlined into #root in index.html, which has
+   to paint before the JS bundle loads. */
+
+.mc-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    /* Solid parchment only — the dot grid is canvas-only (behind the dotGrid
+       feature flag) and must never appear on the loader. */
+    background-color: #f5f0e8;
+    /* One cycle length for all three route animations. They describe the same
+       journey from three angles, so they must share a duration and a delay or
+       the cursor drifts off the head of the line it is drawing. */
+    --mc-cycle: 2.8s;
+}
+
+.dark .mc-loader {
+    background-color: #1c1814;
+}
+
+.mc-loader .mc-mark {
+    width: 132px;
+    height: 132px;
+    overflow: visible;
+}
+
+/* Ink for the map and the cursor. Driven here rather than from a `stroke`
+   attribute on each path so the mark can flip to cream on the dark backdrop —
+   CSS wins over an SVG presentation attribute, but only if the attribute is
+   absent do we avoid having to repeat the override for every path.
+
+   Scoped to .mc-map / .mc-cursor on purpose. A blanket `.mc-mark path` rule
+   would also catch the mask's path, whose #FFFFFF is what makes it reveal
+   anything — recolouring that to near-black hides the route entirely. */
+.mc-loader .mc-map path,
+.mc-loader .mc-cursor path {
+    stroke: #1a1612;
+}
+
+.dark .mc-loader .mc-map path,
+.dark .mc-loader .mc-cursor path {
+    stroke: #f3ece0;
+}
+
+/* The route keeps its amber in the markup — it reads against both backdrops,
+   so there is nothing to flip. */
+
+.mc-loader .mc-wordmark {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 600;
+    font-size: 22px;
+    /* Pinned, not `normal`: `normal` resolves off the font's own metrics, so
+       the column jumped when Fraunces finished loading and displaced the
+       fallback. */
+    line-height: 1;
+    letter-spacing: 0.5px;
+    color: #1a1612;
+}
+
+.dark .mc-loader .mc-wordmark {
+    color: #f3ece0;
+}
+
+.mc-loader .mc-caption {
+    margin-top: -10px;
+    font-family: 'Geist', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1;
+    letter-spacing: 0.3px;
+    color: #8c7e6a;
+}
+.mc-loader .mc-caption::after {
+    content: '';
+    animation: mcDots 1.4s steps(4, end) infinite;
+}
+
+@keyframes mcDots {
+    0% {
+        content: '';
+    }
+    25% {
+        content: '.';
+    }
+    50% {
+        content: '..';
+    }
+    75% {
+        content: '...';
+    }
+}
+
+/* --- The route animation ---------------------------------------------------
+
+   CSS, deliberately, and not SMIL.
+
+   SMIL runs on the document timeline, which does not start until the `load`
+   event — and this page blocks load on a render-blocking Google Fonts sheet
+   and the JS bundle. So the boot loader painted its map and then sat there
+   frozen for the whole startup, with the route group stuck at its `opacity=0`
+   attribute, before snapping into motion the instant load fired. That pause,
+   and the snap that ended it, were the whole of the reported jerk.
+
+   CSS animations start at the element's first style resolution, i.e. the frame
+   the loader paints, so there is nothing left to wait for.
+
+   Three rules that keep it seamless, all of which are load-bearing:
+
+   1. Frame 0 is the resting state: cursor parked at the route's start point at
+      full opacity, line not yet drawn. Whenever the animation cannot run at
+      all — reduced motion, no `offset-path`, a paint before the stylesheet —
+      that is what you see. The cursor is never absent from the start point.
+   2. The loop's rewind happens inside the fade-out window (92%–95%), where
+      opacity is 0. The cursor returning to the start and the line resetting to
+      undrawn are therefore never visible.
+   3. Keyframe 100% is identical to keyframe 0%, so the wrap has no
+      discontinuity to show.
+
+   `--mc-phase` is a negative animation-delay handed in by the React component
+   to carry the boot copy's elapsed phase across the hand-off; see
+   mapcursorLoader.tsx. It defaults to 0s, which is simply "start now". */
+
+.mc-loader .mc-route {
+    animation: mcRouteFade var(--mc-cycle) linear var(--mc-phase, 0s) infinite;
+}
+
+/* The wipe lives on the mask's path, not on the visible line — the line's own
+   dasharray is already spent on making it dotted. */
+.mc-loader .mc-route-wipe {
+    stroke-dashoffset: 106.231;
+    animation: mcRouteWipe var(--mc-cycle) linear var(--mc-phase, 0s) infinite;
+}
+
+/* `offset-path` is the CSS equivalent of the <animateMotion> this replaced: it
+   places the group's own origin on the path, exactly as animateMotion did, so
+   the cursor artwork needed no repositioning. `--mc-route-path` comes from the
+   component so ROUTE_D stays the single source of the route. */
+.mc-loader .mc-cursor {
+    offset-path: var(--mc-route-path);
+    offset-rotate: 0deg;
+    offset-distance: 0%;
+    animation: mcCursorTravel var(--mc-cycle) linear var(--mc-phase, 0s)
+        infinite;
+}
+
+/* Pre-Safari-16. The line still draws; the cursor just rests at the start. */
+@supports not (offset-path: path('M0 0')) {
+    .mc-loader .mc-cursor {
+        transform: translate(70px, 75px);
+        animation: none;
+    }
+}
+
+@keyframes mcRouteFade {
+    0%,
+    84% {
+        opacity: 1;
+    }
+    92%,
+    95% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+@keyframes mcCursorTravel {
+    0%,
+    6% {
+        offset-distance: 0%;
+    }
+    72%,
+    92% {
+        offset-distance: 100%;
+    }
+    93%,
+    100% {
+        offset-distance: 0%;
+    }
+}
+
+@keyframes mcRouteWipe {
+    0%,
+    6% {
+        stroke-dashoffset: 106.231;
+    }
+    72%,
+    92% {
+        stroke-dashoffset: 0;
+    }
+    93%,
+    100% {
+        stroke-dashoffset: 106.231;
+    }
+}
+
+/* Reduced motion gets the finished still frame — route drawn, cursor resting
+   at its end — rather than the bare map the SMIL version had to fall back to. */
+@media (prefers-reduced-motion: reduce) {
+    .mc-loader .mc-route,
+    .mc-loader .mc-route-wipe,
+    .mc-loader .mc-cursor {
+        animation: none;
+    }
+    .mc-loader .mc-route-wipe {
+        stroke-dashoffset: 0;
+    }
+    .mc-loader .mc-cursor {
+        offset-distance: 100%;
+    }
+    .mc-loader .mc-caption::after {
+        animation: none;
+        content: '...';
+    }
+}

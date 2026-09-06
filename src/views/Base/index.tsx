@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@apollo/client'
 
 import ErrorBoundary from './errorBoundary'
-import CraftbaseLoader from '../../components/common/craftbaseLoader'
+import MapcursorLoader from '../../components/common/mapcursorLoader'
 import { GET_COMPONENTS_FOR_BASE_QUERY } from '../../schema/queries'
 import { normalizeServerBaseConfig } from '../../baseTypes/serverConfig'
 import './index.css'
@@ -38,16 +38,16 @@ const BaseViewContainer: React.FC<BaseProps> = (props) => {
 
     if (isPersisted && loading) {
         return (
-            <Suspense fallback={<CraftbaseLoader />}>
+            <Suspense fallback={<MapcursorLoader />}>
                 <ErrorBoundary>
-                    <CraftbaseLoader caption="loading your canvas" />
+                    <MapcursorLoader caption="loading your map" />
                 </ErrorBoundary>
             </Suspense>
         )
     }
 
     return (
-        <Suspense fallback={<CraftbaseLoader />}>
+        <Suspense fallback={<MapcursorLoader />}>
             <ErrorBoundary>
                 <BaseViewPage {...props} serverBaseConfig={serverBaseConfig} />
             </ErrorBoundary>

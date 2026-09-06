@@ -39,8 +39,6 @@ export interface ComponentRecord {
     stroke: string | null
     linewidth: number | null
     strokeType: string | null
-    radius: number | null
-    iconStroke: string | null
     textColor: string | null
     /**
      * Per-element opacity (0–1). A real column; `metadata.opacity` is the
@@ -251,10 +249,7 @@ export interface BaseContextValue {
     /** Live backdrop config (the map anchor) for the JSON export envelope. */
     readBackdropConfig: () => MapBackdropConfig
     /** Rasterize the live backdrop for PNG export; null when there's nothing. */
-    captureBackdrop: (
-        width: number,
-        height: number
-    ) => Promise<string | null>
+    captureBackdrop: (width: number, height: number) => Promise<string | null>
 }
 
 // --- Utility exports ---------------------------------------------------

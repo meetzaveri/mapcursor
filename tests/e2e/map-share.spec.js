@@ -10,7 +10,12 @@
 // base row, and the recipient's camera opens on the shared view — once.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES, readCamera } from './helpers/index.js'
+import {
+    assertComponentColumns,
+    baseRow,
+    GQL_MOCK_RESPONSES,
+    readCamera,
+} from './helpers/index.js'
 // The landing camera is derived from pure projection math, so it is computed in
 // Node. It used to run in-page via `await import('/src/…​.ts')`, which only the
 // Vite dev server can serve — against the deploy preview's bundle that 404s.
@@ -33,10 +38,21 @@ const point = (id, x, y) => ({
     componentType: 'point',
     children: null,
     metadata: { content: 'The Old Peacock' },
-    x, x1: 0, x2: 0, y, y1: 0, y2: 0,
-    fill: '#e5484d', width: 10, height: 10,
-    iconStroke: null, stroke: '#e5484d', linewidth: 2, strokeType: null,
-    textColor: '#3A342C', opacity: 1, position: 1,
+    x,
+    x1: 0,
+    x2: 0,
+    y,
+    y1: 0,
+    y2: 0,
+    fill: '#e5484d',
+    width: 10,
+    height: 10,
+    stroke: '#e5484d',
+    linewidth: 2,
+    strokeType: null,
+    textColor: '#3A342C',
+    opacity: 1,
+    position: 1,
 })
 
 /**
@@ -47,18 +63,31 @@ async function mockBase(page, { base, components = [] } = {}) {
     const requests = []
     await page.route('**/v1/graphql', async (route) => {
         let data = {}
+        let errors = null
         try {
             const body = JSON.parse(route.request().postData() || '{}')
             requests.push(body)
-            data =
-                body.operationName === 'getComponentsForBase'
-                    ? { base, components }
-                    : (GQL_BASE_MOCKS[body.operationName] ?? {})
+            // Answer like Hasura does, INCLUDING its refusals. A mock that
+            // fulfills every payload is what let a dead `radius` field reach
+            // production green: the suite proved the share flow ran, never that
+            // the server would accept what it sent. Rejecting here means any
+            // test that shares fails at the moment of the bad write.
+            try {
+                assertComponentColumns([body])
+            } catch (err) {
+                errors = [{ message: err.message }]
+            }
+            if (!errors) {
+                data =
+                    body.operationName === 'getComponentsForBase'
+                        ? { base, components }
+                        : (GQL_BASE_MOCKS[body.operationName] ?? {})
+            }
         } catch (_) {}
         await route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({ data }),
+            body: JSON.stringify(errors ? { errors } : { data }),
         })
     })
     await page.addInitScript(() => {
@@ -109,7 +138,9 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
         expect(actual.scale).not.toBe(1)
     })
 
-    test('a second visit keeps the recipient’s own camera', async ({ page }) => {
+    test('a second visit keeps the recipient’s own camera', async ({
+        page,
+    }) => {
         await mockBase(page, {
             base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
@@ -145,7 +176,9 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
         expect(Math.abs(after.ty - moved.ty)).toBeLessThan(1)
     })
 
-    test('the landing seeds only this device’s viewport key', async ({ page }) => {
+    test('the landing seeds only this device’s viewport key', async ({
+        page,
+    }) => {
         await mockBase(page, {
             base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
@@ -159,7 +192,9 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
         // tx/ty are pixel translations computed against THIS viewport, so
         // copying them under the other form factor's key would be a wrong pan.
         expect(keys).toContain(`mapcursor_viewport_${BASE_ID}`)
-        expect(keys.some((k) => k.startsWith('mapcursor_mobile_viewport_'))).toBe(false)
+        expect(
+            keys.some((k) => k.startsWith('mapcursor_mobile_viewport_'))
+        ).toBe(false)
     })
 
     test('a row missing its geography falls back, it does not half-apply', async ({
@@ -167,7 +202,12 @@ test.describe('a shared map lands the recipient on the shared spot', () => {
     }) => {
         // Anchor but no landing: written together, so this is a hand-edited row.
         await mockBase(page, {
-            base: baseRow({ id: BASE_ID, type: 'map', anchor: ANCHOR, landing: null }),
+            base: baseRow({
+                id: BASE_ID,
+                type: 'map',
+                anchor: ANCHOR,
+                landing: null,
+            }),
         })
         await page.goto(`/map/${BASE_ID}`)
         await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
@@ -195,7 +235,9 @@ test.describe('the base route', () => {
         await expect(page.locator('#mc-map-bg')).toHaveCount(1)
     })
 
-    test('share and place search do not overlap on a map base', async ({ page }) => {
+    test('share and place search do not overlap on a map base', async ({
+        page,
+    }) => {
         await mockBase(page, {
             base: baseRow({ id: BASE_ID, anchor: ANCHOR, landing: LANDING }),
         })
@@ -204,7 +246,10 @@ test.describe('the base route', () => {
         await page.waitForTimeout(1000)
 
         const share = await page.locator('#mc-share-button').boundingBox()
-        const search = await page.locator('input[type="text"]').first().boundingBox()
+        const search = await page
+            .locator('input[type="text"]')
+            .first()
+            .boundingBox()
         expect(share).not.toBeNull()
         expect(search).not.toBeNull()
         // They share the top-right corner; the search field measures the share
@@ -251,7 +296,7 @@ test.describe('sharing a map stamps its geography on the base row', () => {
         await page.waitForTimeout(800)
 
         // Draw something: Share refuses an empty canvas.
-        await page.click('[aria-label="Circle"]')
+        await page.click('[aria-label="Radius Map"]')
         await page.mouse.move(400, 300)
         await page.mouse.down()
         await page.mouse.move(560, 420, { steps: 8 })
@@ -283,6 +328,19 @@ test.describe('sharing a map stamps its geography on the base row', () => {
         expect(Number.isFinite(object.landingLat)).toBe(true)
         expect(Number.isFinite(object.landingZoom)).toBe(true)
 
+        // The elements themselves. This is the mutation that used to die on
+        // `field 'radius' not found in type: components_component_insert_input`:
+        // persistBase spread the whole in-memory record, client-only fields and
+        // all, into an insert input that has a column for only some of them.
+        const bulk = requests.find(
+            (r) => r.operationName === 'insertBulkComponents'
+        )
+        expect(bulk).toBeTruthy()
+        // The circle drawn above has to be in there, or the column assertion
+        // below would pass simply by having nothing to check.
+        expect(bulk.variables.objects.length).toBeGreaterThan(0)
+        expect(assertComponentColumns(requests)).toBeGreaterThan(0)
+
         // And it must be published, or the link is handed out on a private base.
         expect(
             requests.some((r) => r.operationName === 'updateBaseVisibility')
@@ -294,14 +352,17 @@ test.describe('sharing a map stamps its geography on the base row', () => {
 })
 
 test.describe('re-sharing an already-persisted base', () => {
-    test('publishes it and refreshes the landing view', async ({ page, context }) => {
+    test('publishes it and refreshes the landing view', async ({
+        page,
+        context,
+    }) => {
         // The base is reachable by URL but still private — exactly what the
         // storage-limit auto-persist produces. Sharing used to just copy the
         // URL here, handing out a link to a base that was never published.
         const requests = await mockBase(page, {
             base: baseRow({
                 id: BASE_ID,
-                                isPublic: false,
+                isPublic: false,
                 anchor: ANCHOR,
                 landing: LANDING,
             }),
@@ -327,10 +388,14 @@ test.describe('re-sharing an already-persisted base', () => {
         expect(Number.isFinite(shared.variables.landingLng)).toBe(true)
         expect(Number.isFinite(shared.variables.landingZoom)).toBe(true)
         // ...but re-sharing must never mint a second base.
-        expect(requests.some((r) => r.operationName === 'createBase')).toBe(false)
+        expect(requests.some((r) => r.operationName === 'createBase')).toBe(
+            false
+        )
     })
 
-    test('the recipient is not asked where they are mapping', async ({ page }) => {
+    test('the recipient is not asked where they are mapping', async ({
+        page,
+    }) => {
         // The prompt gates on "this base has never settled on a place". A base
         // carrying a server anchor very much has — just not by this person.
         await mockBase(page, {
