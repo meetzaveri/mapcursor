@@ -1,3 +1,5 @@
+import { COMPONENT_COLUMN_NAMES } from '../../../src/utils/componentColumns'
+
 // Mock responses keyed by GraphQL operation name.
 // Apollo writes each field it requested into its cache; returning {} causes a
 // "Missing field" cache error and can crash components that consume the data.
@@ -5,12 +7,60 @@
 export const GQL_MOCK_RESPONSES = {
     getComponentTypes: {
         componentTypes: [
-            { label: 'point', width: 20, height: 20, fill: '#FF5630', textColor: '#000', metadata: {}, logo: null },
-            { label: 'area', width: 120, height: 120, fill: 'transparent', textColor: null, metadata: {}, logo: null },
-            { label: 'route', width: 120, height: 0, fill: 'transparent', textColor: null, metadata: {}, logo: null },
-            { label: 'circle', width: 120, height: 120, fill: '#A32D2D', textColor: '#000', metadata: {}, logo: null },
-            { label: 'pencil', width: 120, height: 120, fill: '#f4f4f2', textColor: '#f4f4f2', metadata: [{}], logo: null },
-            { label: 'text', width: 120, height: 120, fill: 'transparent', textColor: '#000', metadata: { content: 'Your text here' }, logo: null },
+            {
+                label: 'point',
+                width: 20,
+                height: 20,
+                fill: '#FF5630',
+                textColor: '#000',
+                metadata: {},
+                logo: null,
+            },
+            {
+                label: 'area',
+                width: 120,
+                height: 120,
+                fill: 'transparent',
+                textColor: null,
+                metadata: {},
+                logo: null,
+            },
+            {
+                label: 'route',
+                width: 120,
+                height: 0,
+                fill: 'transparent',
+                textColor: null,
+                metadata: {},
+                logo: null,
+            },
+            {
+                label: 'circle',
+                width: 120,
+                height: 120,
+                fill: '#A32D2D',
+                textColor: '#000',
+                metadata: {},
+                logo: null,
+            },
+            {
+                label: 'pencil',
+                width: 120,
+                height: 120,
+                fill: '#f4f4f2',
+                textColor: '#f4f4f2',
+                metadata: [{}],
+                logo: null,
+            },
+            {
+                label: 'text',
+                width: 120,
+                height: 120,
+                fill: 'transparent',
+                textColor: '#000',
+                metadata: { content: 'Your text here' },
+                logo: null,
+            },
         ],
     },
     // Revisit-count mutation — return a minimal valid shape so Apollo doesn't error
@@ -20,7 +70,10 @@ export const GQL_MOCK_RESPONSES = {
     // Share path. persistBase creates a base, bulk-inserts its components and
     // publishes it; each needs a shaped response or Apollo's cache write fails.
     createBase: {
-        base: { id: '99999999-9999-9999-9999-999999999999', createdBy: 'test-user-id' },
+        base: {
+            id: '99999999-9999-9999-9999-999999999999',
+            createdBy: 'test-user-id',
+        },
     },
     // The mutation selects `returning { baseId componentType id }`, so the mock
     // must carry it — a missing field makes Apollo reject and the whole share
@@ -137,7 +190,7 @@ export async function getCanvasBox(page) {
 // Toolbar aria-labels used to dispatch a draw mode (see staticPrimaryElementData).
 const SHAPE_TOOLBAR_LABEL = {
     rectangle: 'Rectangle / Square',
-    circle: 'Circle',
+    circle: 'Radius Map',
     diamond: 'Diamond',
 }
 
@@ -233,12 +286,12 @@ async function clickToolbarShape(page, ariaLabel) {
 // src/components/sidebar/elementProperties.js) to the 1-based index of its
 // button inside #stroke-width-section.
 const STROKE_WIDTH_INDEX_BY_LABEL = {
-    '0': 1,
-    '1': 2,
-    '2': 3,
-    '4': 4,
-    '6': 5,
-    '8': 6,
+    0: 1,
+    1: 2,
+    2: 3,
+    4: 4,
+    6: 5,
+    8: 6,
 }
 
 /**
@@ -389,7 +442,6 @@ export async function clickToolbarButton(page, ariaLabel) {
  * Returns the arrow's SVG group element handle.
  */
 
-
 /**
  * Place a point: arm the tool, click the canvas, then commit the label editor.
  *
@@ -477,4 +529,60 @@ export const readCamera = () => {
         tx: two.scene.translation.x,
         ty: two.scene.translation.y,
     }
+}
+
+// --- Schema drift guard -------------------------------------------------
+//
+// Hasura rejects a whole mutation on the FIRST key it has no column for, and
+// the GraphQL mocks in this suite fulfill every request themselves — so a
+// payload carrying a dead field looks perfectly green here and fails only in
+// production. That is exactly how sharing shipped broken with
+// `field 'radius' not found in type: 'components_component_insert_input'`
+// after the map-only refactor dropped the column from the schema.
+//
+// The allowlist is imported rather than restated: it is annotated
+// `Record<keyof Components_Component_Set_Input, true>` in the app, so codegen
+// -> tsc -> this assertion is one chain with no hand-maintained copy in it.
+
+/** Mutations that write a `components.component` row, and where the payload sits. */
+const COMPONENT_WRITE_OPS = {
+    insertComponent: (v) => [v?.object],
+    insertBulkComponents: (v) => v?.objects ?? [],
+    updateComponentInfo: (v) => [v?.updateObj],
+}
+
+/**
+ * Assert every component write captured so far carries only real columns.
+ *
+ * Returns how many payloads it checked, because a column check over zero
+ * payloads passes vacuously — callers must assert that count themselves.
+ */
+export function assertComponentColumns(requests) {
+    let checked = 0
+    const offenders = []
+
+    requests.forEach((req) => {
+        const extract = COMPONENT_WRITE_OPS[req?.operationName]
+        if (!extract) return
+        extract(req.variables).forEach((payload) => {
+            if (!payload || typeof payload !== 'object') return
+            checked += 1
+            Object.keys(payload)
+                .filter((key) => !COMPONENT_COLUMN_NAMES.includes(key))
+                .forEach((key) => {
+                    offenders.push(`${req.operationName}.${key}`)
+                })
+        })
+    })
+
+    if (offenders.length > 0) {
+        throw new Error(
+            'Component mutation carried field(s) with no Hasura column: ' +
+                `${[...new Set(offenders)].join(', ')}.\n` +
+                'Hasura rejects the whole mutation on the first one. Route the ' +
+                'payload through toComponentColumns() (src/utils/componentColumns.ts), ' +
+                'or add the column there if it is real.'
+        )
+    }
+    return checked
 }

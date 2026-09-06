@@ -8,6 +8,14 @@ export const GROUP_COMPONENT = 'groupobject'
 // exactly one place — including the welcome sketch (`SKETCH_FONT`).
 export const DEFAULT_TEXT_FONT_FAMILY = 'Caveat Brush'
 
+// The ring colour of a grab handle — the indigo every editable map object
+// shares. Route and area ring their per-vertex dots with it (vertexHandles.ts),
+// and the circle's 4 corner handles take it too (CIRCLE_ADAPTER in
+// selectionController), so "grab here to reshape" reads the same whichever map
+// object is selected. Deliberately fixed in both themes, unlike the selection
+// BOX, which follows the theme's ink to stay readable over the basemap.
+export const HANDLE_STROKE = '#6965db'
+
 export const RUBBER_MODE_KEY = 'rubberMode'
 
 // Eraser size: the eraser deletes whole elements via a point hit test, not

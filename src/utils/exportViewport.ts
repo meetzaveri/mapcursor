@@ -15,7 +15,7 @@ import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 
 // Light-theme fallbacks, used only if the live computed style can't be read.
 const CANVAS_BG_FALLBACK = '#f5f0e8' // --color-canvas (App.css)
-const WATERMARK_TEXT = 'Made with craftbase.org'
+const WATERMARK_TEXT = 'Made with mapcursor.com'
 const MAX_DPR = 2 // cap device-pixel scaling to bound output file size
 
 /**
@@ -171,7 +171,7 @@ function rasterizeAndDownload(
                     const pngUrl = URL.createObjectURL(blob)
                     const a = document.createElement('a')
                     a.href = pngUrl
-                    a.download = `craftbase-${Date.now()}.png`
+                    a.download = `mapcursor-${Date.now()}.png`
                     document.body.appendChild(a)
                     a.click()
                     document.body.removeChild(a)

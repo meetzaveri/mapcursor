@@ -25,6 +25,7 @@ import {
     TEXT_RESIST,
     TEXT_RESIST_CHANGED_EVENT,
 } from '../constants/misc'
+import { toComponentColumns } from '../utils/componentColumns'
 import type { ComponentRecord, ComponentStore } from '../types/base'
 import {
     VERTEX_PATH_TYPES,
@@ -145,10 +146,8 @@ function applyPropertyToTwoJSGroup(
         case 'fill':
         case 'stroke':
         case 'linewidth':
-        case 'radius':
         case 'width':
         case 'height':
-        case 'iconStroke':
             shape[name] = value
             break
         case 'textColor':
@@ -344,7 +343,11 @@ export function useComponentHistory({
         setComponentStore(updatedStore)
         if (isPersistedRef.current) {
             insertComponent({
-                variables: { object: stripTypename(restoredState) },
+                variables: {
+                    object: toComponentColumns(
+                        stripTypename(restoredState) as Record<string, unknown>
+                    ),
+                },
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
             }).catch((error: any) => {
                 const isPermissionError = error.graphQLErrors?.some(
@@ -619,7 +622,7 @@ export function useComponentHistory({
 
         if (isPersistedRef.current) {
             updateComponentInfo({
-                variables: { id, updateObj: props },
+                variables: { id, updateObj: toComponentColumns(props) },
             })
         }
         requestAnimationFrame(() => two?.update())
@@ -654,7 +657,14 @@ export function useComponentHistory({
                     restoredState
                 if (isPersistedRef.current) {
                     insertComponent({
-                        variables: { object: stripTypename(restoredState) },
+                        variables: {
+                            object: toComponentColumns(
+                                stripTypename(restoredState) as Record<
+                                    string,
+                                    unknown
+                                >
+                            ),
+                        },
                     })
                 }
             } else if (isRemove) {
@@ -829,7 +839,10 @@ export function useComponentHistory({
                 }
                 if (isPersistedRef.current) {
                     updateComponentInfo({
-                        variables: { id: e.id, updateObj: propsToApply },
+                        variables: {
+                            id: e.id,
+                            updateObj: toComponentColumns(propsToApply),
+                        },
                     })
                 }
             }

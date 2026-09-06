@@ -241,6 +241,133 @@ test.describe('the map circle', () => {
     })
 })
 
+// Roundness. A circle answers "everything within this distance", so an oval is
+// not a variant of it — it is a broken mark. Two gestures could produce one:
+// the create-drag and a later handle-resize. Both are locked.
+test.describe('the circle is always round', () => {
+    /** Geometry of the most recently created component: record and painted. */
+    const lastGeometry = (page) =>
+        page.evaluate(() => {
+            const children = Array.from(window.__mcTwo.scene.children)
+            const withData = children.filter((c) => c?.elementData?.id)
+            const g = withData[withData.length - 1]
+            if (!g) return null
+            return {
+                width: g.elementData.width,
+                height: g.elementData.height,
+                x: g.elementData.x,
+                y: g.elementData.y,
+                // What the ellipse actually paints, which is what the resize
+                // gesture writes (the record follows on commit).
+                paintedWidth: g.children?.[0]?.width ?? null,
+                paintedHeight: g.children?.[0]?.height ?? null,
+                translationX: g.translation.x,
+                translationY: g.translation.y,
+            }
+        })
+
+    test('a lopsided drag draws a circle, not an oval', async ({ page }) => {
+        await openMapBase(page)
+        const box = await getCanvasBox(page)
+
+        // 200 across, 50 down. Under the old bounding-box gesture this was a
+        // 200x50 ellipse; centre-out it can only be round.
+        await drawShape(page, 'circle', {
+            startX: box.x + 300,
+            startY: box.y + 250,
+            endX: box.x + 500,
+            endY: box.y + 300,
+        })
+
+        const geo = await lastGeometry(page)
+        expect(geo).not.toBeNull()
+        expect(geo.width).toBe(geo.height)
+        expect(geo.paintedWidth).toBe(geo.paintedHeight)
+
+        // The mousedown point is the centre — the thing whose proximity is
+        // being marked — not a bounding-box corner.
+        expect(geo.x).toBe(300)
+        expect(geo.y).toBe(250)
+        // ...and the drag distance is the radius: hypot(200, 50) ≈ 206.
+        expect(geo.width / 2).toBeCloseTo(Math.hypot(200, 50), 0)
+    })
+
+    test('a lopsided handle drag grows the radius, keeping it round', async ({
+        page,
+    }) => {
+        await openMapBase(page)
+        const box = await getCanvasBox(page)
+
+        await drawShape(page, 'circle', {
+            startX: box.x + 300,
+            startY: box.y + 250,
+            endX: box.x + 460,
+            endY: box.y + 250,
+        })
+        // drawShape leaves the circle selected, so the handles are already up.
+        await page.waitForTimeout(400)
+
+        const before = await lastGeometry(page)
+        expect(before.paintedWidth).toBe(before.paintedHeight)
+
+        // A circle carries the 4 corner handles only (hitTest offers edge
+        // handles on a rectangle). The SE one sits half a box past the centre
+        // each way, the box being the shape plus SELECTION_PADDING (5) a side.
+        // The camera is parked at identity, so surface units are canvas pixels.
+        const handleX =
+            box.x + before.translationX + before.paintedWidth / 2 + 5
+        const handleY =
+            box.y + before.translationY + before.paintedHeight / 2 + 5
+        // Far more across than down: unlocked, that is exactly how an oval was
+        // made, each axis taking its own delta.
+        await page.mouse.move(handleX, handleY)
+        await page.mouse.down()
+        await page.mouse.move(handleX + 120, handleY + 20, { steps: 10 })
+        await page.mouse.up()
+        await page.waitForTimeout(300)
+
+        const after = await lastGeometry(page)
+        expect(after.paintedWidth).toBeGreaterThan(before.paintedWidth)
+        expect(after.paintedHeight).toBeCloseTo(after.paintedWidth, 5)
+    })
+})
+
+// The grab points. A circle is reshaped by its 4 corner handles the way a route
+// or an area is reshaped by its per-vertex dots, so they are ringed in the same
+// indigo — one look for "grab here", whichever map object is selected. The box
+// around them still follows the theme's ink.
+test('the circle rings its resize handles in the shared handle indigo', async ({
+    page,
+}) => {
+    await openMapBase(page)
+    const box = await getCanvasBox(page)
+    await drawShape(page, 'circle', {
+        startX: box.x + 300,
+        startY: box.y + 250,
+        endX: box.x + 380,
+        endY: box.y + 250,
+    })
+    // drawShape leaves the circle selected, so the chrome is already mounted.
+    await page.waitForTimeout(400)
+
+    const chrome = await page.evaluate(() => {
+        // The overlay tags its own SVG node so exports can strip it — the same
+        // marker makes it findable here.
+        const el = document.querySelector('[data-mc-selection-chrome]')
+        if (!el) return null
+        return {
+            strokes: Array.from(el.querySelectorAll('[stroke]')).map((n) =>
+                n.getAttribute('stroke')
+            ),
+        }
+    })
+
+    expect(chrome, 'the selection overlay should be mounted').not.toBeNull()
+    // HANDLE_STROKE in constants/misc — the colour vertexHandles rings route
+    // and area dots with.
+    expect(chrome.strokes).toContain('#6965db')
+})
+
 // The mobile toolbar has no room for a flat Area AND a flat Circle, so the two
 // share one slot behind a drawer — the same shape as the board base's own
 // "Shapes" drawer, and flattened away on desktop where the room exists.
@@ -257,18 +384,18 @@ test.describe('the map circle on mobile', () => {
         await openMapBase(page)
 
         // Collapsed: the two children are behind the slot, not in the toolbar.
-        await expect(page.locator('[aria-label="Circle"]')).toHaveCount(0)
+        await expect(page.locator('[aria-label="Radius Map"]')).toHaveCount(0)
         await expect(page.locator('[aria-label="Area"]')).toHaveCount(0)
 
         const slot = page.locator('[aria-label="Shapes"]')
         await expect(slot).toHaveCount(1)
         // The trigger carries the circle icon, not the polygon one.
-        await expect(slot.locator('title', { hasText: 'Circle' })).toHaveCount(
-            1
-        )
+        await expect(
+            slot.locator('title', { hasText: 'Radius Map' })
+        ).toHaveCount(1)
 
         await slot.tap()
         await expect(page.locator('[aria-label="Area"]')).toHaveCount(1)
-        await expect(page.locator('[aria-label="Circle"]')).toHaveCount(1)
+        await expect(page.locator('[aria-label="Radius Map"]')).toHaveCount(1)
     })
 })

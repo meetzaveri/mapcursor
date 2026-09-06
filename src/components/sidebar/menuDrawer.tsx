@@ -292,7 +292,7 @@ const MenuDrawer = (): ReactElement => {
                             </>
                         )}
                         <a
-                            href="https://github.com/craftbase-org/craftbase/releases"
+                            href="https://github.com/meetzaveri/mapcursor/releases"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center justify-between px-3 py-2 mx-1 text-sm text-ink-mid

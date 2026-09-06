@@ -51,14 +51,23 @@ async function marquee(page, box) {
     await page.waitForTimeout(300)
 }
 
-/** A circle and a point, side by side in the lower half of the canvas. */
+/**
+ * A circle and a point, side by side in the lower half of the canvas — both
+ * comfortably inside the marquee above.
+ *
+ * The circle is drawn CENTRE-OUT (see isRadialDraw in newCanvas): the first
+ * point is its centre and the drag is its radius, so this is a 100px circle on
+ * (290, 310). Read as a bounding-box drag it would be a 283px one on (240,
+ * 260), which spills past the marquee and quietly reduces the group to one
+ * member.
+ */
 async function seedTwo(page) {
     const box = await getCanvasBox(page)
     await drawShape(page, 'circle', {
-        startX: box.x + 240,
-        startY: box.y + 260,
+        startX: box.x + 290,
+        startY: box.y + 310,
         endX: box.x + 340,
-        endY: box.y + 360,
+        endY: box.y + 310,
     })
     await placePoint(page, {
         x: box.x + 440,

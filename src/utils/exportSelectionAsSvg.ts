@@ -76,10 +76,7 @@ export async function exportSelectionAsSvg(group: GroupLike): Promise<void> {
 
         svg.setAttribute('width', String(bb.width))
         svg.setAttribute('height', String(bb.height))
-        svg.setAttribute(
-            'viewBox',
-            `${bb.x} ${bb.y} ${bb.width} ${bb.height}`
-        )
+        svg.setAttribute('viewBox', `${bb.x} ${bb.y} ${bb.width} ${bb.height}`)
 
         // Font fetch is async; keep the element hidden (style attr) until the
         // synchronous serialize below so it never flashes on-screen.
@@ -102,7 +99,7 @@ function downloadSvg(svgString: string): void {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `craftbase-selection-${Date.now()}.svg`
+    a.download = `mapcursor-selection-${Date.now()}.svg`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)

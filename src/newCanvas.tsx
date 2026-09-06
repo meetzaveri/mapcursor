@@ -581,6 +581,11 @@ function addZUI(
     let drawShapeType: string | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let drawShapeProps: any = null
+    // A circle is a proximity radius, not a bounding box. Its drag is
+    // centre-out — the mousedown point is the centre and the cursor distance is
+    // the radius — so width always equals height and it can never come out as
+    // an oval. Rectangle/diamond keep the corner-to-corner drag.
+    const isRadialDraw = (type: string | null): boolean => type === 'circle'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let lastPlacedElement: any = null
     // Empty-canvas mousedown stores its origin here. The dotted group
@@ -827,8 +832,6 @@ function addZUI(
             y2: 0,
             width: 0,
             height: 0,
-            radius: null,
-            iconStroke: null,
             isDummy: null,
             createdAt: null,
             children: {},
@@ -1665,7 +1668,6 @@ function addZUI(
         lastHoveredCircleGroup = found ?? null
     }
 
-
     /**
      * Start a desktop grab-drag of the camera.
      *
@@ -2416,7 +2418,6 @@ function addZUI(
                         pointCircle2Group,
                         two
                     )
-
                 }
                 break
             case SCENARIO_DRAW_SHAPE: {
@@ -2429,12 +2430,29 @@ function addZUI(
                 // Grow the DOM overlay from client coords — O(1), no two.update(),
                 // so the scene SVG is never touched during the drag.
                 if (drawPreviewActive) {
-                    updateDrawPreview(
-                        drawScreenOriginX,
-                        drawScreenOriginY,
-                        e.clientX,
-                        e.clientY
-                    )
+                    if (isRadialDraw(drawShapeType)) {
+                        // Feed the overlay the square that circumscribes the
+                        // circle. The camera scale is uniform, so a radius
+                        // measured in client px and one measured in surface
+                        // units describe the same circle — no conversion.
+                        const radius = Math.hypot(
+                            e.clientX - drawScreenOriginX,
+                            e.clientY - drawScreenOriginY
+                        )
+                        updateDrawPreview(
+                            drawScreenOriginX - radius,
+                            drawScreenOriginY - radius,
+                            drawScreenOriginX + radius,
+                            drawScreenOriginY + radius
+                        )
+                    } else {
+                        updateDrawPreview(
+                            drawScreenOriginX,
+                            drawScreenOriginY,
+                            e.clientX,
+                            e.clientY
+                        )
+                    }
                 }
                 break
             }
@@ -2661,7 +2679,6 @@ function addZUI(
                                     )
                                 }
                             }
-
                         }
                         // code block condition to handle normal component's dragging
                         else {
@@ -2923,18 +2940,38 @@ function addZUI(
             case SCENARIO_DRAW_SHAPE: {
                 const MIN_SIZE = 20
                 const endCoords = drawCurrentCoords || drawOrigin
-                const finalWidth = Math.round(
-                    Math.max(Math.abs(endCoords.x - drawOrigin.x), MIN_SIZE)
-                )
-                const finalHeight = Math.round(
-                    Math.max(Math.abs(endCoords.y - drawOrigin.y), MIN_SIZE)
-                )
-                const finalCenterX = Math.round(
-                    (drawOrigin.x + endCoords.x) / 2
-                )
-                const finalCenterY = Math.round(
-                    (drawOrigin.y + endCoords.y) / 2
-                )
+                let finalWidth: number
+                let finalHeight: number
+                let finalCenterX: number
+                let finalCenterY: number
+                if (isRadialDraw(drawShapeType)) {
+                    // Centre-out: the mousedown point IS the centre and the
+                    // drag is the radius. Height is assigned FROM width rather
+                    // than recomputed, so the two can never disagree by a
+                    // rounding step and the mark is round to the pixel.
+                    finalWidth = Math.round(
+                        Math.max(
+                            2 *
+                                Math.hypot(
+                                    endCoords.x - drawOrigin.x,
+                                    endCoords.y - drawOrigin.y
+                                ),
+                            MIN_SIZE
+                        )
+                    )
+                    finalHeight = finalWidth
+                    finalCenterX = Math.round(drawOrigin.x)
+                    finalCenterY = Math.round(drawOrigin.y)
+                } else {
+                    finalWidth = Math.round(
+                        Math.max(Math.abs(endCoords.x - drawOrigin.x), MIN_SIZE)
+                    )
+                    finalHeight = Math.round(
+                        Math.max(Math.abs(endCoords.y - drawOrigin.y), MIN_SIZE)
+                    )
+                    finalCenterX = Math.round((drawOrigin.x + endCoords.x) / 2)
+                    finalCenterY = Math.round((drawOrigin.y + endCoords.y) / 2)
+                }
 
                 drawPreviewActive = false
 
@@ -3411,7 +3448,6 @@ function addZUI(
                                     )
                                 }
                             }
-
                         }
                     }
                 }
@@ -4776,13 +4812,11 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             // under it (hidden, but still in the store), and vice versa. The
             // rule is the same one `applyBaseTypeVisibility` paints with; sharing it
             // is what keeps "what I can see" and "what I can select" in step.
-            const allComponentCoords = (
-                stateRefForComponentStore.current
-                    ? Object.values(stateRefForComponentStore.current).sort(
-                          compareByZOrder
-                      )
-                    : []
-            )
+            const allComponentCoords = stateRefForComponentStore.current
+                ? Object.values(stateRefForComponentStore.current).sort(
+                      compareByZOrder
+                  )
+                : []
 
             // Geometric marquee hit-test on an element's stored origin.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

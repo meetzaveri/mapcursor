@@ -50,6 +50,7 @@ import {
     BaseTooLargeModal,
 } from '../../components/modals/BaseSizeLimitModal'
 import { exportBaseAsJson } from '../../utils/exportBase'
+import { toComponentColumns } from '../../utils/componentColumns'
 import {
     lngLatToSurface,
     mapZoomForScale,
@@ -1108,9 +1109,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const settleOnTimezoneCity = useCallback((): void => {
         setMapAnchor({
             lngLat: [...timezoneCity.lngLat],
-            zoom:
-                readBackdropConfig().mapAnchor?.zoom ??
-                DEFAULT_ANCHOR_ZOOM,
+            zoom: readBackdropConfig().mapAnchor?.zoom ?? DEFAULT_ANCHOR_ZOOM,
         })
         // Same reason as the re-anchor branch of goToPlace: the city is surface
         // (0,0), which an untouched camera parks in the top-left corner. "Use
@@ -1248,7 +1247,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setComponentStore(updatedComponentStore)
 
         if (isPersistedRef.current && safeInfo) {
-            insertComponent({ variables: { object: safeInfo } }).catch(
+            insertComponent({
+                variables: { object: toComponentColumns(safeInfo) },
+            }).catch(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (error: any) => {
                     const isPermissionError = error.graphQLErrors?.some(
@@ -1426,10 +1427,10 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             updateComponentInfo({
                 variables: {
                     id: id,
-                    updateObj: {
+                    updateObj: toComponentColumns({
                         ...bulkObj,
                         updatedBy: userId,
-                    },
+                    }),
                 },
             })
         }
@@ -1642,18 +1643,16 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             // from undo/redo restore paths and would abort the whole bulk
             // insert with a NOT NULL violation on componentType.
             .filter(([, comp]) => (comp as ComponentRecord)?.componentType)
-            .map(([, comp]) => {
-                const {
-                    relativeX: _rX,
-                    relativeY: _rY,
-                    ...cleaned
-                } = stripTypename(comp)
-                return {
-                    ...cleaned,
-                    id: generateUUID(),
-                    baseId: serverBaseId,
-                }
-            })
+            .map(([, comp]) => ({
+                // Allowlist, not a spread: a ComponentRecord carries
+                // client-only fields (isDummy, relativeX/Y) that Hasura has no
+                // column for, and it rejects the whole batch on the first one.
+                ...toComponentColumns(
+                    stripTypename(comp) as Record<string, unknown>
+                ),
+                id: generateUUID(),
+                baseId: serverBaseId,
+            }))
 
         const skipped = allEntries.filter(
             ([, comp]) => !(comp as ComponentRecord)?.componentType
@@ -1776,9 +1775,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             // Type-aware: a map base auto-persisted at the storage limit must
             // hand back a /map/ link, or the user follows it to a whiteboard
             // with all their geo work hidden.
-            setStorageLimitBaseUrl(
-                baseUrl(serverBaseId)
-            )
+            setStorageLimitBaseUrl(baseUrl(serverBaseId))
             setShowStorageLimitModal(true)
         } catch (e) {
             console.error('Failed to auto-persist base on storage limit:', e)

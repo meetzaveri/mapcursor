@@ -1,4 +1,5 @@
-import type { ReactElement } from 'react'
+import { useEffect, useState } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
 import './mapcursorLoader.css'
 
 interface MapcursorLoaderProps {
@@ -6,16 +7,82 @@ interface MapcursorLoaderProps {
 }
 
 /**
- * The route the cursor traces, and the keyTimes every animation on it shares.
+ * The route the cursor traces.
  *
- * One declaration each because three animations have to agree exactly: the
- * mask that wipes the dashed line on, the `animateMotion` that carries the
- * cursor, and the group fade. Drift between them and the cursor leaves the end
- * of the drawn line, or the whole thing fades mid-draw.
+ * One declaration, because three animations have to agree on it exactly: the
+ * mask that wipes the dashed line on, the `offset-path` that carries the
+ * cursor, and the group fade. It reaches the stylesheet as the
+ * `--mc-route-path` custom property rather than being written out a third
+ * time — drift between them and the cursor leaves the end of the drawn line.
+ *
+ * The timing lives in mapcursorLoader.css (`--mc-cycle` and the three
+ * `@keyframes`), which is also where the shape of the loop is explained.
  */
 const ROUTE_D = 'M70,75 L105,75 Q115,75 115,85 L115,115 L140,115'
-const ROUTE_KEY_TIMES = '0.0000;0.0526;0.5263;0.6711;0.7632;1.0000'
 const ROUTE_LENGTH = 106.231
+
+/** Cycle length in ms. Must match `--mc-cycle` in the stylesheet. */
+const CYCLE_MS = 2800
+
+/**
+ * How long a gap between one loader unmounting and the next mounting still
+ * counts as the same continuous loader.
+ */
+const HANDOFF_GRACE_MS = 250
+
+/** `performance.now()` at which the currently-running cycle hit 0%. */
+let cycleOrigin: number | null = null
+/** `performance.now()` at which the last loader left the screen. */
+let lastUnmountedAt = 0
+
+/** How far into its cycle the inline boot copy is, or 0 if it has gone. */
+const bootElapsed = (): number => {
+    try {
+        const boot = document.querySelector('#mc-boot .mc-cursor')
+        const running = boot?.getAnimations?.()[0]
+        const elapsed = running?.currentTime
+        if (typeof elapsed === 'number' && elapsed > 0) return elapsed
+    } catch {
+        /* no-op — an unsynced loader is still a correct one */
+    }
+    return 0
+}
+
+/**
+ * The phase this copy should pick up at, as a negative `animation-delay`.
+ *
+ * The loader appears more than once per startup and is a different element
+ * each time: the copy inlined into `#root` in index.html paints first, React's
+ * first commit replaces it with this component, and the `AppInit` gate then
+ * hands over to the base's Suspense fallback — a third mount. Each of those is
+ * a fresh set of CSS animations starting at 0%, which is a cursor visibly
+ * snapping back to the start of the route at every changeover.
+ *
+ * So the cycle's origin is held at module scope and handed to each new copy.
+ * The first mount of a session seeds it from the boot copy's own running
+ * animation (still in the DOM during this render — React clears `#root` at
+ * commit), so React picks up mid-stride from where the inline markup left off.
+ *
+ * The grace window is what keeps this from being merely "always continuous".
+ * A loader that appears long after the last one is a new event, not a
+ * hand-off, and should open on the resting frame with the cursor at the start
+ * of the route — so anything past `HANDOFF_GRACE_MS` restarts the cycle.
+ */
+const routePhase = (): string => {
+    const now = performance.now()
+    // A copy still on screen means this is a hand-off, not a new appearance.
+    // That test has to come first: this runs in React's render phase, so the
+    // outgoing loader's unmount cleanup has not fired yet and its timestamp is
+    // still stale. `lastUnmountedAt` covers the reverse order, where the old
+    // copy is torn down before the new one renders.
+    const handingOver =
+        cycleOrigin !== null &&
+        (document.querySelector('#mc-boot, .mc-loader') !== null ||
+            now - lastUnmountedAt <= HANDOFF_GRACE_MS)
+    if (!handingOver) cycleOrigin = now - bootElapsed()
+    const elapsed = (now - (cycleOrigin ?? now)) % CYCLE_MS
+    return `-${(elapsed / 1000).toFixed(3)}s`
+}
 
 /**
  * Full-screen startup loader: the mapcursor mark — a folded map with the
@@ -24,10 +91,9 @@ const ROUTE_LENGTH = 106.231
  * index.html so the loader paints before the JS bundle arrives — keep the two
  * in sync.
  *
- * The route animation is SMIL (`<animate>` / `<animateMotion>`) rather than
- * CSS, because `animateMotion` has no CSS equivalent short of `offset-path`.
- * One consequence: CSS cannot switch it off, so the reduced-motion rule hides
- * the whole route overlay and leaves the static map instead.
+ * The route animation is CSS, not SMIL. SMIL's timeline does not start until
+ * the document `load` event, which on this page waits on a render-blocking
+ * font stylesheet and the bundle; see the long note in mapcursorLoader.css.
  *
  * Ink colour is deliberately NOT set on the paths — the stylesheet drives it so
  * the mark can flip to cream on the dark backdrop. The route keeps its amber
@@ -37,8 +103,30 @@ const ROUTE_LENGTH = 106.231
 const MapcursorLoader = ({
     caption = 'setting up your map',
 }: MapcursorLoaderProps): ReactElement => {
+    // Read once, at mount — the phase must not shift on a re-render.
+    const [phase] = useState(routePhase)
+
+    // Mark the hand-off point so a loader mounting straight after this one
+    // continues the same cycle rather than snapping back to the start.
+    useEffect(
+        () => () => {
+            lastUnmountedAt = performance.now()
+        },
+        []
+    )
+
+    const timing = {
+        '--mc-phase': phase,
+        '--mc-route-path': `path('${ROUTE_D}')`,
+    } as CSSProperties
+
     return (
-        <div className="mc-loader" role="status" aria-label="Loading Mapcursor">
+        <div
+            className="mc-loader"
+            role="status"
+            aria-label="Loading Mapcursor"
+            style={timing}
+        >
             <svg className="mc-mark" viewBox="0 0 200 200" aria-hidden="true">
                 <defs>
                     {/* Wipes the dashed route on from tail to head. White =
@@ -52,23 +140,14 @@ const MapcursorLoader = ({
                         height="200"
                     >
                         <path
+                            className="mc-route-wipe"
                             d={ROUTE_D}
                             stroke="#FFFFFF"
                             strokeWidth={6}
                             fill="none"
                             strokeLinecap="round"
                             strokeDasharray={`${ROUTE_LENGTH} ${ROUTE_LENGTH}`}
-                            strokeDashoffset={ROUTE_LENGTH}
-                        >
-                            <animate
-                                attributeName="stroke-dashoffset"
-                                dur="3.8s"
-                                repeatCount="indefinite"
-                                keyTimes={ROUTE_KEY_TIMES}
-                                values={`${ROUTE_LENGTH};${ROUTE_LENGTH};0;0;0;0`}
-                                calcMode="linear"
-                            />
-                        </path>
+                        />
                     </mask>
                 </defs>
 
@@ -127,15 +206,7 @@ const MapcursorLoader = ({
                         </g>
                 </g>
 
-                <g className="mc-route" opacity="0">
-                    <animate
-                        attributeName="opacity"
-                        dur="3.8s"
-                        repeatCount="indefinite"
-                        keyTimes={ROUTE_KEY_TIMES}
-                        values="0;1;1;1;0;0"
-                        calcMode="linear"
-                    />
+                <g className="mc-route">
                     <path
                         className="mc-route-line"
                         d={ROUTE_D}
@@ -147,18 +218,10 @@ const MapcursorLoader = ({
                         mask="url(#mc-loader-route-mask)"
                     />
                     <g className="mc-cursor">
-                        <animateMotion
-                            dur="3.8s"
-                            repeatCount="indefinite"
-                            rotate="0"
-                            calcMode="linear"
-                            keyTimes={ROUTE_KEY_TIMES}
-                            keyPoints="0.0000;0.0000;1.0000;1.0000;1.0000;1.0000"
-                            path={ROUTE_D}
-                        />
                         <g transform="scale(0.34) translate(21.4375,-3.1875)">
                                 <g transform="matrix(1 0 0 1 -30 -5)">
                                     <path d="M 0.963939 3.526349 L 0.963939 4.486442 L 0.963939 6.406629 L 0.963939 9.28691 L 0.963939 13.127284 L 0.872501 16.55619 L 0.689626 19.573627 L 0.415314 22.179595 L 0.049564 24.374095 L -0.453342 23.962626 L -1.093405 20.945189 L -1.870623 15.321784 L -2.784998 7.092411 L -3.287904 0.646068 L -3.379342 -4.017244 L -3.059311 -6.897524 L -2.327811 -7.994774 L -0.087592 -7.126118 L 3.661344 -4.291556 L 8.919 0.508912 L 15.685373 7.275286 L 19.525748 11.572847 L 20.440123 13.401597 L 18.428498 12.761535 L 13.490874 9.65266 L 9.787656 7.321004 L 7.318844 5.766567 L 6.084438 4.989348 " fill="none" strokeWidth="13.890796957060644" strokeLinecap="round" strokeLinejoin="round" strokeMiterlimit="4"/>
+                                </g>
                         </g>
                     </g>
                 </g>

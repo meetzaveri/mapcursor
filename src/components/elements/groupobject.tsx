@@ -249,7 +249,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
 
         if (batchEntries.length > 0) {
             recordBatchToHistoryLog(batchEntries)
-
         }
         // Advance the baseline even if nothing recorded, so we don't re-scan on
         // every subsequent mouseup at the same position.
@@ -669,10 +668,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                         current.linewidth * s
                     )
                 }
-                if (current.radius != null) {
-                    updateObj.radius = current.radius * s
-                }
-
                 // arrow/line endpoints are local offsets → scale by s only.
                 const isLineLike =
                     ct === 'arrowLine' || ct === 'line' || ct === 'divider'

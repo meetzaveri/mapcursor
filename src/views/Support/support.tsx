@@ -26,7 +26,7 @@ const ChevronLeft = () => (
 
 const cards = [
     {
-        href: 'https://github.com/craftbase-org/craftbase/issues',
+        href: 'https://github.com/meetzaveri/mapcursor/issues',
         icon: <img src={errorIcon} className="w-5 h-5" alt="Issues" />,
         label: 'GitHub Issues',
         description:
@@ -34,7 +34,7 @@ const cards = [
         cta: 'Open an issue →',
     },
     {
-        href: 'https://github.com/craftbase-org/craftbase/discussions',
+        href: 'https://github.com/meetzaveri/mapcursor/discussions',
         icon: <img src={chatAltIcon} className="w-5 h-5" alt="Discussions" />,
         label: 'GitHub Discussions',
         description:
@@ -52,7 +52,7 @@ const SupportPage: React.FC = () => {
             <nav className="sticky top-0 z-10 bg-sidebar border-b border-border-panel shadow-sm">
                 <div className="w-full max-w-2xl laptop:max-w-full mx-auto px-4 tablet-landscape:px-6 py-3 flex items-center justify-between">
                     <span className="text-ink font-bold text-sm tablet-landscape:text-base tracking-tight font-display">
-                        Craftbase
+                        Mapcursor
                     </span>
                     <Link
                         to={routes.index}
@@ -115,10 +115,10 @@ const SupportPage: React.FC = () => {
                         <div className="text-xs text-ink-muted">
                             Please send your detailed query/question here -{' '}
                             <a
-                                href="mailto:support@craftbase.org"
+                                href="mailto:support@mapcursor.com"
                                 className="text-accent-dark font-semibold no-underline border-b border-accent-dark"
                             >
-                                support@craftbase.org
+                                support@mapcursor.com
                             </a>
                         </div>
                     </div>

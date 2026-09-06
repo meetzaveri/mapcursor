@@ -209,7 +209,11 @@ export const staticPrimaryElementData: PrimarySection[] = [
                     },
                     {
                         elementName: 'circle',
-                        elementDisplayName: 'Circle',
+                        // The tool is a radius map: click the centre, drag the
+                        // radius. `elementName` stays 'circle' — that is the
+                        // componentType the whole element pipeline is keyed on,
+                        // and renaming it would orphan every saved record.
+                        elementDisplayName: 'Radius Map',
                         elementIcon: CircleIcon,
                     },
                 ],

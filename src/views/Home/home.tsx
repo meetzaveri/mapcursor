@@ -215,19 +215,6 @@ const HomePage: React.FC = () => {
                     <div className="mt-20 w-full flex items-center justify-center">
                         <hr className="border-t border-border-panel w-2/4" />
                     </div>
-
-                    {/* <div className="mt-8">
-                    <div className="font-bold text-2xl">Support and Help</div>
-
-                    <div className="mt-4">
-                        Please contact{' '}
-                        <a href="mailto:support@craftbase.org">
-                            support@craftbase.org
-                        </a>
-                    </div>
-                </div> */}
-
-                    {/* <div className="mt-8 pt-20"> </div> */}
                 </div>
                 <footer
                     className="
