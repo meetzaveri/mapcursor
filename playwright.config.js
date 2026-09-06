@@ -19,6 +19,18 @@ export default defineConfig({
         navigationTimeout: CI ? 30_000 : 0,
         screenshot: 'only-on-failure',
         video: 'off',
+        // Analytics must never hear from a test run. CI points at a real
+        // Netlify deploy preview where the umami tracker is live, so without
+        // this every run lands in the production dashboard as fake traffic.
+        // Failing DNS at the browser level covers every page in the run,
+        // including a spec that imports `test` from @playwright/test and so
+        // bypasses the opt-out fixture in tests/e2e/helpers/test.js. Safe
+        // because no app code reads window.umami.
+        launchOptions: {
+            args: [
+                '--host-resolver-rules=MAP cloud.umami.is ~NOTFOUND,MAP gateway.umami.is ~NOTFOUND',
+            ],
+        },
     },
     projects: [
         {
