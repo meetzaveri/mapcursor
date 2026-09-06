@@ -1,0 +1,99 @@
+/* Mapcursor startup loader — the cursor tracing a route across a folded map.
+   Keep this in sync with the copy inlined into #root in index.html, which has
+   to paint before the JS bundle loads. */
+
+.mc-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    /* Solid parchment only — the dot grid is canvas-only (behind the dotGrid
+       feature flag) and must never appear on the loader. */
+    background-color: #f5f0e8;
+}
+
+.dark .mc-loader {
+    background-color: #1c1814;
+}
+
+.mc-loader .mc-mark {
+    width: 132px;
+    height: 132px;
+    overflow: visible;
+}
+
+/* Ink for the map and the cursor. Driven here rather than from a `stroke`
+   attribute on each path so the mark can flip to cream on the dark backdrop —
+   CSS wins over an SVG presentation attribute, but only if the attribute is
+   absent do we avoid having to repeat the override for every path.
+
+   Scoped to .mc-map / .mc-cursor on purpose. A blanket `.mc-mark path` rule
+   would also catch the mask's path, whose #FFFFFF is what makes it reveal
+   anything — recolouring that to near-black hides the route entirely. */
+.mc-loader .mc-map path,
+.mc-loader .mc-cursor path {
+    stroke: #1a1612;
+}
+
+.dark .mc-loader .mc-map path,
+.dark .mc-loader .mc-cursor path {
+    stroke: #f3ece0;
+}
+
+/* The route keeps its amber in the markup — it reads against both backdrops,
+   so there is nothing to flip. */
+
+.mc-loader .mc-wordmark {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: 0.5px;
+    color: #1a1612;
+}
+
+.dark .mc-loader .mc-wordmark {
+    color: #f3ece0;
+}
+
+.mc-loader .mc-caption {
+    margin-top: -10px;
+    font-family: 'Geist', system-ui, sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    color: #8c7e6a;
+}
+.mc-loader .mc-caption::after {
+    content: '';
+    animation: mcDots 1.4s steps(4, end) infinite;
+}
+
+@keyframes mcDots {
+    0% {
+        content: '';
+    }
+    25% {
+        content: '.';
+    }
+    50% {
+        content: '..';
+    }
+    75% {
+        content: '...';
+    }
+}
+
+/* The route draw is SMIL, which CSS cannot pause or cancel. So instead of
+   stopping it we remove it, leaving the static map as the mark. */
+@media (prefers-reduced-motion: reduce) {
+    .mc-loader .mc-route {
+        display: none;
+    }
+    .mc-loader .mc-caption::after {
+        animation: none;
+        content: '...';
+    }
+}

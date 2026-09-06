@@ -124,9 +124,9 @@ const TextZoomHint = (): ReactElement | null => {
         >
             <div className="w-auto bg-ink text-card-bg px-4 py-2 rounded-md shadow-md">
                 <div className="text-sm text-center">
-                    Map text keeps its size as you zoom — uncheck{' '}
-                    <span className="font-semibold">Zoom resistant</span> in the
-                    text properties to let it scale with the map.
+                    Map text keeps its size as you zoom — toggle{' '}
+                    <span className="font-semibold">"Zoom resistant"</span>{' '}
+                    option in the property toolbar to let it scale with the map.
                 </div>
             </div>
         </div>
