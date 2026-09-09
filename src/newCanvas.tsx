@@ -61,6 +61,7 @@ import {
     PREVIEW_MIN_STROKE_PX,
     PREVIEW_SEGMENT_OPACITY,
     PREVIEW_RUBBER_OPACITY,
+    ROUTE_SNAP_MIN_MOVE_PX,
     DEFAULT_TEXT_FONT_FAMILY,
     ERASER_SIZE_KEY,
     ERASER_SIZE_RADIUS,
@@ -88,8 +89,15 @@ import {
 } from './utils/vertexMetadata'
 import {
     getDragScansEnabled,
+    getRouteSnapEnabled,
     getViewportCullingEnabled,
 } from './utils/featureFlags'
+import {
+    createRouteSnapper,
+    invalidateRoadGraph,
+    type RouteSnapper,
+    type RouteSnapPreview,
+} from './utils/roadSnap'
 import {
     cullToViewport,
     uncullViewport,
@@ -613,6 +621,72 @@ function addZUI(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoCurvedPreview: any = null
 
+    // ── Snap-to-road state (route only) ──────────────────────────────────
+    // Non-null only while a route draw is running with snapping available. See
+    // utils/roadSnap.ts; everything here degrades to the plain straight-segment
+    // draw the moment the snapper returns null.
+    let routeSnapper: RouteSnapper | null = null
+    // The routed polyline currently under the cursor, recomputed per move.
+    let routeSnapPending: RouteSnapPreview | null = null
+    // A Two.Path preview of that polyline, replacing the straight rubber band.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let routeSnapPreview: any = null
+    // How many vertices the most recent click appended. A snapped click commits
+    // a whole run of road vertices, not one — so the double-click that finishes
+    // a draw has to strip the run it added, not a single point, or it eats a
+    // real corner off the route.
+    let lastGeoRunLength = 0
+    // Last cursor position a route was searched from. Re-routing is a graph
+    // search and pointers fire far faster than a few pixels of travel can
+    // change its answer, so sub-threshold moves reuse the standing preview.
+    let lastRouteProbe: { x: number; y: number } | null = null
+
+    // ── Preview render origin ────────────────────────────────────────────
+    //
+    // Every preview artifact (dots, committed segments, the rubber band, the
+    // curved preview, the snapped route) hangs off ONE group translated near
+    // the draw, and holds coordinates RELATIVE to it — exactly what every
+    // committed element does, via its factory.
+    //
+    // It has to. Surface coordinates are absolute Mercator pixels from the
+    // base's anchor, so distance from the anchor is coordinate magnitude: San
+    // Francisco sits ~18.2M units out on a base anchored in Ahmedabad, where
+    // float32 spacing is 2 whole surface units. Written straight into an SVG
+    // path `d`, numbers that size come back quantised and Skia's stroker
+    // degrades — the preview paints grey instead of black, its width varies
+    // chord to chord, and it detaches from the anchor dot. The finished route
+    // looks perfect immediately afterwards, because by then it IS an element
+    // and its geometry is small numbers inside a translated group.
+    //
+    // This is the same disease `canvas/renderOrigin.ts` was written for, one
+    // level further in: that fixes the scene's transform, this fixes the path
+    // DATA. Never add a preview artifact straight to `two` — put it in here.
+    let geoPreviewOrigin: { x: number; y: number } | null = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let geoPreviewGroup: any = null
+
+    /** The preview group, created on first use, translated near the draw. */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ensureGeoPreviewGroup = (x: number, y: number): any => {
+        if (!geoPreviewGroup) {
+            geoPreviewOrigin = { x: Math.floor(x), y: Math.floor(y) }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const g = new (Two as any).Group()
+            g.translation.set(geoPreviewOrigin.x, geoPreviewOrigin.y)
+            // Deliberately carries no `elementData`, which is what keeps it out
+            // of the z-order reconcile and every other scene-children scan.
+            two.add(g)
+            geoPreviewGroup = g
+        }
+        return geoPreviewGroup
+    }
+
+    /** Surface point → preview-group space. */
+    const rel = (x: number, y: number): { x: number; y: number } => {
+        const o = geoPreviewOrigin
+        return o ? { x: x - o.x, y: y - o.y } : { x, y }
+    }
+
     const toSurface = (e: { clientX: number; clientY: number }) =>
         zui.clientToSurface(e.clientX, e.clientY)
     // Opening range. The active base overrides this through setZoomLimits —
@@ -677,9 +751,14 @@ function addZUI(
         })
         if (geoPreviewLine) geoPreviewLine.linewidth = lw
         if (geoCurvedPreview) geoCurvedPreview.linewidth = lw
+        if (routeSnapPreview) routeSnapPreview.linewidth = lw
         two.update()
     }
     window.addEventListener('zoomChanged', refreshGeoPreviewScale)
+    // The road graph is built from the LOADED TILES, i.e. from the viewport. A
+    // camera change means a different set of tiles, so the cached graph is now
+    // describing somewhere the user has partly left.
+    window.addEventListener('zoomChanged', invalidateRoadGraph)
 
     // Rebuild the curved preview path so the in-transit line is smooth (matching
     // the committed shape) instead of straight segments. Runs through the placed
@@ -687,14 +766,19 @@ function addZUI(
     // preview has few points, so this is cheap.
     const rebuildCurvedPreview = (cursor?: { x: number; y: number }) => {
         if (geoCurvedPreview) {
-            two.remove(geoCurvedPreview)
+            geoPreviewGroup?.remove(geoCurvedPreview)
             geoCurvedPreview = null
         }
         const pts = cursor ? [...geoVertices, cursor] : [...geoVertices]
         if (pts.length < 2) return
         const { stroke, lw } = geoPreviewStyle()
+        const g = ensureGeoPreviewGroup(pts[0]!.x, pts[0]!.y)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const anchors = pts.map((p) => new (Two as any).Anchor(p.x, p.y))
+        const anchors = pts.map((p) => {
+            const r = rel(p.x, p.y)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return new (Two as any).Anchor(r.x, r.y)
+        })
         // closed = false, curved = true — same as the committed curvedLine.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const path = new (Two as any).Path(anchors, false, true)
@@ -704,7 +788,7 @@ function addZUI(
         path.cap = 'round'
         path.join = 'round'
         path.opacity = PREVIEW_SEGMENT_OPACITY
-        two.add(path)
+        g.add(path)
         geoCurvedPreview = path
     }
 
@@ -715,34 +799,192 @@ function addZUI(
         // immediately — same contract as pencil. Falls back to the props
         // stashed at tool-pick, then the global shape default.
         const { stroke, lw, dotRadius } = geoPreviewStyle()
-        const dot = two.makeCircle(x, y, dotRadius)
+        const g = ensureGeoPreviewGroup(x, y)
+        const r = rel(x, y)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dot = new (Two as any).Circle(r.x, r.y, dotRadius)
         dot.fill = stroke
         dot.noStroke()
+        g.add(dot)
         geoDots.push(dot)
         if (geoVertices.length >= 2) {
             const prev = geoVertices[geoVertices.length - 2]!
-            const line = two.makeLine(prev.x, prev.y, x, y)
+            const rp = rel(prev.x, prev.y)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const line = new (Two as any).Line(rp.x, rp.y, r.x, r.y)
+            g.add(line)
             line.stroke = stroke
             line.linewidth = lw
             line.cap = 'round'
             line.opacity = PREVIEW_SEGMENT_OPACITY
             geoLines.push(line)
         }
+        lastGeoRunLength = 1
         two.update()
+    }
+
+    /**
+     * Commit a whole run of vertices as ONE click — the road-following path
+     * from the last anchor to where the user just clicked.
+     *
+     * `pts` starts AT the current anchor (it is `path[0]` from the snapper), so
+     * that first point is skipped; it is already a vertex. Only the last point
+     * gets a dot, because only the last point is somewhere the user actually
+     * pressed. Everything between is road geometry, and marking it would turn a
+     * traced street into a string of beads.
+     */
+    const addGeoVertexRun = (pts: { x: number; y: number }[]) => {
+        const run = pts.slice(1)
+        if (run.length === 0) {
+            lastGeoRunLength = 0
+            return
+        }
+        const { stroke, lw, dotRadius } = geoPreviewStyle()
+        const g = ensureGeoPreviewGroup(pts[0]!.x, pts[0]!.y)
+        run.forEach((p, i) => {
+            const prev = geoVertices[geoVertices.length - 1]
+            geoVertices.push({ x: p.x, y: p.y })
+            const r = rel(p.x, p.y)
+            if (prev) {
+                const rp = rel(prev.x, prev.y)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const line = new (Two as any).Line(rp.x, rp.y, r.x, r.y)
+                g.add(line)
+                line.stroke = stroke
+                line.linewidth = lw
+                line.cap = 'round'
+                line.opacity = PREVIEW_SEGMENT_OPACITY
+                geoLines.push(line)
+            }
+            if (i === run.length - 1) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const dot = new (Two as any).Circle(r.x, r.y, dotRadius)
+                dot.fill = stroke
+                dot.noStroke()
+                g.add(dot)
+                geoDots.push(dot)
+            }
+        })
+        lastGeoRunLength = run.length
+        two.update()
+    }
+
+    /** Drop the routed preview path, leaving the straight rubber band to run. */
+    const clearRouteSnapPreview = () => {
+        if (routeSnapPreview) {
+            geoPreviewGroup?.remove(routeSnapPreview)
+            routeSnapPreview = null
+        }
+        routeSnapPending = null
+    }
+
+    /**
+     * Paint the road-following path from the anchor to the cursor.
+     *
+     * Rebuilt from scratch each move rather than mutated: the vertex COUNT
+     * changes as the cursor crosses junctions, and Two.Path has no cheap way to
+     * grow or shrink its anchor list. These paths are a few dozen points.
+     */
+    const updateRouteSnapPreview = (preview: RouteSnapPreview) => {
+        if (routeSnapPreview) geoPreviewGroup?.remove(routeSnapPreview)
+        const { stroke, lw } = geoPreviewStyle()
+        const first = preview.path[0]!
+        const g = ensureGeoPreviewGroup(first.x, first.y)
+        const anchors = preview.path.map((p) => {
+            const r = rel(p.x, p.y)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return new (Two as any).Anchor(r.x, r.y)
+        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const path = new (Two as any).Path(anchors, false, false)
+        path.noFill()
+        path.stroke = stroke
+        path.linewidth = lw
+        path.cap = 'round'
+        path.join = 'round'
+        path.opacity = PREVIEW_RUBBER_OPACITY
+        g.add(path)
+        routeSnapPreview = path
+        routeSnapPending = preview
+    }
+
+    /**
+     * Land one click of a route/area draw.
+     *
+     * Four outcomes, in the order they are tried:
+     *
+     * 1. No snapper (area, or snapping off) or Alt held → the plain vertex this
+     *    always added. The snapper is still told where the vertex went, so the
+     *    NEXT segment can route from where the user actually is rather than
+     *    from the last place a road was found.
+     * 2. Snapper with an anchor → route from it to the click and commit the
+     *    whole road run.
+     * 3. Snapper with an anchor but no route (cursor off the network, or the
+     *    two ends unreachable within the search budget) → straight vertex, and
+     *    re-anchor there so the draw is never stuck.
+     * 4. First click of the draw → snap it onto the nearest road, falling back
+     *    to the raw point.
+     *
+     * The route is recomputed here from the CLICK position rather than reusing
+     * the standing mousemove preview. The click is the authoritative position,
+     * and a move may never have fired between the two presses of the
+     * double-click that finishes a draw.
+     */
+    const commitGeoClick = (
+        pt: { x: number; y: number },
+        straight: boolean
+    ) => {
+        const snapper = routeSnapper
+        if (!snapper || straight) {
+            addGeoVertex(pt.x, pt.y)
+            snapper?.acceptPoint(pt)
+            clearRouteSnapPreview()
+            lastRouteProbe = null
+            return
+        }
+
+        if (snapper.hasAnchor()) {
+            const preview = snapper.preview(pt)
+            if (preview) {
+                addGeoVertexRun(preview.path)
+                snapper.accept(preview)
+            } else {
+                addGeoVertex(pt.x, pt.y)
+                snapper.acceptPoint(pt)
+            }
+            clearRouteSnapPreview()
+            lastRouteProbe = null
+            return
+        }
+
+        const snapped = snapper.start(pt)
+        if (snapped) {
+            addGeoVertex(snapped.x, snapped.y)
+        } else {
+            addGeoVertex(pt.x, pt.y)
+            snapper.acceptPoint(pt)
+        }
+        clearRouteSnapPreview()
+        lastRouteProbe = null
     }
 
     const updateGeoPreview = (sx: number, sy: number) => {
         if (!geoDrawType || geoVertices.length === 0) return
         const { stroke, lw } = geoPreviewStyle()
         const last = geoVertices[geoVertices.length - 1]!
+        const g = ensureGeoPreviewGroup(last.x, last.y)
+        const a = rel(last.x, last.y)
+        const b = rel(sx, sy)
         if (geoPreviewLine) {
-            geoPreviewLine.vertices[0].set(last.x, last.y)
-            geoPreviewLine.vertices[1].set(sx, sy)
+            geoPreviewLine.vertices[0].set(a.x, a.y)
+            geoPreviewLine.vertices[1].set(b.x, b.y)
         } else {
-            geoPreviewLine = two.makeLine(last.x, last.y, sx, sy)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            geoPreviewLine = new (Two as any).Line(a.x, a.y, b.x, b.y)
             geoPreviewLine.stroke = stroke
             geoPreviewLine.cap = 'round'
             geoPreviewLine.opacity = PREVIEW_RUBBER_OPACITY
+            g.add(geoPreviewLine)
         }
         // Re-applied every move, not just on creation: a zoom mid-draw changes
         // the scale this width was derived from.
@@ -751,21 +993,45 @@ function addZUI(
     }
 
     const clearGeoPreviewArtifacts = () => {
-        geoDots.forEach((d) => two.remove(d))
-        geoLines.forEach((l) => two.remove(l))
-        if (geoPreviewLine) two.remove(geoPreviewLine)
-        if (geoCurvedPreview) two.remove(geoCurvedPreview)
+        clearRouteSnapPreview()
+        // Detach the children BEFORE the group, then drop the (now empty)
+        // group. Removing a populated parent is the documented way into the
+        // `scene.subtractions` crash — Two.js takes the parent's SVG node out
+        // with the children still tracked as living inside it. See CLAUDE.md.
+        const g = geoPreviewGroup
+        if (g) {
+            geoDots.forEach((d) => g.remove(d))
+            geoLines.forEach((l) => g.remove(l))
+            if (geoPreviewLine) g.remove(geoPreviewLine)
+            if (geoCurvedPreview) g.remove(geoCurvedPreview)
+            two.remove(g)
+        }
+        geoPreviewGroup = null
+        geoPreviewOrigin = null
         geoDots = []
         geoLines = []
         geoPreviewLine = null
         geoCurvedPreview = null
-        two.update()
+        try {
+            two.update()
+        } catch (err) {
+            // A failed render leaves scene.subtractions populated, and every
+            // later two.update() retries the same broken removeChild. Clear it
+            // or one bad teardown poisons the canvas for the session.
+            console.error('Preview teardown render failed', err)
+            two.scene.subtractions.length = 0
+            two.scene._flagSubtractions = false
+        }
     }
 
     const resetGeoDrawState = () => {
         geoDrawType = null
         geoDrawProps = null
         geoVertices = []
+        routeSnapper = null
+        routeSnapPending = null
+        lastRouteProbe = null
+        lastGeoRunLength = 0
         localStorage.removeItem(DRAW_MODE_KEY)
         localStorage.removeItem(DRAW_TYPE_KEY)
         localStorage.removeItem(DRAW_PROPS_KEY)
@@ -799,7 +1065,13 @@ function addZUI(
     }: { dropLast?: boolean } = {}) => {
         if (!geoDrawType) return
         let verts = geoVertices.slice()
-        if (dropLast && verts.length > 0) verts = verts.slice(0, -1)
+        // The second press of the finishing double-click appended exactly one
+        // vertex when drawing straight, but a whole ROAD RUN when snapping —
+        // so strip what was actually added, not a fixed one. Stripping one
+        // there left the rest of that duplicate run welded onto the end of the
+        // route as a spur back to the click point.
+        const dropCount = dropLast ? Math.min(lastGeoRunLength, verts.length) : 0
+        if (dropCount > 0) verts = verts.slice(0, -dropCount)
 
         if (verts.length < MIN_VERTICES[geoDrawType]) {
             cancelGeoDraw()
@@ -1942,10 +2214,20 @@ function addZUI(
                         localStorage.getItem(DRAW_PROPS_KEY) ?? 'null'
                     )
                     geoVertices = []
+                    // Route only. An area is a region, not a way — snapping its
+                    // boundary to road centrelines would trace the middle of the
+                    // street rather than the edge of the thing being outlined.
+                    routeSnapper =
+                        geoDrawType === 'route' && getRouteSnapEnabled()
+                            ? createRouteSnapper({
+                                  getScale: () =>
+                                      zui.scale || two.scene.scale || 1,
+                              })
+                            : null
                     domElement.addEventListener('mousemove', mousemove, false)
                 }
                 if (geoDrawType) {
-                    addGeoVertex(surfaceCoords.x, surfaceCoords.y)
+                    commitGeoClick(surfaceCoords, e.altKey)
                     setRootCursor('crosshair')
                 }
                 break
@@ -2266,7 +2548,8 @@ function addZUI(
                 ) {
                     document
                         .querySelectorAll<HTMLElement>(
-                            '.dragger-picker:not(.is-line-circle)'
+                            '.dragger-picker:not(.is-line-circle)' +
+                                ':not(.is-vertex-handle)'
                         )
                         .forEach((el) => {
                             el.style.pointerEvents = 'none'
@@ -2376,6 +2659,38 @@ function addZUI(
         // Multi-click geo draw: rubber-band the preview line to the cursor.
         if (geoDrawType) {
             const s = toSurface(e)
+            // Snapped route: the preview IS the road path, so the straight
+            // rubber band alongside it would only draw a chord across the
+            // corner the route is turning. Alt suspends snapping for the
+            // segment in flight — a shortcut across a car park, or a link the
+            // tiles simply do not carry.
+            if (routeSnapper?.hasAnchor() && !e.altKey) {
+                const scale = zui.scale || two.scene.scale || 1
+                const moved = lastRouteProbe
+                    ? Math.hypot(s.x - lastRouteProbe.x, s.y - lastRouteProbe.y)
+                    : Infinity
+                if (
+                    routeSnapPending &&
+                    moved * scale < ROUTE_SNAP_MIN_MOVE_PX
+                ) {
+                    return
+                }
+                lastRouteProbe = { x: s.x, y: s.y }
+                const preview = routeSnapper.preview(s)
+                if (preview) {
+                    updateRouteSnapPreview(preview)
+                    // The two previews are mutually exclusive: whichever one is
+                    // not describing this segment has to go, or the user sees
+                    // the route and the chord at once.
+                    if (geoPreviewLine) {
+                        two.remove(geoPreviewLine)
+                        geoPreviewLine = null
+                    }
+                    two.update()
+                    return
+                }
+            }
+            clearRouteSnapPreview()
             updateGeoPreview(s.x, s.y)
             return
         }
@@ -3454,8 +3769,28 @@ function addZUI(
         }
 
         // Restore pointer events on all components (may have been disabled during arrow drag)
+        //
+        // Vertex handles are excluded from BOTH this sweep and the disable that
+        // pairs with it. Their pointer-events is not a transient drag state — it
+        // is the gate that decides whether a route is selectable at all, and it
+        // belongs solely to `setVertexHandlesVisible`.
+        //
+        // A handle is an opacity-0 circle sitting exactly on the route's own
+        // stroke, and an invisible SVG node still hit-tests. Resetting it to ''
+        // (i.e. auto) re-arms click capture on every hidden handle on the
+        // canvas, and its mousedown calls stopPropagation — so a later click
+        // that lands on one hits nothing and the route does not select. Nothing
+        // repairs it either: the owning component only re-runs the effect when
+        // its OWN selection changes, and it just stayed unselected.
+        //
+        // Snapped routes are where this shows up, because a two-click route
+        // down a curving street carries two dozen handles instead of two, so
+        // most of its length is covered by them. That is what `is-vertex-handle`
+        // (vertexHandles.ts) was tagged for.
         document
-            .querySelectorAll<HTMLElement>('.dragger-picker')
+            .querySelectorAll<HTMLElement>(
+                '.dragger-picker:not(.is-vertex-handle)'
+            )
             .forEach((el) => {
                 el.style.pointerEvents = ''
             })

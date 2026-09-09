@@ -1,5 +1,6 @@
 import {
     DRAG_SCANS_ENABLED_KEY,
+    ROUTE_SNAP_ENABLED_KEY,
     VIEWPORT_CULLING_ENABLED_KEY,
 } from '../constants/misc'
 
@@ -90,5 +91,43 @@ export function subscribeViewportCullingEnabled(fn: Listener): () => void {
     cullingListeners.add(fn)
     return (): void => {
         cullingListeners.delete(fn)
+    }
+}
+
+// ── Route road-snapping flag ──────────────────────────────────────────────
+// Same runtime/localStorage model. Gates snap-to-road route drawing
+// (`utils/roadSnap.ts`). Read from inside addZUI's stale-closure handlers on
+// every mousemove of a route draw, so it has to be this cheap.
+
+// Default ON: a route drawn on a map is expected to follow the street.
+const DEFAULT_ROUTE_SNAP_ENABLED = true
+
+let routeSnapCached: boolean | null = null
+const routeSnapListeners = new Set<Listener>()
+
+export function getRouteSnapEnabled(): boolean {
+    if (routeSnapCached === null) {
+        const stored = localStorage.getItem(ROUTE_SNAP_ENABLED_KEY)
+        routeSnapCached =
+            stored === null ? DEFAULT_ROUTE_SNAP_ENABLED : stored === 'true'
+    }
+    return routeSnapCached
+}
+
+export function setRouteSnapEnabled(enabled: boolean): void {
+    routeSnapCached = enabled
+    try {
+        localStorage.setItem(ROUTE_SNAP_ENABLED_KEY, String(enabled))
+    } catch {
+        // Persistence is best-effort; the in-memory toggle still works.
+    }
+    routeSnapListeners.forEach((fn) => fn(enabled))
+}
+
+// Subscribe to live changes. Returns an unsubscribe fn.
+export function subscribeRouteSnapEnabled(fn: Listener): () => void {
+    routeSnapListeners.add(fn)
+    return (): void => {
+        routeSnapListeners.delete(fn)
     }
 }

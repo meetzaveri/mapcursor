@@ -14,7 +14,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { DRAFT_STORAGE_KEY } from '../../constants/misc'
 import {
+    getRouteSnapEnabled,
     getViewportCullingEnabled,
+    setRouteSnapEnabled,
     setViewportCullingEnabled,
     subscribeViewportCullingEnabled,
 } from '../../utils/featureFlags'
@@ -97,6 +99,7 @@ const PerfOverlay = (): ReactElement => {
     // asserts on via an exact-text match.
     const [zoom, setZoom] = useState(1)
     const [culling, setCulling] = useState(getViewportCullingEnabled())
+    const [routeSnap, setRouteSnap] = useState(getRouteSnapEnabled())
     const [seedN, setSeedN] = useState(2000)
 
     // Frame-rate + worst-frame-gap sampler. One rAF loop; publishes to state
@@ -204,6 +207,26 @@ const PerfOverlay = (): ReactElement => {
                     }
                 />
                 viewport culling
+            </label>
+
+            <label
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginTop: 4,
+                    cursor: 'pointer',
+                }}
+            >
+                <input
+                    type="checkbox"
+                    checked={routeSnap}
+                    onChange={(e) => {
+                        setRouteSnapEnabled(e.target.checked)
+                        setRouteSnap(e.target.checked)
+                    }}
+                />
+                snap routes to roads
             </label>
 
             <div
