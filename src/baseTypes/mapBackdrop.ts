@@ -20,6 +20,9 @@ import {
     resolveTimezoneCity,
     DEFAULT_ANCHOR_ZOOM,
 } from '../utils/timezoneCities'
+import { makeLngLatToSurface, surfaceUnitsPerMeter } from './mercator'
+import { setRoadSource, type RoadSnapshot } from './roadSource'
+import type { RoadPolyline } from '../utils/roadGraph'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MapLibreMap = any
@@ -119,6 +122,113 @@ function syncMapToZui(handle: MapHandle, camera: CameraChangeEvent): void {
     map.jumpTo({ center: desiredCenter, zoom: targetZoom })
 }
 
+
+// ── Roads, for snap-to-road route drawing ────────────────────────────────────
+
+/** The vector source id in the Positron style, and the layer roads live in. */
+const ROAD_SOURCE_ID = 'carto'
+const ROAD_SOURCE_LAYER = 'transportation'
+
+/**
+ * Below this map zoom the tileset carries only the arterial network — minor
+ * roads, service roads and paths simply are not in the tile, so snapping would
+ * drag a route onto a main road a kilometre away and look broken rather than
+ * absent. Refusing outright, and letting the caller draw straight, is the
+ * honest answer.
+ */
+export const MIN_ROAD_SNAP_ZOOM = 12
+
+/**
+ * OMT `transportation` classes that are not roads a route can be drawn along.
+ *
+ * Rail and aerialway are the ones that actually bite: they cross the road
+ * network constantly, share no junctions with it, and would happily capture a
+ * cursor that strayed over a level crossing. Ferries are excluded for the same
+ * reason. Paths and tracks are deliberately KEPT — a walking route down a
+ * footpath is exactly the thing this feature is for.
+ */
+const NON_ROAD_CLASSES = new Set([
+    'rail',
+    'transit',
+    'aerialway',
+    'ferry',
+    'raceway',
+])
+
+/**
+ * Cap on how much geometry one rebuild will take. A screenful of dense city at
+ * z17 runs to a few thousand linestrings; this only bites on a pathological
+ * viewport, and losing the tail of the list degrades snapping at the screen
+ * edge rather than stalling the draw.
+ */
+const MAX_ROAD_POLYLINES = 12000
+
+/**
+ * Read the roads under the current viewport, in surface space.
+ *
+ * `querySourceFeatures` — not `queryRenderedFeatures`. The rendered query is
+ * gated on what the STYLE paints, which for a backdrop we deliberately keep
+ * muted is the wrong question entirely; the source query returns what is in the
+ * loaded tiles regardless of how (or whether) it is drawn.
+ *
+ * Two consequences of reading tiles rather than a routing service. Geometry is
+ * clipped per tile, so one road arrives as several features and a junction
+ * arrives as coincident vertices in two of them — both handled by node welding
+ * in `buildRoadGraph`. And coverage is exactly the loaded viewport: pan, and the
+ * caller must rebuild.
+ */
+function readRoadSnapshot(handle: MapHandle): RoadSnapshot | null {
+    const { map, anchor } = handle
+    if (handle.disposed || !map) return null
+
+    const mapZoom = map.getZoom()
+    if (!Number.isFinite(mapZoom) || mapZoom < MIN_ROAD_SNAP_ZOOM) return null
+    if (!map.getSource(ROAD_SOURCE_ID)) return null
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let features: any[]
+    try {
+        features = map.querySourceFeatures(ROAD_SOURCE_ID, {
+            sourceLayer: ROAD_SOURCE_LAYER,
+        })
+    } catch (err) {
+        console.error('Road source query failed', err)
+        return null
+    }
+    if (!features || features.length === 0) return null
+
+    const toSurface = makeLngLatToSurface(anchor)
+    const polylines: RoadPolyline[] = []
+
+    const pushLine = (coords: [number, number][], roadClass: string): void => {
+        if (!Array.isArray(coords) || coords.length < 2) return
+        const points = coords.map(([lng, lat]) => toSurface(lng, lat))
+        polylines.push({ roadClass, points })
+    }
+
+    for (const feature of features) {
+        if (polylines.length >= MAX_ROAD_POLYLINES) break
+        const roadClass = String(feature?.properties?.class ?? '')
+        if (NON_ROAD_CLASSES.has(roadClass)) continue
+        const geometry = feature?.geometry
+        if (!geometry) continue
+        if (geometry.type === 'LineString') {
+            pushLine(geometry.coordinates, roadClass)
+        } else if (geometry.type === 'MultiLineString') {
+            for (const part of geometry.coordinates) {
+                pushLine(part, roadClass)
+            }
+        }
+    }
+
+    if (polylines.length === 0) return null
+    return {
+        polylines,
+        unitsPerMeter: surfaceUnitsPerMeter(anchor),
+        mapZoom,
+    }
+}
+
 export const mapBackdrop = {
     async mount(
         container: HTMLElement,
@@ -191,6 +301,10 @@ export const mapBackdrop = {
             ;(window as any).__mcMap = handle
         }
 
+        // Hand the road snapper a way to read the tiles without importing
+        // maplibre itself. Cleared in unmount.
+        setRoadSource(() => readRoadSnapshot(handle))
+
         return handle
     },
 
@@ -233,6 +347,7 @@ export const mapBackdrop = {
         const h = handle as MapHandle
         if (h.disposed) return
         h.disposed = true
+        setRoadSource(null)
         document.body.classList.remove(OPAQUE_BACKDROP_CLASS)
         try {
             h.map?.remove()

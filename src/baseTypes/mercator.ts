@@ -117,3 +117,52 @@ export function scaleForMapZoom(mapZoom: number, anchor: MapAnchor): number {
     const { min, max } = MAP_ZOOM_LIMITS
     return Math.max(min, Math.min(max, raw))
 }
+
+/**
+ * Surface units per metre of ground, at the base's anchor.
+ *
+ * Surface units ARE Web Mercator pixels at `anchor.zoom` (512px tiles), so one
+ * unit covers `40075016.686 · cos(lat) / (512 · 2^zoom)` metres — the standard
+ * resolution formula. Everything that needs a real-world tolerance (how close
+ * two road endpoints must be to count as the same junction, how far from the
+ * cursor to look for a road) is authored in metres and converted here, so the
+ * numbers stay meaningful whatever zoom the base happens to be anchored at.
+ *
+ * Latitude is taken from the ANCHOR, not from the point being measured. Mercator
+ * distortion varies across the viewport, but the callers use this for tolerances
+ * of a few metres and a few hundred metres, where being off by the cos ratio
+ * across one screen is immaterial.
+ */
+export function surfaceUnitsPerMeter(anchor: MapAnchor): number {
+    const lat = Math.max(-85.051129, Math.min(85.051129, anchor.lngLat[1]))
+    const metersPerUnit =
+        (40075016.686 * Math.cos((lat * Math.PI) / 180)) /
+        (TILE_SIZE * Math.pow(2, anchor.zoom))
+    return 1 / metersPerUnit
+}
+
+/**
+ * `lngLatToSurface` with the anchor's projected origin hoisted out of the loop.
+ *
+ * The road snapper converts tens of thousands of tile vertices per rebuild, and
+ * the plain function re-projects `anchor.lngLat` on every single call. Same
+ * math, same result — just not re-derived per vertex.
+ */
+export function makeLngLatToSurface(
+    anchor: MapAnchor
+): (lng: number, lat: number) => { x: number; y: number } {
+    const worldSize = TILE_SIZE * Math.pow(2, anchor.zoom)
+    const origin = project(anchor.lngLat, anchor.zoom)
+    return (lng: number, lat: number) => {
+        const clampedLat = Math.max(-85.051129, Math.min(85.051129, lat))
+        const sinLat = Math.sin((clampedLat * Math.PI) / 180)
+        return {
+            x: worldSize * (lng / 360 + 0.5) - origin.x,
+            y:
+                worldSize *
+                    (0.5 -
+                        Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) -
+                origin.y,
+        }
+    }
+}
