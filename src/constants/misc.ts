@@ -298,6 +298,17 @@ export const DRAG_SCANS_ENABLED_KEY = 'mapcursor_drag_scans_enabled'
 // Read live (see `src/utils/featureFlags.ts`). Defaults to disabled.
 export const VIEWPORT_CULLING_ENABLED_KEY = 'mapcursor_viewport_culling_enabled'
 
+// Snap route drawing to the roads in the basemap's vector tiles. Default ON —
+// following a street is what a route on a map is FOR, and the straight-line
+// draw is the special case (hold Alt to get it back for one segment).
+export const ROUTE_SNAP_ENABLED_KEY = 'mapcursor_route_snap_enabled'
+
+// Screen-pixel travel below which a route draw reuses the standing snapped
+// preview instead of searching the road graph again. Pointers fire at 120Hz+
+// and a graph search is real work; three pixels of hand tremor cannot change
+// which street the cursor is on.
+export const ROUTE_SNAP_MIN_MOVE_PX = 3
+
 // Canvas rendering constants
 export const HOVER_THRESHOLD = 15
 export const HOVER_COLOR = 'rgba(196, 144, 26, 0.7)'
