@@ -2,7 +2,10 @@ import type { FunctionComponent, SVGProps } from 'react'
 import CircleIcon from '../wireframeAssets/circle.svg?react'
 import TextIcon from '../wireframeAssets/text.svg?react'
 import PencilIcon from '../wireframeAssets/pencil.svg?react'
-import PointerIcon from '../assets/favicon-amber-bg.svg?react'
+// The select tool wears the brand mark itself — the plated cursor that is
+// also the favicon. It is the one toolbar glyph that is not a line icon on
+// currentColor, and that is deliberate: it is identity, not iconography.
+import PointerIcon from '../assets/favicon-indigo-bg.svg?react'
 import EraserIcon from '../wireframeAssets/eraser.svg?react'
 
 import PanIcon from '../assets/pan.svg?react'

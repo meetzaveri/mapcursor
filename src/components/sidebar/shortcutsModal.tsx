@@ -136,7 +136,7 @@ const MAP_NAVIGATION: ShortcutGroup = {
 const Kbd = ({ children }: { children: string }): ReactElement => (
     <kbd
         className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5
-            rounded border border-border-panel bg-accent/20 text-ink-mid
+            rounded border border-border-panel bg-sidebar text-ink-mid
             text-xs font-medium leading-none whitespace-nowrap"
     >
         {children}

@@ -7,6 +7,14 @@ import {
     readOpacity,
 } from './canvasUtils'
 import { resolveHeightForTextStyleChange } from './shapeTextFit'
+import { TEXT_SIZES_ARRAY } from './constants'
+import { pointLabelSizeFor } from '../constants/misc'
+import {
+    buildCircleLabel,
+    circleLabelFontFamilyOf,
+    circleLabelFontSizeOf,
+    circleLabelOf,
+} from '../factory/circleLabel'
 
 // Bulk-apply a property to every child of the currently-focused group whose
 // element type accepts that property. Element types that don't accept the
@@ -305,6 +313,33 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                 if (sceneEl?.elementData)
                     sceneEl.elementData[propertyKey] = value
                 child[propertyKey] = value
+
+                // A radius map reads as ONE mark: its ring is its fill, from
+                // creation onward. Mirror it here too, or the same edit means
+                // two different things depending on whether the circle happens
+                // to be in a group. One-way, like the single-element path —
+                // `stroke` leaves `fill` alone, so the two can still be
+                // separated. `applyToTwoShape` already painted the leaf's
+                // `fill`; this adds the `stroke` alongside it.
+                if (propertyKey === 'fill' && type === 'circle') {
+                    // Written to the LEAF, not the group. A Two.js Group's
+                    // stroke setter loops every child, and the label's line
+                    // nodes are children too — a group write would outline the
+                    // name in the ring's colour. (The `fill` write above gets
+                    // away with the group because it captures and restores the
+                    // text nodes' own value; there is nothing to restore here,
+                    // since a label carries no stroke of its own.)
+                    const sceneLeaf = sceneEl?.children?.[0]
+                    const coreLeaf = coreObj?.children?.[0]
+                    if (sceneLeaf) sceneLeaf.stroke = value
+                    if (coreLeaf) coreLeaf.stroke = value
+                    if (sceneEl?.elementData)
+                        sceneEl.elementData.stroke = value
+                    child.stroke = value
+                    recordChild(id, { fill: value, stroke: value })
+                    return
+                }
+
                 recordChild(id, { [propertyKey]: value })
                 return
             }
@@ -368,11 +403,35 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                         sceneEl.elementData.textColor = value
                     child.textColor = value
                     recordChild(id, { textColor: value })
-                } else if (
-                    type === 'rectangle' ||
-                    type === 'diamond' ||
-                    type === 'circle'
-                ) {
+                } else if (type === 'circle') {
+                    // A map circle's label ink is a COLUMN, not
+                    // `metadata.textFill` (see circleLabelColorOf), and its
+                    // line nodes live in a sub-group findTextNodesInside would
+                    // reach but the metadata write below would not describe.
+                    const width = sceneEl?.elementData?.width ?? child?.width
+                    const meta =
+                        sceneEl?.elementData?.metadata &&
+                        !Array.isArray(sceneEl.elementData.metadata)
+                            ? sceneEl.elementData.metadata
+                            : ((child?.metadata as Record<
+                                  string,
+                                  unknown
+                              > | null) ?? {})
+                    if (sceneEl?.elementData)
+                        sceneEl.elementData.textColor = value
+                    child.textColor = value
+                    const opts = {
+                        text: circleLabelOf({ metadata: meta }),
+                        fontFamily: circleLabelFontFamilyOf({ metadata: meta }),
+                        fontSize: circleLabelFontSizeOf({ metadata: meta }),
+                        color: value,
+                        width: width ?? 100,
+                    }
+                    // Live element and overlay copy both carry a label.
+                    if (sceneEl) buildCircleLabel(twoJSInstance, sceneEl, opts)
+                    if (coreObj) buildCircleLabel(twoJSInstance, coreObj, opts)
+                    recordChild(id, { textColor: value })
+                } else if (type === 'rectangle' || type === 'diamond') {
                     const sceneTexts = sceneEl
                         ? findTextNodesInside(sceneEl)
                         : []
@@ -409,6 +468,66 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                 propertyKey === 'textSize' ||
                 propertyKey === 'textFontFamily'
             ) {
+                // A map circle's label is not embedded shape text — it is a
+                // sub-group the circleLabel factory owns, and a size change
+                // re-wraps it AND moves the cap band it is centred on, so it
+                // is rebuilt rather than poked.
+                //
+                // The size also has to cross ladders. The group toolbar has
+                // already resolved the toolbar label against TEXT_SIZES_ARRAY
+                // (24–72) by the time it reaches us, so we map that pixel value
+                // back to its label and re-resolve it on the POINT ladder — the
+                // same "styles travel as labels, never as pixels" rule the
+                // creation paths follow. An unmatched pixel value is dropped
+                // rather than written.
+                if (type === 'circle') {
+                    let metaPatch: Record<string, unknown> | null = null
+                    if (propertyKey === 'textFontFamily') {
+                        metaPatch = { textFontFamily: value }
+                    } else {
+                        const ladderLabel = TEXT_SIZES_ARRAY.find(
+                            (s) =>
+                                s.value === value ||
+                                (s as { mobileValue?: number }).mobileValue ===
+                                    value
+                        )?.label
+                        if (!ladderLabel) return
+                        metaPatch = {
+                            textFontSize: pointLabelSizeFor(ladderLabel),
+                        }
+                    }
+                    const existingMeta =
+                        sceneEl?.elementData?.metadata &&
+                        !Array.isArray(sceneEl.elementData.metadata)
+                            ? sceneEl.elementData.metadata
+                            : ((child?.metadata as Record<
+                                  string,
+                                  unknown
+                              > | null) ?? {})
+                    const updatedMeta = { ...existingMeta, ...metaPatch }
+                    if (sceneEl?.elementData)
+                        sceneEl.elementData.metadata = updatedMeta
+                    child.metadata = updatedMeta
+                    const width = sceneEl?.elementData?.width ?? child?.width
+                    const opts = {
+                        text: circleLabelOf({ metadata: updatedMeta }),
+                        fontFamily: circleLabelFontFamilyOf({
+                            metadata: updatedMeta,
+                        }),
+                        fontSize: circleLabelFontSizeOf({
+                            metadata: updatedMeta,
+                        }),
+                        width: width ?? 100,
+                    }
+                    // The live element and the group overlay's detached copy
+                    // both carry a label; rebuild both or they disagree for as
+                    // long as the selection lasts.
+                    if (sceneEl) buildCircleLabel(twoJSInstance, sceneEl, opts)
+                    if (coreObj) buildCircleLabel(twoJSInstance, coreObj, opts)
+                    recordChild(id, { metadata: updatedMeta })
+                    return
+                }
+
                 const sceneTexts = sceneEl ? findTextNodesInside(sceneEl) : []
                 const coreTexts = coreObj ? findTextNodesInside(coreObj) : []
                 const metaKey =
@@ -466,7 +585,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     return
                 }
 
-                // rectangle / diamond / circle with embedded text.
+                // rectangle / diamond with embedded text (circle returned above).
                 if (
                     sceneTexts.length === 0 &&
                     coreTexts.length === 0 &&

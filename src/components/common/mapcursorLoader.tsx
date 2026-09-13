@@ -210,7 +210,7 @@ const MapcursorLoader = ({
                     <path
                         className="mc-route-line"
                         d={ROUTE_D}
-                        stroke="#C4901A"
+                        stroke="#6965db"
                         strokeWidth={2.2}
                         strokeLinecap="round"
                         strokeDasharray="1,5.5"

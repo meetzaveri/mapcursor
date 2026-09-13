@@ -60,7 +60,7 @@ const PlaceSearchModal = ({
                         aria-label="Close search"
                         onClick={onClose}
                         className="w-8 h-8 flex items-center justify-center rounded
-                            text-ink-muted hover:bg-accent/50 cursor-pointer"
+                            text-ink-muted hover:bg-sidebar cursor-pointer"
                     >
                         ✕
                     </button>
@@ -110,7 +110,7 @@ const PlaceSearchModal = ({
                                 onClick={(): void => handlePick(place)}
                                 className="w-full text-left px-3 py-3 text-sm text-ink
                                     border-b border-border-panel last:border-b-0
-                                    hover:bg-accent/50 active:bg-accent/50 cursor-pointer block"
+                                    hover:bg-sidebar active:bg-sidebar cursor-pointer block"
                             >
                                 {place.label}
                             </button>

@@ -13,7 +13,7 @@
     gap: 22px;
     /* Solid parchment only — the dot grid is canvas-only (behind the dotGrid
        feature flag) and must never appear on the loader. */
-    background-color: #f5f0e8;
+    background-color: #fafafc;
     /* One cycle length for all three route animations. They describe the same
        journey from three angles, so they must share a duration and a delay or
        the cursor drifts off the head of the line it is drawing. */
@@ -21,7 +21,7 @@
 }
 
 .dark .mc-loader {
-    background-color: #1c1814;
+    background-color: #0f1115;
 }
 
 .mc-loader .mc-mark {
@@ -40,40 +40,40 @@
    anything — recolouring that to near-black hides the route entirely. */
 .mc-loader .mc-map path,
 .mc-loader .mc-cursor path {
-    stroke: #1a1612;
+    stroke: #14161c;
 }
 
 .dark .mc-loader .mc-map path,
 .dark .mc-loader .mc-cursor path {
-    stroke: #f3ece0;
+    stroke: #e8eaf0;
 }
 
 /* The route keeps its amber in the markup — it reads against both backdrops,
    so there is nothing to flip. */
 
 .mc-loader .mc-wordmark {
-    font-family: 'Fraunces', Georgia, serif;
+    font-family: 'Inter', system-ui, sans-serif;
     font-weight: 600;
     font-size: 22px;
     /* Pinned, not `normal`: `normal` resolves off the font's own metrics, so
-       the column jumped when Fraunces finished loading and displaced the
+       the column jumped when the webfont finished loading and displaced the
        fallback. */
     line-height: 1;
     letter-spacing: 0.5px;
-    color: #1a1612;
+    color: #14161c;
 }
 
 .dark .mc-loader .mc-wordmark {
-    color: #f3ece0;
+    color: #e8eaf0;
 }
 
 .mc-loader .mc-caption {
     margin-top: -10px;
-    font-family: 'Geist', system-ui, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
     font-size: 13px;
     line-height: 1;
     letter-spacing: 0.3px;
-    color: #8c7e6a;
+    color: #6b7180;
 }
 .mc-loader .mc-caption::after {
     content: '';

@@ -23,14 +23,14 @@ const Button = (props: ButtonProps): ReactElement => {
 
     switch (props.intent) {
         case 'primary':
-            baseClassNames += ' bg-accent text-ink '
+            baseClassNames += ' bg-accent text-white '
             break
         case 'info':
             baseClassNames += ' bg-neutrals-n500 text-neutrals-n40 '
             break
         case 'secondary':
             baseClassNames +=
-                ' bg-card-bg text-ink border border-accent-dark'
+                ' bg-card-bg text-ink border border-border-card hover:bg-sidebar'
             break
         default:
             baseClassNames +=
@@ -81,8 +81,8 @@ const Button = (props: ButtonProps): ReactElement => {
                             marginLeft: '8px',
                             borderBottomColor:
                                 props.intent === 'secondary'
-                                    ? '#C4901A'
-                                    : '#1A1612',
+                                    ? 'rgb(var(--color-accent-dark))'
+                                    : '#FFFFFF',
                         }}
                     />
                 </div>

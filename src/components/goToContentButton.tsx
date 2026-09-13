@@ -35,7 +35,7 @@ const GoToContentButton = (): ReactElement | null => {
             // switcher, and every control in that row sits at `top: 8px` and
             // 46px tall (see placeSearch.tsx / baseTypeSwitcher.tsx), so
             // 54 + an 8px gap clears whichever one is showing.
-            className="fixed left-1/2 -translate-x-1/2 z-10 top-[62px] tablet:top-auto tablet:bottom-5 flex items-center gap-1.5 bg-card-bg text-ink-muted hover:text-ink rounded-lg px-3 py-1.5 border border-border-panel hover:bg-accent transition-colors duration-150 text-xs font-medium select-none"
+            className="fixed left-1/2 -translate-x-1/2 z-10 top-[62px] tablet:top-auto tablet:bottom-5 flex items-center gap-1.5 bg-card-bg text-ink-muted hover:text-ink rounded-lg px-3 py-1.5 border border-border-panel hover:bg-sidebar transition-colors duration-150 text-xs font-medium select-none"
             title="Frame all content in view"
         >
             {/* Crosshair / recenter glyph — currentColor follows the theme. */}

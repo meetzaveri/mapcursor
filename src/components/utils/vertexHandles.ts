@@ -21,20 +21,21 @@ import {
     attachStrokeCounterScale,
 } from '../../utils/handleScale'
 import { scheduleRender } from '../../utils/renderScheduler'
-import { HANDLE_STROKE } from '../../constants/misc'
+import {
+    selectionHandleRadiusPx,
+    HANDLE_STROKE,
+    SELECTION_HANDLE_FILL,
+    SELECTION_HANDLE_LINEWIDTH_PX,
+} from '../../utils/selectionTheme'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
-/** Handle dot radius in surface units at scale 1 (counter-scaled on zoom). */
-const HANDLE_RADIUS = 5
 /**
  * Clickable band around the stroke, in SCREEN px, held constant at any zoom.
  * A route's 2px stroke is a ~0.2px target at 10% zoom without this.
  */
 const DEFAULT_HIT_BAND_PX = 22
-
-const HANDLE_FILL = '#f4f4f2'
 
 /**
  * Fired when undo/redo reverts a vertex array. Element components freeze their
@@ -109,10 +110,13 @@ export function attachVertexHandles({
     const verts = path.vertices ?? []
     for (let i = 0; i < verts.length; i++) {
         const v = verts[i]
-        const handle = two.makeCircle(v.x, v.y, HANDLE_RADIUS)
-        handle.fill = HANDLE_FILL
+        // Radius in surface units at scale 1 — attachHandleCounterScale below
+        // cancels the camera zoom, so this renders as the shared screen-px dot
+        // at any zoom (see utils/selectionTheme).
+        const handle = two.makeCircle(v.x, v.y, selectionHandleRadiusPx())
+        handle.fill = SELECTION_HANDLE_FILL
         handle.stroke = HANDLE_STROKE
-        handle.linewidth = 1.5
+        handle.linewidth = SELECTION_HANDLE_LINEWIDTH_PX
         // Start hidden: handles belong to the selection, not the drawing.
         handle.opacity = 0
         group.add(handle)

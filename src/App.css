@@ -1,51 +1,75 @@
+@import './styles/fonts.css';
+
 :root {
-    --font-ui: 'Geist', system-ui, sans-serif;
-    --font-display: 'Fraunces', Georgia, serif;
-    --font-sketch: 'Caveat Brush', cursive;
+    --font-ui: 'Inter', system-ui, sans-serif;
+    /* The DISPLAY role, deliberately still its own token even though it now
+       resolves to the same family as --font-ui. Headings stay tagged as
+       headings, so reintroducing a contrasting display face is a one-line
+       change here rather than a hunt through every h1/h2. */
+    --font-display: 'Inter', system-ui, sans-serif;
+    /* The canvas ROLE font — what newly drawn text gets. Kept in step with
+       DEFAULT_TEXT_FONT_FAMILY in src/constants/misc.ts. */
+    --font-sketch: 'Avenir', system-ui, sans-serif;
     --font-mono: 'Geist Mono', monospace;
+    /* Legacy canvas family: no longer offered in the picker, still loaded
+       because records authored before the Avenir/Frutiger swap carry it. */
     --font-caveat-brush: 'Caveat Brush', cursive;
 
-    /* Warm Studio palette — stored as space-separated RGB *channels* so the
-       Tailwind tokens `rgb(var(--x) / <alpha-value>)` keep opacity modifiers
-       (e.g. bg-accent/30) working. Raw-CSS usages wrap them in rgb(). */
-    --color-canvas: 245 240 232; /* #f5f0e8 — the parchment */
-    --color-sidebar: 237 232 220; /* #ede8dc */
-    --color-card: 255 252 245; /* #fffcf5 */
-    --color-topbar: 26 22 18; /* #1a1612 */
-    --color-topbar-hover: 46 40 32; /* #2e2820 */
-    --color-accent: 232 200 122; /* #e8c87a */
-    --color-accent-dark: 196 144 26; /* #c4901a */
-    --color-accent-glow: rgba(184, 134, 11, 0.18);
-    --color-ink: 26 22 18; /* #1a1612 */
-    --color-ink-mid: 90 78 60; /* #5a4e3c */
-    --color-ink-muted: 140 126 106; /* #8c7e6a */
-    --color-border-panel: 212 201 180; /* #d4c9b4 */
-    --color-border-card: 196 184 154; /* #c4b89a */
+    /* Graphite & Indigo palette — stored as space-separated RGB *channels* so
+       the Tailwind tokens `rgb(var(--x) / <alpha-value>)` keep opacity
+       modifiers (e.g. bg-accent/10) working. Raw-CSS usages wrap them in rgb().
+
+       The surfaces are cool and near-achromatic on purpose: the product's
+       substrate is a CARTO Positron basemap, and warm chrome fought it. The
+       accent is indigo because on a basemap every other hue is already spoken
+       for — blue is water, green is parks, tan is land and buildings,
+       red-orange is roads and POI. Violet-indigo is the one region of the wheel
+       that is cartographically vacant, so it can only read as "interface".
+
+       --color-accent is NOT a new colour: it is HANDLE_STROKE from
+       constants/misc.ts, the selection grab-dot. The UI chrome and the
+       selection chrome finally name the same thing. */
+    --color-canvas: 250 250 252; /* #fafafc */
+    --color-sidebar: 243 244 247; /* #f3f4f7 */
+    --color-card: 255 255 255; /* #ffffff */
+    --color-topbar: 20 22 28; /* #14161c */
+    --color-topbar-hover: 37 40 51; /* #252833 */
+    --color-accent: 105 101 219; /* #6965db — = HANDLE_STROKE */
+    --color-accent-dark: 75 71 184; /* #4b47b8 — 7.3:1 on white, carries text */
+    --color-accent-glow: rgba(105, 101, 219, 0.2);
+    --color-ink: 20 22 28; /* #14161c */
+    --color-ink-mid: 74 80 97; /* #4a5061 */
+    --color-ink-muted: 107 113 128; /* #6b7180 — 4.8:1 on card */
+    --color-border-panel: 228 230 236; /* #e4e6ec */
+    --color-border-card: 216 219 227; /* #d8dbe3 */
 
     /* dot-grid dot color — overridden in dark so the grid stays visible */
-    --color-dot-grid: 196 184 154; /* #c4b89a */
+    --color-dot-grid: 216 219 227; /* #d8dbe3 */
 }
 
-/* Dark theme: warm-dark derivation of the Warm Studio palette. Applied via a
-   `dark` class on <html> (set by useTheme + the pre-paint script in index.html).
-   Surfaces go espresso/charcoal, ink flips to light-warm, amber accent stays.
+/* Dark theme: a cool-graphite derivation, applied via a `dark` class on <html>
+   (set by useTheme + the pre-paint script in index.html). Surfaces go graphite,
+   ink flips to light-cool, and the accent LIGHTENS — #6965db does not clear
+   contrast on a #1b1f29 card. Which means "accent-dark" here denotes the
+   higher-contrast accent, and on a dark ground that is the lighter one. The
+   warm theme dodged this by shipping one amber in both themes.
    Values are RGB channels to match :root above. */
 .dark {
-    --color-canvas: 28 24 20; /* #1c1814 — dark parchment */
-    --color-sidebar: 35 32 25; /* #232019 — panel bg */
-    --color-card: 42 37 29; /* #2a251d — card/shape fill */
-    --color-topbar: 15 13 10; /* #0f0d0a — near-black top bar */
-    --color-topbar-hover: 46 40 32; /* #2e2820 */
-    --color-accent: 232 200 122; /* #e8c87a — keep amber */
-    --color-accent-dark: 196 144 26; /* #c4901a */
-    --color-accent-glow: rgba(184, 134, 11, 0.24);
-    --color-ink: 243 236 224; /* #f3ece0 — primary text, light warm */
-    --color-ink-mid: 200 188 166; /* #c8bca6 — secondary text */
-    --color-ink-muted: 154 142 120; /* #9a8e78 — labels, hints */
-    --color-border-panel: 58 52 43; /* #3a342b — panel dividers */
-    --color-border-card: 74 66 52; /* #4a4234 — card outlines */
+    --color-canvas: 15 17 21; /* #0f1115 */
+    --color-sidebar: 21 24 33; /* #151821 */
+    --color-card: 27 31 41; /* #1b1f29 */
+    --color-topbar: 11 13 17; /* #0b0d11 */
+    --color-topbar-hover: 37 40 51; /* #252833 */
+    --color-accent: 139 135 232; /* #8b87e8 */
+    --color-accent-dark: 168 165 240; /* #a8a5f0 */
+    --color-accent-glow: rgba(139, 135, 232, 0.28);
+    --color-ink: 232 234 240; /* #e8eaf0 */
+    --color-ink-mid: 168 174 191; /* #a8aebf */
+    --color-ink-muted: 123 130 150; /* #7b8296 */
+    --color-border-panel: 39 43 54; /* #272b36 */
+    --color-border-card: 51 56 70; /* #333846 */
 
-    --color-dot-grid: 74 66 52; /* #4a4234 */
+    --color-dot-grid: 51 56 70; /* #333846 */
 }
 
 .caveat-brush-regular {
@@ -152,52 +176,6 @@ button:focus {
     outline: none !important;
 }
 
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
-}
-
-.App-header {
-    /* background-color: #282c34; */
-    min-height: 10vh;
-    /* display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center; */
-    font-size: calc(10px + 2vmin);
-    color: #282c34;
-}
-
-.App-link {
-    color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.temp-input-area-btn {
-    background: transparent;
-    border: none;
-    color: #fff;
-    /* font-family: 'Noto Sans JP'; */
-    font-weight: 600;
-    font-size: 16px;
-    resize: none;
-    outline: none !important;
-}
-
 .temp-input-area {
     background: transparent;
     border: none;
@@ -210,296 +188,6 @@ button:focus {
     line-height: 1.5rem;
 }
 
-.temp-textarea {
-    background: transparent;
-    border: none;
-    color: #000;
-    /* font-family: 'Noto Sans JP'; */
-    font-weight: 600;
-    font-size: 16px;
-    resize: none;
-    outline: none !important;
-    line-height: 1.5rem;
-    overflow-y: hidden;
-}
-
-/* Sidebar css */
-
-.sidebar-container {
-    z-index: 1;
-    /* width: 22%; */
-    -ms-flex: 0 100px;
-    -webkit-box-flex: 0;
-    -moz-box-flex: 0;
-    -ms-box-flex: 0;
-    box-flex: 0;
-    position: fixed;
-    top: 5px;
-    /* height: 10%; */
-    -webkit-transition: all 500ms;
-    -moz-transition: all 500ms;
-    -o-transition: all 500ms;
-    transition: all 500ms;
-}
-
-/* @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.2);
-    }
-
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-} */
-/* 
-.sidebar-container .icon-elements:hover::after {
-    content: 'Elements';
-    width: 90px;
-    position: absolute;
-    top: 4px;
-    left: 54px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-    font-size: 0.9rem;
-}
-
-.sidebar-container .icon-elements:hover::before {
-    content: ' ';
-    position: absolute;
-    top: 14px;
-    left: 51px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    transform: rotate(45deg);
-    width: 10px;
-    height: 10px;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-}
-
-.sidebar-container .icon-shape:hover::after {
-    width: 90px;
-    position: absolute;
-    top: 4px;
-    left: 54px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-    font-size: 0.9rem;
-    content: 'Shapes';
-}
-
-.sidebar-container .icon-shape:hover::before {
-    content: ' ';
-    position: absolute;
-    top: 14px;
-    left: 51px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    transform: rotate(45deg);
-    width: 10px;
-    height: 10px;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-}
-
-.sidebar-container .icon-frame:hover::after {
-    width: 90px;
-    position: absolute;
-    top: 4px;
-    left: 54px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-    font-size: 0.9rem;
-    content: 'Frames';
-}
-.sidebar-container .icon-frame:hover::before {
-    content: ' ';
-    position: absolute;
-    top: 14px;
-    left: 51px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    transform: rotate(45deg);
-    width: 10px;
-    height: 10px;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-}
-
-.sidebar-container .icon-text:hover::after {
-    width: 90px;
-    position: absolute;
-    top: 4px;
-    left: 54px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-    font-size: 0.9rem;
-    content: 'Add Text';
-}
-.sidebar-container .icon-text:hover::before {
-    content: ' ';
-    position: absolute;
-    top: 14px;
-    left: 51px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    transform: rotate(45deg);
-    width: 10px;
-    height: 10px;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-}
-
-.sidebar-container .icon-pencil:hover::after {
-    width: 90px;
-    position: absolute;
-    top: 4px;
-    left: 54px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-    font-size: 0.9rem;
-    content: 'Draw';
-}
-.sidebar-container .icon-pencil:hover::before {
-    content: ' ';
-    position: absolute;
-    top: 14px;
-    left: 51px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    transform: rotate(45deg);
-    width: 10px;
-    height: 10px;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-}
-
-.sidebar-container .icon-selector:hover::after {
-    width: 90px;
-    position: absolute;
-    top: 4px;
-    left: 54px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-    font-size: 0.9rem;
-    content: 'Elements';
-}
-.sidebar-container .icon-selector:hover::before {
-    content: ' ';
-    position: absolute;
-    top: 14px;
-    left: 51px;
-    background: #0747a6;
-    padding: 4px 5px;
-    color: #fff;
-    transform: rotate(45deg);
-    width: 10px;
-    height: 10px;
-    -webkit-transition: all 1s;
-    -moz-transition: all 1s;
-    -o-transition: all 1s;
-    transition: all 1s;
-    z-index: 1;
-} */
-
-/* .secondary-sidebar-content::before {
-//     content: ' ';
-//     position: absolute;
-//     top: 9px;
-//     left: -5px;
-//     background: #fff;
-//     transform: rotate(45deg);
-//     width: 10px;
-//     height: 10px;
-//     -webkit-transition: all 1s;
-//     -moz-transition: all 1s;
-//     -o-transition: all 1s;
-//     transition: all 1s;
-// }
-*/
-
-.secondary-sidebar-shapes {
-    position: fixed;
-    top: 45px;
-    left: 21px;
-}
-
-.caret-icon::before {
-    content: '';
-    position: absolute;
-    background-color: #0052cc;
-    width: 3px;
-    height: 9px;
-    transform: translate(2px, 0) rotate(45deg);
-}
-.caret-icon::after {
-    content: '';
-    position: absolute;
-    background-color: #0052cc;
-    width: 3px;
-    height: 9px;
-    transform: translate(2px, 0) rotate(-45deg);
-}
-
-/** COMMON CSS CLASSES **/
 .transform-rotate-90 {
     transform: rotate(90deg);
 }

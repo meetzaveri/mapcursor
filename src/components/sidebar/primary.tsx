@@ -15,6 +15,7 @@ import type { ComponentRecord } from '../../types/base'
 import {
     ELEMENT_DEFAULTS,
     CIRCLE_DEFAULTS,
+    CIRCLE_LABEL_COLOR,
     POINT_COLOR,
     POINT_RADIUS,
     DEFAULT_RESIST,
@@ -494,6 +495,26 @@ const PrimarySidebar = (): ReactElement => {
                         linewidth:
                             defaultLinewidth ?? CIRCLE_DEFAULTS.linewidth,
                         opacity: CIRCLE_DEFAULTS.opacity,
+                        // The label's ink, seeded here rather than left to
+                        // whatever `textColor` the component-type catalog
+                        // happens to carry for a circle — that value was never
+                        // a text colour, since a circle had no text until now.
+                        textColor: CIRCLE_LABEL_COLOR,
+                        metadata: {
+                            ...((shapeData as ComponentRecord).metadata ?? {}),
+                            // Named after drawing — empty until typed.
+                            label: '',
+                            // The label picks up the current text style, exactly
+                            // like a new point or text does. The size default
+                            // travels as a ladder LABEL, so 'XL' chosen on a map
+                            // label becomes the POINT ladder's XL here — the
+                            // same intent, sized for an annotation rather than a
+                            // caption. Never copy a pixel size across ladders.
+                            textFontSize: pointLabelSizeFor(defaultTextSize),
+                            ...(defaultTextFontFamily && {
+                                textFontFamily: defaultTextFontFamily,
+                            }),
+                        },
                     }
                 }
 

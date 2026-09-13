@@ -5,7 +5,7 @@
  * that keyword centres the **x-height**, not the glyphs: the alphabetic
  * baseline lands half an x-height below the anchor, so a line of mixed-case
  * text floats above whatever it is supposed to line up with by
- * `(capHeight - xHeight) / 2` — 9% of the font size in Geist, 12% in Caveat
+ * `(capHeight - xHeight) / 2` — 9% of the font size in Inter, 12% in Caveat
  * Brush. Small enough to look like a rendering wobble, big enough to see next
  * to a point's circle at XL.
  *

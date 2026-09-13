@@ -15,6 +15,11 @@ import { MIXED, inspectGroupValues } from '../../utils/groupInspect'
 import { readOpacity } from '../../utils/canvasUtils'
 import { isStandaloneTextType, POINT_LABEL_SIZES } from '../../constants/misc'
 import { pointFontFamilyOf, pointFontSizeOf } from '../../factory/point'
+import {
+    circleLabelColorOf,
+    circleLabelFontFamilyOf,
+    circleLabelFontSizeOf,
+} from '../../factory/circleLabel'
 import type { ReorderOp } from '../canvasContextMenu'
 import BringToFrontIcon from '../../assets/bring-to-front.svg?react'
 import BringForwardIcon from '../../assets/bring-forward.svg?react'
@@ -28,7 +33,7 @@ import SunsetIcon from '../../assets/sunset.svg?react'
 // Reorder icon tone — matches the toolbar's ink-mid text. The source SVGs
 // hardcode a blue stroke; SVGR spreads props after the original attrs so this
 // override wins (same trick as canvasContextMenu).
-const REORDER_ICON_STROKE = '#8C7E6A'
+const REORDER_ICON_STROKE = 'currentColor'
 
 const REORDER_BUTTONS: {
     op: ReorderOp
@@ -57,8 +62,8 @@ const STROKE_TYPES = [
 // `stroke` override below wins (same trick as the reorder icons).
 type MobileTab = 'fill' | 'stroke' | 'text' | 'extras'
 
-const MOBILE_TAB_ICON_ACTIVE = '#C4901A'
-const MOBILE_TAB_ICON_INACTIVE = '#8C7E6A'
+const MOBILE_TAB_ICON_ACTIVE = 'currentColor'
+const MOBILE_TAB_ICON_INACTIVE = 'currentColor'
 
 const MOBILE_TABS: {
     key: MobileTab
@@ -102,7 +107,22 @@ const SETS = {
     // derived) but drops opacity — a circle is created half-transparent so the
     // basemap reads through it, and that is the behaviour, not a knob. Omitting
     // the section IS how the control is hidden, same as for point/area/route.
-    CIRCLE: ['fill', 'stroke', 'strokeWidth', 'strokeType'],
+    //
+    // Its label takes colour, size and font (the latter two off the POINT
+    // ladder — see circleLabelFontSizeOf) plus the zoom-resistance switch.
+    // Colour is a real control here, unlike a point's fixed ink: a point's
+    // name hangs OUTSIDE a 10px pin, while a circle's sits inside a filled
+    // ring the user colours, so black is not always readable.
+    CIRCLE: [
+        'fill',
+        'stroke',
+        'strokeWidth',
+        'strokeType',
+        'textColor',
+        'textSize',
+        'textFont',
+        'zoomResist',
+    ],
     // GROUP: union of every property — toolbar shows them all when a group is
     // focused. applyGroupProperty silently skips children whose element type
     // doesn't accept a given property.
@@ -118,6 +138,7 @@ const SETS = {
     ],
 }
 
+// Element names, rendered as "Styling: <name>" in the panel header.
 const SET_LABELS = {
     PENCIL: 'Pencil',
     TEXT: 'Text',
@@ -167,7 +188,10 @@ function resolveSetKey({
         // Both spellings are checked because `shape.type` is set from
         // elementData.componentType for a selection made on the canvas, while
         // the elementType fallback covers the paths that don't populate it.
-        if (isStandaloneTextType(shapeType) || isStandaloneTextType(elementType))
+        if (
+            isStandaloneTextType(shapeType) ||
+            isStandaloneTextType(elementType)
+        )
             return 'TEXT'
         if (shapeType === 'circle' || shapeType === 'ellipse') return 'CIRCLE'
         if (elementType === 'pencil') return 'PENCIL'
@@ -248,21 +272,27 @@ function readEffectiveValues({
     const isText = isStandaloneTextType(selectedComponent?.shape?.type)
     const textNode = isText ? shapeData : textData
 
-    // A point's label is a bare Two.Text in the point's group, not a text
-    // layer, so `textNode` is empty for one — and its size and font are per
-    // record, off its own ladder, never the live defaults.
+    // A point's label is a bare Two.Text in its group and a circle's is a
+    // sub-group of them — neither is a text layer, so `textNode` is empty for
+    // both. Their size and font are per record, off the SAME (point) ladder,
+    // never the live defaults. Both are annotations hanging off a mark; the
+    // whiteboard ladder's smallest step already overshoots for either.
     const isPoint = elementData?.componentType === 'point'
+    const isCircle = elementData?.componentType === 'circle'
+    const isMarkLabel = isPoint || isCircle
     const textSizeNumeric = isPoint
         ? pointFontSizeOf(elementData)
-        : textNode?.size
-    const sizeLadder = isPoint ? POINT_LABEL_SIZES : TEXT_SIZES_ARRAY
+        : isCircle
+          ? circleLabelFontSizeOf(elementData)
+          : textNode?.size
+    const sizeLadder = isMarkLabel ? POINT_LABEL_SIZES : TEXT_SIZES_ARRAY
     const textSizeLabel =
         sizeLadder.find((s) =>
-            isMobile && !isPoint
+            isMobile && !isMarkLabel
                 ? (s as { mobileValue?: number }).mobileValue ===
                   textSizeNumeric
                 : s.value === textSizeNumeric
-        )?.label || (isPoint ? 'M' : defaults.defaultTextSize)
+        )?.label || (isMarkLabel ? 'M' : defaults.defaultTextSize)
 
     return {
         fill: shapeData?.fill ?? defaults.defaultFill,
@@ -272,13 +302,21 @@ function readEffectiveValues({
         // Opacity lives in the top-level `opacity` field (legacy rows fall
         // back to metadata.opacity).
         opacity: readOpacity(elementData),
-        textColor: isText
-            ? (shapeData?.fill ?? defaults.defaultTextColor)
-            : (textData?.fill ?? defaults.defaultTextColor),
+        // A circle's label ink is a COLUMN (see circleLabelColorOf), and its
+        // line nodes never reach `textData` — so neither generic arm resolves
+        // it. Falls back to the design default, not the live text default: an
+        // untouched circle reads as the black it actually paints.
+        textColor: isCircle
+            ? circleLabelColorOf(elementData)
+            : isText
+              ? (shapeData?.fill ?? defaults.defaultTextColor)
+              : (textData?.fill ?? defaults.defaultTextColor),
         textSize: textSizeLabel,
         textFontFamily: isPoint
             ? pointFontFamilyOf(elementData)
-            : (textNode?.family ?? defaults.defaultTextFontFamily),
+            : isCircle
+              ? circleLabelFontFamilyOf(elementData)
+              : (textNode?.family ?? defaults.defaultTextFontFamily),
         // Per record, off the element's own row — never a default. Absent/null
         // means the column was never written, which reads as zoom-resistant.
         zoomResistant: elementData?.zoomResistant ?? true,
@@ -304,7 +342,7 @@ const ReorderRow = ({ onReorder }: { onReorder: (op: ReorderOp) => void }) => (
                         type="button"
                         aria-label={label}
                         onClick={() => onReorder(op)}
-                        className="flex-1 h-8 flex items-center justify-center rounded cursor-pointer transition-colors ease-in-out duration-150 border border-border-card hover:bg-accent/20"
+                        className="flex-1 h-8 flex items-center justify-center rounded cursor-pointer transition-colors ease-in-out duration-150 border border-border-card hover:bg-sidebar"
                     >
                         <Icon
                             width={15}
@@ -332,7 +370,7 @@ const StrokeWidthRow = ({
         <div className="flex justify-between">
             {STROKE_WIDTHS.map(({ value: w, inner }) => {
                 const isSelected = value === w
-                const accent = isSelected ? '#C4901A' : '#8C7E6A'
+                const accent = isSelected ? 'rgb(var(--color-accent-dark))' : 'rgb(var(--color-ink-muted))'
                 return (
                     <button
                         key={w}
@@ -400,18 +438,18 @@ const StrokeTypeRow = ({
                         key={v}
                         onClick={() => onChange(v)}
                         className={`flex-1 w-4 h-6 flex items-center justify-center rounded cursor-pointer transition-all ease-in-out duration-200 ${
-                            isSelected ? 'bg-accent/20' : 'hover:bg-accent/20'
+                            isSelected ? 'bg-accent/10' : 'hover:bg-sidebar'
                         }`}
                         style={{
                             border: isSelected
-                                ? '2px solid #C4901A'
-                                : '1px solid #C4B89A',
+                                ? '2px solid rgb(var(--color-accent-dark))'
+                                : '1px solid rgb(var(--color-border-card))',
                         }}
                     >
                         <span
                             className="text-base font-bold tracking-widest"
                             style={{
-                                color: isSelected ? '#C4901A' : '#8C7E6A',
+                                color: isSelected ? 'rgb(var(--color-accent-dark))' : 'rgb(var(--color-ink-muted))',
                                 paddingBottom:
                                     v === 'dotted' ? '0.4rem' : '0px',
                             }}
@@ -447,8 +485,8 @@ const TextSizeRow = ({
                         onClick={() => onChange(label)}
                         className={`w-9 h-8 text-xs font-semibold border rounded transition-colors ${
                             isSelected
-                                ? 'bg-accent/20 text-accent-dark border-accent-dark border-2'
-                                : 'bg-card-bg text-ink-mid border-border-card hover:bg-accent/20'
+                                ? 'bg-accent/10 text-accent-dark border-accent-dark border-2'
+                                : 'bg-card-bg text-ink-mid border-border-card hover:bg-sidebar'
                         }`}
                     >
                         {label}
@@ -466,10 +504,12 @@ const FontFamilyRow = ({
     value: string
     onChange: (v: string) => void
 }) => {
+    // Self-hosted faces (src/styles/fonts.css). These spellings are persisted
+    // verbatim into `metadata.textFontFamily`, so they must match the
+    // @font-face family names exactly.
     const families = [
-        { label: 'Caveat', family: 'Caveat' },
-        { label: 'Geist', family: 'Geist' },
-        { label: 'Caveat Brush', family: 'Caveat Brush' },
+        { label: 'Avenir', family: 'Avenir' },
+        { label: 'Frutiger', family: 'Frutiger' },
     ]
     return (
         <div className="pt-3 px-2">
@@ -485,8 +525,8 @@ const FontFamilyRow = ({
                             style={{ fontFamily: family }}
                             className={`w-12 h-8 text-sm border rounded transition-colors ${
                                 isSelected
-                                    ? 'bg-accent/20 text-accent-dark border-accent-dark border-2'
-                                    : 'bg-card-bg text-ink-mid border-border-card hover:bg-accent/20'
+                                    ? 'bg-accent/10 text-accent-dark border-accent-dark border-2'
+                                    : 'bg-card-bg text-ink-mid border-border-card hover:bg-sidebar'
                             }`}
                         >
                             Aa
@@ -546,8 +586,8 @@ const MobileTabBar = ({
                     onClick={() => onSelect(key)}
                     className={`flex-1 h-8 flex items-center justify-center rounded cursor-pointer transition-colors ${
                         isActive
-                            ? 'bg-accent/20 border-2 border-accent-dark'
-                            : 'border border-border-card hover:bg-accent/20'
+                            ? 'bg-accent/10 border-2 border-accent-dark'
+                            : 'border border-border-card hover:bg-sidebar'
                     }`}
                 >
                     <Icon
@@ -602,7 +642,7 @@ const ElementPropertiesToolbar = () => {
                 selectedGroup,
                 isTextDrawMode,
                 currentElement,
-                    }),
+            }),
         [
             isRubberMode,
             isPencilMode,
@@ -610,7 +650,7 @@ const ElementPropertiesToolbar = () => {
             selectedGroup,
             isTextDrawMode,
             currentElement,
-            ]
+        ]
     )
 
     const defaults = {
@@ -812,7 +852,7 @@ const ElementPropertiesToolbar = () => {
                         value={values.textSize}
                         onChange={handle('textSize')}
                         sizes={
-                            setKey === 'POINT'
+                            setKey === 'POINT' || setKey === 'CIRCLE'
                                 ? POINT_LABEL_SIZES
                                 : undefined
                         }
@@ -902,8 +942,8 @@ const ElementPropertiesToolbar = () => {
             }}
             className={
                 isMobile
-                    ? 'secondary-sidebar-content fixed bg-card-bg flex flex-col text-left rounded-card border border-border-panel overflow-hidden'
-                    : 'secondary-sidebar-content fixed bg-card-bg block text-left pb-4 rounded-card border border-border-panel overflow-y-auto tablet:max-h-128'
+                    ? 'secondary-sidebar-content fixed bg-card-bg flex flex-col text-left rounded-card border border-border-panel shadow-card overflow-hidden'
+                    : 'secondary-sidebar-content fixed bg-card-bg block text-left pb-4 rounded-card border border-border-panel shadow-card overflow-y-auto tablet:max-h-128'
             }
             style={
                 isMobile
@@ -921,7 +961,7 @@ const ElementPropertiesToolbar = () => {
             }
         >
             <div className="w-full px-2 font-semibold text-xs pt-1 pb-1 border-b border-border-panel text-ink-muted shrink-0">
-                {SET_LABELS[setKey as keyof typeof SET_LABELS]}
+                Styling: {SET_LABELS[setKey as keyof typeof SET_LABELS]}
             </div>
 
             {isMobile ? (

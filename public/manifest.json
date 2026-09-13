@@ -3,7 +3,7 @@
     "name": "Mapcursor | Draw and annotate on maps",
     "icons": [
         {
-            "src": "favicon-espresso-bg.svg",
+            "src": "favicon-graphite-bg.svg",
             "sizes": "64x64 32x32 24x24 16x16",
             "type": "image/x-icon"
         },
@@ -20,6 +20,6 @@
     ],
     "start_url": ".",
     "display": "standalone",
-    "theme_color": "#000000",
-    "background_color": "#ffffff"
+    "theme_color": "#fafafc",
+    "background_color": "#fafafc"
 }

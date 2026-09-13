@@ -2,18 +2,27 @@ export const offsetHeight = 0
 export const GROUP_COMPONENT = 'groupobject'
 
 // Default canvas text font (single source of truth). Kept in sync with the
-// `--font-sketch` var in App.css, the Tailwind `sketch` token, and the Google
-// Fonts <link> in index.html. Every canvas-text fallback
-// (`family || DEFAULT_TEXT_FONT_FAMILY`) references this so the default lives in
-// exactly one place — including the welcome sketch (`SKETCH_FONT`).
-export const DEFAULT_TEXT_FONT_FAMILY = 'Caveat Brush'
+// `--font-sketch` var in App.css and the Tailwind `sketch` token. Every
+// canvas-text fallback (`family || DEFAULT_TEXT_FONT_FAMILY`) references this
+// so the default lives in exactly one place.
+//
+// Self-hosted (src/styles/fonts.css), not a Google family — hence
+// SELF_HOSTED_FONT_FILES in utils/svgExportShared.ts, which embeds the binary
+// so exports don't fall back. The picker offers this and 'Frutiger' and
+// nothing else; 'Caveat Brush' is
+// still loaded from Google Fonts because records authored before the swap
+// carry it in `metadata.textFontFamily` and nothing migrates that field.
+export const DEFAULT_TEXT_FONT_FAMILY = 'Avenir'
 
-// The ring colour of a grab handle — the indigo every editable map object
-// shares. Route and area ring their per-vertex dots with it (vertexHandles.ts),
-// and the circle's 4 corner handles take it too (CIRCLE_ADAPTER in
-// selectionController), so "grab here to reshape" reads the same whichever map
-// object is selected. Deliberately fixed in both themes, unlike the selection
-// BOX, which follows the theme's ink to stay readable over the basemap.
+// The ring colour of every grab handle in the app — route and area vertex dots,
+// the corner dots on a shape, a text block, a map circle or a multi-element
+// group. One colour, so "grab here to reshape" reads the same whatever is
+// selected. Deliberately fixed in both themes, unlike the selection BOX, which
+// follows the theme's ink to stay readable over the basemap.
+//
+// Consumers import it (with the rest of the chrome tokens) from
+// utils/selectionTheme, which re-exports it — that module is the description of
+// the selection chrome; this is just where the value lives.
 export const HANDLE_STROKE = '#6965db'
 
 export const RUBBER_MODE_KEY = 'rubberMode'
@@ -122,13 +131,17 @@ export const TEXT_RESIST = 0.9
 
 // The user-facing on/off switch for the above is the `zoomResistant` column,
 // not metadata: `false` means resist 0, absent/true means TEXT_RESIST. It is
-// read for text ONLY (resolveResist in utils/counterScale.ts) — point, area,
-// route and geo pencil keep the numeric metadata.resist and ignore the column.
+// read by the LABEL readers only — `resolveLabelResist` in utils/counterScale.ts
+// (a circle's label) and `resolveResist`'s text arm (a text's whole group).
+// Point, area, route and geo pencil keep the numeric metadata.resist and ignore
+// the column, and so does a circle's STROKE: a circle resists at two different
+// rates, and reading the column for its ring would make the switch delete the
+// ring at low zoom.
 //
 // Fired when that switch is toggled from the properties panel or reverted by
-// undo. ElementRenderWrapper freezes each element's props at mount, so a column
-// write never reaches the component through React — this is the same escape
-// hatch `standaloneTextReverted` uses.
+// undo, for text and circle alike. ElementRenderWrapper freezes each element's
+// props at mount, so a column write never reaches the component through React —
+// this is the same escape hatch `standaloneTextReverted` uses.
 export const TEXT_RESIST_CHANGED_EVENT = 'textResistChanged'
 
 /**
@@ -176,6 +189,14 @@ export const POINT_RADIUS = 10
 export const POINT_LABEL_GAP = 5
 export const POINT_COLOR = '#FF5630'
 export const POINT_LABEL_COLOR = '#000'
+
+// The map circle's label ink — the DEFAULT, not a fixed value: unlike a point's
+// (a 10px pin whose name hangs outside it), a circle's label sits inside a
+// filled ring the user colours, so it needs its own control. Matches
+// POINT_LABEL_COLOR as the starting point, and carries the same caveat —
+// circles only ever render over the basemap, which has no dark variant, so ship
+// a dark basemap and this needs to become theme-derived ink instead.
+export const CIRCLE_LABEL_COLOR = '#000'
 export const POINT_LABEL_FONT_SIZE = 18
 
 // The point label's own size ladder, deliberately tighter than the whiteboard's
@@ -268,8 +289,7 @@ export const STORAGE_QUOTA_ERROR_NAME = 'QuotaExceededError'
 // One-shot tip pointing at the "Zoom resistant" switch, shown under the primary
 // toolbar the first time a user zooms a map base that has text on it. Same
 // Set once, never shown again.
-export const TEXT_ZOOM_HINT_DISMISSED_KEY =
-    'mapcursor_text_zoom_hint_dismissed'
+export const TEXT_ZOOM_HINT_DISMISSED_KEY = 'mapcursor_text_zoom_hint_dismissed'
 
 // Stable identity for the local (unsaved) base at `/`.
 //
@@ -311,7 +331,7 @@ export const ROUTE_SNAP_MIN_MOVE_PX = 3
 
 // Canvas rendering constants
 export const HOVER_THRESHOLD = 15
-export const HOVER_COLOR = 'rgba(196, 144, 26, 0.7)'
+export const HOVER_COLOR = 'rgba(105, 101, 219, 0.7)'
 export const SELECTION_PREVIEW_STROKE = '#505F79'
 export const DEFAULT_PREVIEW_OPACITY = 0.6
 export const LINE_HEIGHT_MULTIPLIER = 1.6

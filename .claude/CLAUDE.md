@@ -18,7 +18,7 @@ For example:
 # Craftbase is a standalone product, not a library
 
 **Craftbase is its own app. It has no consumers and is not published as a dependency.**
-`craftmaps` (sibling repo at `../craftmaps`) *was* the one consumer, importing craftbase
+`craftmaps` (sibling repo at `../craftmaps`) _was_ the one consumer, importing craftbase
 via `"craftbase": "link:../craftbase"`. **It is being torn down.** Do not design for it,
 do not preserve its call site, and do not weigh "would this break craftmaps?" when
 evaluating a change.
@@ -28,30 +28,30 @@ which is exactly what made craftmaps redundant.
 
 ## Implications when editing craftbase
 
-- **Build features *in* craftbase.** Map glue, geocoding, basemap controls, place search:
-    all of it belongs here now. The old rule ("if it feels consumer-specific it belongs in
-    the consumer repo") is retired — there is no consumer repo to push it to.
+- **Build features _in_ craftbase.** Map glue, geocoding, basemap controls, place search:
+  all of it belongs here now. The old rule ("if it feels consumer-specific it belongs in
+  the consumer repo") is retired — there is no consumer repo to push it to.
 - **Prefer removing an extension point to maintaining it.** These props exist only because
-    craftmaps needed them, and each one is now a fork in the code with no live caller:
+  craftmaps needed them, and each one is now a fork in the code with no live caller:
     - `geoObjectsEnabled` — **deprecated**; only ever meant "surface the geo toolset".
-        Superseded by the map base's own toolset.
+      Superseded by the map base's own toolset.
     - `renderBackground` — consumer-painted backdrop slot. Superseded by `BaseTypeProvider`.
     - `onCameraChange`, `scaleToDisplay` — still harmless, but no external caller.
-    Removing them is cleanup, not a breaking change. Sequence it deliberately (see
-    "Base switcher" below — `geoObjectsEnabled` still drives the toolset overlay and
-    `renderBackground` still gates `baseSwitcherEnabled`), but the destination is deletion.
+      Removing them is cleanup, not a breaking change. Sequence it deliberately (see
+      "Base switcher" below — `geoObjectsEnabled` still drives the toolset overlay and
+      `renderBackground` still gates `baseSwitcherEnabled`), but the destination is deletion.
 - **`src/lib.ts` is now an internal barrel, not a public API.** Nothing outside this repo
-    imports it. Adding to it no longer carries a compatibility promise; you are free to
-    change or narrow exports.
+  imports it. Adding to it no longer carries a compatibility promise; you are free to
+  change or narrow exports.
 - **No consumer-bundler constraints.** The `.ts`/`.tsx`-source contract, the
-    `optimizeDeps.exclude` note, the tailwind-purge-across-`node_modules` rule, and the
-    `link:` live-reload caveat all only mattered for craftmaps. Only this repo's own Vite
-    and tailwind configs matter now.
-- **Backward compatibility that still counts is *data*, not API.** Existing bases in
-    localStorage and Hasura, saved viewports, exported JSON files. Those users are real.
-    Keep the "no write on read", unsuffixed-viewport-key and
-    `formatVersion`-never-validated guarantees described under "Bases and base types",
-    and route any storage rename through `storageMigration.ts` rather than resetting.
+  `optimizeDeps.exclude` note, the tailwind-purge-across-`node_modules` rule, and the
+  `link:` live-reload caveat all only mattered for craftmaps. Only this repo's own Vite
+  and tailwind configs matter now.
+- **Backward compatibility that still counts is _data_, not API.** Existing bases in
+  localStorage and Hasura, saved viewports, exported JSON files. Those users are real.
+  Keep the "no write on read", unsuffixed-viewport-key and
+  `formatVersion`-never-validated guarantees described under "Bases and base types",
+  and route any storage rename through `storageMigration.ts` rather than resetting.
 
 ## When in doubt
 
@@ -101,7 +101,7 @@ This is because Two.js attaches raw DOM `addEventListener` calls outside React's
 `.filter()` on it lies about `length`.
 
 `Collection extends Array`, so `filter` builds its result via
-`ArraySpeciesCreate` → `new Collection(0)`. That constructor treats a *numeric*
+`ArraySpeciesCreate` → `new Collection(0)`. That constructor treats a _numeric_
 argument as an element to push, so the result starts as `[0]`. When the filter
 matches nothing, nothing overwrites it:
 
@@ -183,7 +183,74 @@ Reusable React UI components.
 
     **Element defaults vs. selected-shape edits:** `src/utils/applyProperty.ts` (`createApplyProperty`) is the single mutation path behind `elementProperties.tsx`. Every property change (1) updates the matching default via `useElementDefaults` setters, then (2) if a shape is selected, applies the same change to that shape. So editing a property with nothing selected just sets the default; editing with a shape selected sets both. Defaults store `null` for `strokeType: 'solid'` (matching what `primary.tsx` feeds new shapes); DB rows store the literal `'solid'`/`'dashed'`/`'dotted'`.
 
-    **A point's label is styled per record, off its own ladder.** The `GEO_POINT` set carries `fill` (the pin) plus `textSize` and `textFont` (the label; its colour is fixed by design). Both text keys live in `metadata.textFontSize`/`metadata.textFontFamily`, and `applyProperty` handles them in the point branch rather than the shared text path — a point's label is a bare `Two.Text` in the point's group, not a text layer, and `selectedComponent.shape.data` for a point is the _circle_, so the shared handlers would restyle nothing. Sizes resolve against `POINT_LABEL_SIZES` (14/18/24/32), not `TEXT_SIZES_ARRAY` (24–72) whose smallest step already exceeds the point default. **The style is inherited like any other text style**: both keys feed the usual `useElementDefaults` sync, and `handlePointElement` seeds a new point from them. What makes that work across two ladders is that `defaultTextSize` travels as a *label* (`'S'…'XL'`), never a pixel count — so XL picked on a geoText (72px) makes the next point the point ladder's XL (32px), via `pointLabelSizeFor`. Resolve the label through the point ladder at every creation site; never copy a pixel size across. The label is **centred by hand, not by `baseline: 'middle'`** — SVG's middle baseline centres the x-height, which left the label floating ~0.1em above the pin (2px at S, 4px at XL, and a different amount per font). It is drawn on the alphabetic baseline and offset by `capCenterOffset` (`utils/fontMetrics.ts`, cap height measured per family via canvas and cached only once the webfont is loaded), so re-place it on any size *or* family change — `applyProperty` does, and `buildPointVisual` does on every rebuild. Every read goes through `pointFontFamilyOf`/`pointFontSizeOf`, and `buildPointVisual` must be handed both — it rebuilds the pin from scratch, so anything not threaded through it (the undo rebuild in `useComponentHistory` included) silently reverts to the design default. That undo rebuild **replaces** `elementData.metadata` rather than merging it: styling an unstyled point adds a key, and reverting means removing it. Covered by `tests/e2e/point-label-text.spec.js`.
+    **A point's label is styled per record, off its own ladder.** The `GEO_POINT` set carries `fill` (the pin) plus `textSize` and `textFont` (the label; its colour is fixed by design). Both text keys live in `metadata.textFontSize`/`metadata.textFontFamily`, and `applyProperty` handles them in the point branch rather than the shared text path — a point's label is a bare `Two.Text` in the point's group, not a text layer, and `selectedComponent.shape.data` for a point is the _circle_, so the shared handlers would restyle nothing. Sizes resolve against `POINT_LABEL_SIZES` (14/18/24/32), not `TEXT_SIZES_ARRAY` (24–72) whose smallest step already exceeds the point default. **The style is inherited like any other text style**: both keys feed the usual `useElementDefaults` sync, and `handlePointElement` seeds a new point from them. What makes that work across two ladders is that `defaultTextSize` travels as a _label_ (`'S'…'XL'`), never a pixel count — so XL picked on a geoText (72px) makes the next point the point ladder's XL (32px), via `pointLabelSizeFor`. Resolve the label through the point ladder at every creation site; never copy a pixel size across. The label is **centred by hand, not by `baseline: 'middle'`** — SVG's middle baseline centres the x-height, which left the label floating ~0.1em above the pin (2px at S, 4px at XL, and a different amount per font). It is drawn on the alphabetic baseline and offset by `capCenterOffset` (`utils/fontMetrics.ts`, cap height measured per family via canvas and cached only once the webfont is loaded), so re-place it on any size _or_ family change — `applyProperty` does, and `buildPointVisual` does on every rebuild. Every read goes through `pointFontFamilyOf`/`pointFontSizeOf`, and `buildPointVisual` must be handed both — it rebuilds the pin from scratch, so anything not threaded through it (the undo rebuild in `useComponentHistory` included) silently reverts to the design default. That undo rebuild **replaces** `elementData.metadata` rather than merging it: styling an unstyled point adds a key, and reverting means removing it. Covered by `tests/e2e/point-label-text.spec.js`.
+
+    **A map circle takes a NAME, not inner text.** craftbase's whole
+    shape-with-text pipeline came across in the fork — `applyShapeText`,
+    `renderShapeTextLayer`, `shapeTextFit.ts` (circle's `1/√2` inscribed-box
+    math included) and a `showTextInput` editor in `newCanvas.tsx` — and all of
+    it is deliberately unreachable for a circle. That model **grows the shape to
+    fit the text**, and a circle's size IS its radius, which is the entire
+    meaning of the mark. So the circle borrows the POINT's model instead:
+    `metadata.label` / `textFontSize` / `textFontFamily`, rendered by
+    `buildCircleLabel` (`factory/circleLabel.ts`), sharing `POINT_LABEL_SIZES`
+    — it is an annotation on a mark, same job, same ladder. Needed **no DB
+    migration**: `metadata` is nullable jsonb a circle already used as an
+    object, and it rides the draft, the export and copy/paste untouched.
+    Four things hold it together, each of which is load-bearing:
+
+    - **The lines live in their own sub-group**, flagged `CIRCLE_LABEL_FLAG`.
+      `getShapeTextNodes` filters `group.children` for a string `.value` and a
+      Group has none, so it returns `[]` for a circle — which is what keeps the
+      dead whiteboard path dead: `buildToolbarState` leaves `text.data` empty,
+      so neither `applyProperty`'s legacy `isShapeWithText` branch nor the
+      selection controller's auto-height reflow can fire. `circle` was removed
+      from that `isShapeWithText` list; don't put it back.
+    - **A circle counter-scales at TWO rates, so it has two resist readers.** It
+      is stroke-scaled (`isStrokeScaled`), not group-scaled, so the point's
+      `group.scale` trick is unavailable — scaling the group would shrink the
+      radius. `circle.tsx` scales the label sub-group instead, at
+      `resolveLabelResist` (the `zoomResistant` column), while the ring keeps
+      `resolveResist`. Extending `resolveResist` to read the column for circles
+      would make the **Zoom resistant** switch delete the ring at z4.
+    - **The wrap is taken at the scale-1 reference and never re-flows on zoom.**
+      `usableTextWidth('circle', width)` is in surface units; wrapping against
+      the live counter-scale instead would re-break the text every zoom frame.
+      The accepted cost is that at resist 0.9 a long label overflows the ring
+      when zoomed far out — exactly as a point's label overflows its pin.
+      Re-wrap only on text/family/size/`width` change (`_scaleMove` does it live
+      during a resize; nothing else would tell the frozen-prop component).
+    - **Opacity moved off the group onto the ellipse.** A circle is created at
+      50% so the basemap reads through it, and group opacity would multiply onto
+      the name too — a half-transparent label over a basemap is unreadable.
+      `useComponentHistory`'s `opacity` and `metadata` cases mirror this.
+
+    - **The ink is a COLUMN, not `metadata.textFill`.** `textColor` was already
+      a column, already selected and already cloned, and a circle has no other
+      text — while `textFill` is the key `applyShapeText` gates on, so writing
+      it would re-arm the path above. Read it through `circleLabelColorOf`, and
+      pass `color` to `buildCircleLabel` at every call site: it repaints from
+      scratch, so anything not threaded through reverts to the default. Unlike
+      a point's fixed ink, this **is** user-editable — a point's name hangs
+      outside a 10px pin, while a circle's sits inside a filled ring the user
+      colours, so black is not always readable.
+
+    Separately from the label: **a fill edit mirrors onto `stroke`.** A radius
+    map reads as one mark — `primary.tsx` seeds a new circle's stroke from its
+    fill, and `applyProperty` (plus `applyGroupProperty`, or the same edit would
+    mean two different things inside a group) keeps that true on every later
+    recolour. Deliberately **one-way**: a `stroke` edit leaves `fill` alone, so
+    the two can still be separated, and picking a fill afterwards re-joins them.
+    Neither colour syncs to the element defaults. The group path writes the
+    mirrored stroke to the LEAF, not the group — a Two.js Group's stroke setter
+    loops every child, and it would outline the label in the ring's colour.
+
+    Undo rebuilds the label wholesale in `reapplyTextFromMeta` and **replaces**
+    `elementData.metadata` rather than merging, for the same reason the point
+    does — but the ink is a column, so it is restored separately from the store
+    row rather than riding that replace. The panel is `SETS.CIRCLE`
+    (`textColor` + `textSize` + `textFont` + `zoomResist`).
+    Covered by `tests/e2e/map-circle-label.spec.js`.
 
 - **`common/`**: Shared utility components
     - `button.tsx` - Base button component
@@ -357,11 +424,11 @@ without ever running against a preview.
   and the affordance is simply absent on CI. `src/utils/e2eHooks.ts` owns the
   gate (`E2E_HOOKS`), widened by `VITE_E2E_HOOKS`, which `netlify.toml` sets for
   the deploy-preview context only. Production still ships without the handles.
-- **Never `import('/src/**.ts')` inside `page.evaluate`.** Serving raw TypeScript
-  is a Vite dev-server behaviour; against a bundle it 404s. A pure function is
-  asserted in **Node**, by importing it at the top of the spec. Playwright
-  transpiles those imports, and the closure is checked to be free of
-  `import.meta` and module-scope DOM access.
+- **Never `import('/src/**.ts')`inside`page.evaluate`.** Serving raw TypeScript
+is a Vite dev-server behaviour; against a bundle it 404s. A pure function is
+asserted in **Node**, by importing it at the top of the spec. Playwright
+transpiles those imports, and the closure is checked to be free of
+`import.meta` and module-scope DOM access.
 - **Read the camera through `readCamera` (`tests/e2e/helpers/index.js`), and let
   it throw.** The two copies it replaced were optional-chained, which turned a
   missing handle into `expect(null).toBeCloseTo(...)` and disguised one cause as
@@ -443,7 +510,7 @@ means the document. `BaseType` is the union, `base.type` is the column,
   fourth geo type. It reuses the factory, the component, the resize adapter,
   undo, clipboard and export wholesale; the column is the entire
   differentiator, exactly as it already is for the pencil. The visibility rule
-  needed no change: `objectClass === 'geo'` is tested *before* the
+  needed no change: `objectClass === 'geo'` is tested _before_ the
   `BOARD_ONLY_TYPES` set that contains `'circle'`. What diverges is per-record
   and deliberate: created at `GEO_CIRCLE_DEFAULTS` (50% opacity, stroke seeded
   from fill, its own saturated fill that does **not** sync `defaultFill` — a
@@ -455,7 +522,7 @@ means the document. `BaseType` is the union, `base.type` is the column,
   to z18. In the toolbar it is a child of the `geoShapes` drawer alongside Area
   — flattened to a flat button on desktop by `DESKTOP_FLATTENED_DRAWERS`,
   a drawer on mobile. That flattening now runs over `toolset.extraTools` too,
-  and it runs *after* `hiddenTools`, which is what lets a tool named `'circle'`
+  and it runs _after_ `hiddenTools`, which is what lets a tool named `'circle'`
   survive on a base whose `GEO_HIDDEN_TOOLS` contains `'circle'`. Covered by
   `tests/e2e/map-circle.spec.js`.
 - **Text is scoped per record, not per type.** The same `newText` type is
@@ -480,7 +547,7 @@ means the document. `BaseType` is the union, `base.type` is the column,
   Hasura, which `storageMigration.ts` cannot reach. It is the single deliberate
   back-compat read in the codebase; everything else speaks one vocabulary.
 - **Any camera change must reach `onCameraChange`.** Handlers inside `addZUI`
-  do this already. Anything driving the camera from *outside* — currently only
+  do this already. Anything driving the camera from _outside_ — currently only
   `ZoomControls` — must call `zui.notifyCameraChange()`, or the backdrop
   silently freezes while the canvas keeps moving.
 - **Persistence:** `craftbase_base_type_<baseId>` (`baseTypeStorage.ts`), a
@@ -488,7 +555,7 @@ means the document. `BaseType` is the union, `base.type` is the column,
   `base.tsx`. Never inside the draft blob, and **never written on read** — a
   base that has never touched the switcher must leave localStorage untouched.
 - **Toolbar gating:** read `toolset` from `BaseContext`, not the provider.
-  `toolset` is the type's gating *unless* the deprecated `geoObjectsEnabled`
+  `toolset` is the type's gating _unless_ the deprecated `geoObjectsEnabled`
   prop overlays the geo toolset.
 - **`geoObjectsEnabled` / `renderBackground` are dead weight awaiting removal.**
   Both exist only for the now-defunct craftmaps consumer. `geoObjectsEnabled`
@@ -503,7 +570,7 @@ means the document. `BaseType` is the union, `base.type` is the column,
   captures a blank backdrop.
 - **The basemap is CARTO Positron vector tiles** (`BASEMAP_STYLE_URL`) — OSM
   data, muted palette, no API key, attribution carried in the style's own
-  TileJSON. Deliberately *not* osm.org's raster tiles: those serve one baked-in
+  TileJSON. Deliberately _not_ osm.org's raster tiles: those serve one baked-in
   design capped at z19, with nothing to restyle. The style is one exported
   constant so swapping providers stays a one-line change.
 - **Export:** JSON is `formatVersion: '1.1'` with `baseType`/`baseTypeConfig`,
@@ -527,62 +594,6 @@ Rules: every step is independently try/caught (a corrupt entry costs that entry,
 never the boot), and **no read path anywhere else carries a fallback**. Bump
 `STORAGE_VERSION` and add a step for any future storage rename. Covered by
 `tests/e2e/storage-migration.spec.js`.
-
-## Port connectors (connectable arrows)
-
-Connectors are `arrowLine` elements whose tail/head can dock onto a shape's
-edge **port**.
-
-- **Port** — a connection point floated just outside each edge midpoint
-  (n/e/s/w) of a port shape's selection box. Port shapes are `rectangle`,
-  `circle` and `diamond` (`PORT_SHAPE_TYPES`/`isPortShape` in
-  `src/utils/shapePorts.ts` — the single gate shared by rendering, hover
-  hit-test and the radar). `isPortShape` takes the whole **record**, not a bare
-  `componentType`, because it must also exclude `objectClass: 'geo'`: the map
-  circle shares `componentType: 'circle'` with the whiteboard one, and ports on
-  a map base would have nothing to dock (`arrowLine` is hidden there).
-  Rendered + hit-tested in
-  `src/canvas/selectionController.ts`; geometry in `src/utils/shapePorts.ts`
-  (`getShapePortPoint`, bbox-based, so circle ports sit on the cardinal points
-  and diamond ports on the tips). Clicking a port pulls out a connector whose
-  tail is pinned there (`startPortConnector` in `src/newCanvas.tsx`).
-- **Nearby-port radar** — while an arrow endpoint is being dragged, the cursor
-  is the probe: `findNearestPort` (`shapePorts.ts`) finds the closest port in
-  range (`PORT_RADAR_RADIUS`), which the controller highlights with the amber
-  pulsing `portGlow` ring + the dashed `nearbyPortExpectedShape` skeleton around
-  the candidate shape (shape-true silhouette: rectangle/ellipse/diamond
-  variants). A **one-off magnetic snap** glues the endpoint to that
-  port; pulling past the threshold releases it (never forced). On release while
-  docked, the binding is committed (`updatePortRadar`/`applyPendingPortConnection`).
-- **Binding columns** — attachment is stored as 6 fields on the arrow row:
-  `tailShapeId`/`tailEdge`/`tailPortIndex` and `headShapeId`/`headEdge`/
-  `headPortIndex` (`*Edge` = `n/e/s/w-resize`; `*PortIndex` = fan slot among
-  connectors stacked on the same port, reassigned by `restackPortConnectors`).
-  All 6 are Hasura columns (in `generated.ts` and the base-load query), so
-  bindings persist in both local mode and saved bases. Reverse lookup is
-  derived by scanning the store (no shape-side columns).
-  `reanchorArrowsForShape`/`persistBoundArrows` keep a docked endpoint glued when
-  the bound shape moves/resizes.
-- **The `restackPorts` event** — the generic "re-glue these ports" command:
-  `window.dispatchEvent(new CustomEvent('restackPorts', { detail: { ports:
-  [{shapeId, edge}] } }))`. The listener in `newCanvas` polls for the shape
-  (fresh mounts) then runs `restackPortConnectors`, which re-anchors every
-  docked endpoint to the shape's current edge and reassigns fan indices
-  (persisted with `skipHistory`). Dispatched by: `useComponentHistory`
-  (binding reverts, position/size reverts, arrow insert/remove),
-  `groupobject.tsx` `commitGroupMove` (a group move relocates member ports;
-  connectors crossing the group boundary must re-glue), and the clipboard
-  (paste of a bound arrow, after its mount).
-- **Undo/redo** — binding changes ride `UPDATE_BULK`/`BATCH` entries;
-  `useComponentHistory` mirrors all 6 fields onto `elementData` and fires
-  `restackPorts` for every touched port. Deleting a shape detaches its docked
-  arrows (bindings cleared, arrows kept) as one `BATCH` with the shape's
-  DELETE (`detachArrowsForDeletedShapes` in `base.tsx`) — one undo restores
-  the shape and re-docks the arrows.
-- **Copy/paste** — `cloneElementData` carries the 6 binding fields; the paste
-  path (`rebindClonedArrow` in `useCanvasClipboard`) remaps bindings to shapes
-  cloned in the same paste, keeps bindings to shapes still on the canvas, and
-  clears bindings whose shape is gone — then restacks once the arrow mounts.
 
 ### DB schema
 
@@ -613,7 +624,7 @@ any change; never hand-edit it.
 }
 ```
 
-**`bases.base_type`** — a Hasura *enum table* (`set_table_is_enum`), which is
+**`bases.base_type`** — a Hasura _enum table_ (`set_table_is_enum`), which is
 what makes `type` surface as the GraphQL enum `bases_base_type_enum` rather than
 a bare String. Adding a fourth type is one `INSERT`, not a constraint swap.
 
@@ -703,6 +714,23 @@ fallback or the first undo is a no-op. Covered by
 
 Rules that live in more than one file, each of which had drifted at least once.
 
+- **The selection chrome is described in `utils/selectionTheme.ts`, and nowhere
+  else.** Four separate paths draw "this is selected" — `SelectionController`
+  (box + 4 corner dots for rectangle/circle/diamond/text), the legacy
+  `ObjectSelector` (text, point, pencil, group), `vertexHandles` (route, area,
+  curvedLine) and `groupobject`'s own resize dots. Each had picked its own
+  colours and widths, so a point read amber while a route read indigo, and a map
+  circle's ring thickened as you zoomed in. Two rules the tokens encode: the
+  **box** follows the theme's ink (`getSelectionStroke`, live off `--color-ink`)
+  while the **grab dots** are fixed indigo (`HANDLE_STROKE`) in both themes; and
+  every number is in SCREEN px, so each consumer divides by the camera scale or
+  counter-scales its shape. The one that is easy to miss is `Two.Points`: the
+  renderer divides `size` by the scene scale for you but does **not** touch
+  `linewidth`, which is a world unit like any other stroke — that asymmetry is
+  exactly how the map circle's ring drifted away from the route's. Asserted by
+  `map-circle.spec.js` ("rings its resize handles in the shared handle indigo")
+  and `geo-move-paste-select.spec.js`, which imports `SELECTION_HANDLE_FILL`
+  rather than hardcoding it.
 - **The camera input model belongs to the base type, not to the app.** Both
   handlers branch on `activeBaseTypeRef` inside `addZUI` (`newCanvas.tsx`). On
   the **map** base the wheel only ever zooms and a drag over empty canvas pans,
@@ -724,7 +752,7 @@ Rules that live in more than one file, each of which had drifted at least once.
   browser firing both would now double-apply the zoom.
 - **A wheel event's units are per-browser and per-device.** `wheelZoomStep`
   (`utils/wheelZoom.ts`) is the single reader. It prefers `wheelDeltaY` where it
-  exists, because that is what shipped and it is *not* a fixed multiple of
+  exists, because that is what shipped and it is _not_ a fixed multiple of
   `deltaY` (a discrete notch reports 120 against a `deltaY` of 100; a trackpad
   reports 3x) — deriving one from the other changes the feel of one device to
   fix the other. Firefox sets neither and reports LINE units, which worked out
@@ -757,7 +785,7 @@ Rules that live in more than one file, each of which had drifted at least once.
   the wrapper div rather than the SVG or the map canvas: hence deselecting an
   area took two clicks and a route three.
 - **Deleting a record does NOT unmount its element component.** This is the one
-  most likely to bite. `handleSetComponentsToRender` only ever *adds* wrappers,
+  most likely to bite. `handleSetComponentsToRender` only ever _adds_ wrappers,
   and `ElementRenderWrapper` snapshots its record at mount — so dropping the row
   from `componentStore` leaves the element painted on the canvas until a reload.
   **Every delete path must pair the store write with its own `two.remove`**, and

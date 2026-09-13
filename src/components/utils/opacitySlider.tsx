@@ -86,7 +86,7 @@ const OpacitySlider = ({
                             height: '4px',
                             background: showMixed
                                 ? '#ddd'
-                                : `linear-gradient(to right, #C4901A ${rangerInstance.getPercentageForValue(firstValue)}%, #ddd ${rangerInstance.getPercentageForValue(firstValue)}%)`,
+                                : `linear-gradient(to right, rgb(var(--color-accent-dark)) ${rangerInstance.getPercentageForValue(firstValue)}%, rgb(var(--color-border-card)) ${rangerInstance.getPercentageForValue(firstValue)}%)`,
                             borderRadius: '2px',
                         }}
                     >
@@ -125,7 +125,7 @@ const OpacitySlider = ({
                                         height: '14px',
                                         outline: 'none',
                                         borderRadius: '100%',
-                                        background: '#3A342C',
+                                        background: 'rgb(var(--color-ink))',
                                     }}
                                 >
                                     <span

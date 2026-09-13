@@ -26,7 +26,7 @@ const MAP_TEXT_ID = 'cccccccc-5555-5555-5555-555555555555'
 const MAP_TEXT = 'Map Label'
 
 // src/constants/misc.ts — the shipped design default and the point ladder.
-const DEFAULT_FAMILY = 'Caveat Brush'
+const DEFAULT_FAMILY = 'Avenir'
 const DEFAULT_SIZE = 18
 const LADDER_S = 14
 const LADDER_XL = 32
@@ -105,7 +105,7 @@ async function openMapBase(page, components) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                                                            anchor: ANCHOR,
+                              anchor: ANCHOR,
                           }),
                           components,
                       }
@@ -131,11 +131,20 @@ async function openMapBase(page, components) {
 }
 
 /**
- * How far the label's box centre sits from the circle's centre, in px.
+ * How far the label's CAP BAND centre sits from the circle's centre, in px.
  *
  * Zero is aligned. Two.js's `baseline: 'middle'` used to leave this at −2 to
  * −4px (the label floating above the pin) because SVG's middle baseline
  * centres the x-height, not the glyphs — see utils/fontMetrics.ts.
+ *
+ * The cap band has to be reconstructed from the family's own metrics rather
+ * than read off the box: `getBoundingClientRect` on an SVG <text> returns the
+ * FONT box (ascent + descent), which straddles the cap band evenly only for a
+ * font whose ascent and descent happen to be symmetric about it. Caveat Brush
+ * was such a font (90/25 against a cap of 66.2 — the two centres agree to
+ * 0.06px), which is why the naive box-centre comparison this replaced passed
+ * for years; Avenir is not (76/24 against a cap of 70.8, a 3px disagreement at
+ * 32px). Measuring the box was always measuring the wrong thing.
  */
 const centerOffset = (page, label) =>
     page.evaluate((label) => {
@@ -147,7 +156,17 @@ const centerOffset = (page, label) =>
         const circle = group.querySelector('circle, ellipse, path')
         const tb = text.getBoundingClientRect()
         const cb = circle.getBoundingClientRect()
-        return tb.y + tb.height / 2 - (cb.y + cb.height / 2)
+
+        const size = Number(text.getAttribute('font-size'))
+        const family = text.getAttribute('font-family')
+        const ctx = document.createElement('canvas').getContext('2d')
+        ctx.font = `${size}px "${family}"`
+        // 'H': no overshoot, no descender, so its ink ascent IS the cap height
+        // — the same measurement utils/fontMetrics.ts places the label by.
+        const m = ctx.measureText('H')
+        const baseline = tb.y + m.fontBoundingBoxAscent
+        const capCenter = baseline - m.actualBoundingBoxAscent / 2
+        return capCenter - (cb.y + cb.height / 2)
     }, label)
 
 /** The rendered font of a label, read off the SVG Two.js actually painted. */
@@ -186,7 +205,7 @@ test('a point label renders the family and size on its own record', async ({
 }) => {
     await openMapBase(page, [
         pointRecord(STYLED_ID, STYLED_LABEL, {
-            textFontFamily: 'Geist',
+            textFontFamily: 'Frutiger',
             textFontSize: 32,
         }),
         // No text metadata at all — every point written before these controls
@@ -195,7 +214,7 @@ test('a point label renders the family and size on its own record', async ({
     ])
 
     expect(await renderedFont(page, STYLED_LABEL)).toEqual({
-        family: 'Geist',
+        family: 'Frutiger',
         size: 32,
     })
     expect(await renderedFont(page, PLAIN_LABEL)).toEqual({
@@ -214,12 +233,14 @@ test('the toolbar restyles only the selected point', async ({ page }) => {
 
     // The toolbar reads the untouched point as the ladder's M and the design
     // family — not the whiteboard defaults, which are a different ladder.
-    await page.locator('#floating-toolbar button[aria-label="Geist"]').click()
+    await page
+        .locator('#floating-toolbar button[aria-label="Frutiger"]')
+        .click()
     await page.locator('#floating-toolbar button:has-text("S")').first().click()
 
     await expect
         .poll(() => renderedFont(page, STYLED_LABEL))
-        .toEqual({ family: 'Geist', size: LADDER_S })
+        .toEqual({ family: 'Frutiger', size: LADDER_S })
 
     // Per record: the other pin heard nothing.
     expect(await renderedFont(page, PLAIN_LABEL)).toEqual({
@@ -234,10 +255,12 @@ test('undo restores the label style, including the never-set case', async ({
     await openMapBase(page, [pointRecord(STYLED_ID, STYLED_LABEL, {})])
 
     await selectPoint(page, STYLED_LABEL)
-    await page.locator('#floating-toolbar button[aria-label="Geist"]').click()
+    await page
+        .locator('#floating-toolbar button[aria-label="Frutiger"]')
+        .click()
     await expect
         .poll(() => renderedFont(page, STYLED_LABEL))
-        .toEqual({ family: 'Geist', size: DEFAULT_SIZE })
+        .toEqual({ family: 'Frutiger', size: DEFAULT_SIZE })
 
     // The point had NO textFontFamily before this edit, so the revert has to
     // clear the key, not merge the new one back over the old record.
@@ -332,10 +355,12 @@ test('the label sits level with the pin, at every size and font', async ({
     // A live restyle re-places the label too — the cap band moves with both the
     // size and the family, so applyProperty has to re-centre, not just restyle.
     await selectPoint(page, STYLED_LABEL)
-    await page.locator('#floating-toolbar button[aria-label="Geist"]').click()
+    await page
+        .locator('#floating-toolbar button[aria-label="Frutiger"]')
+        .click()
     await page.locator('#floating-toolbar button:has-text("S")').first().click()
     await expect
         .poll(() => renderedFont(page, STYLED_LABEL))
-        .toEqual({ family: 'Geist', size: LADDER_S })
+        .toEqual({ family: 'Frutiger', size: LADDER_S })
     expect(Math.abs(await centerOffset(page, STYLED_LABEL))).toBeLessThan(1)
 })

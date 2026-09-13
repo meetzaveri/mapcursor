@@ -1,0 +1,31 @@
+/* Self-hosted canvas faces.
+ *
+ * Every other family in the app comes from the Google Fonts <link> in
+ * index.html; these two are licensed binaries we ship ourselves, so they are
+ * declared here and resolved through Vite's asset pipeline (relative url() =>
+ * hashed, cache-busted filename).
+ *
+ * The family NAME below is the string persisted in `metadata.textFontFamily`
+ * on every record authored with it, and nothing migrates that field. It is
+ * deliberately the short spelling ('Avenir', not the file's internal
+ * 'Avenir LT Pro') and must not be renamed once records exist.
+ *
+ * An @font-face outranks a locally installed family of the same name, so a
+ * viewer with a system Avenir still renders from our file.
+ */
+
+@font-face {
+    font-family: 'Avenir';
+    src: url('../assets/fonts/AvenirLTProBook.otf') format('opentype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Frutiger';
+    src: url('../assets/fonts/Frutiger.woff') format('woff');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}

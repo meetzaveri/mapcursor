@@ -25,7 +25,7 @@ const HelpButton = (): ReactElement | null => {
                 className="fixed bottom-5 right-5 z-10 w-9 h-9 flex items-center justify-center
                     rounded-card bg-card-bg border border-border-panel text-ink-mid
                     shadow-sm cursor-pointer transition-colors ease-in-out duration-200
-                    hover:bg-accent/30"
+                    hover:bg-sidebar"
             >
                 <HelpIcon className="w-5 h-5" stroke="currentColor" aria-hidden="true" />
             </button>
