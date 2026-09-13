@@ -11,6 +11,9 @@
 
 import { test, expect } from './helpers/test.js'
 import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+// The handle body colour, read from the same module the app paints it with, so
+// unifying the selection chrome can never silently un-anchor this assertion.
+import { SELECTION_HANDLE_FILL } from '../../src/utils/selectionTheme.ts'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 const ANCHOR = { lngLat: [-121.95, 37.35], zoom: 16 }
@@ -80,7 +83,7 @@ async function openMapBase(page) {
                     ? {
                           base: baseRow({
                               id: BASE_ID,
-                                                            anchor: ANCHOR,
+                              anchor: ANCHOR,
                           }),
                           components: COMPONENTS,
                       }
@@ -198,15 +201,20 @@ for (const [name, id] of [
         await page.waitForSelector('#floating-toolbar')
 
         const handlesShown = () =>
-            page.evaluate((id) => {
-                const g = document.querySelector(`g[data-component-id="${id}"]`)
-                // Two.js renders a path's opacity as fill/stroke-opacity.
-                return Array.from(g.querySelectorAll('path')).filter(
-                    (h) =>
-                        h.getAttribute('fill') === '#f4f4f2' &&
-                        Number(h.getAttribute('fill-opacity') ?? 1) > 0
-                ).length
-            }, id)
+            page.evaluate(
+                ([id, fill]) => {
+                    const g = document.querySelector(
+                        `g[data-component-id="${id}"]`
+                    )
+                    // Two.js renders a path's opacity as fill/stroke-opacity.
+                    return Array.from(g.querySelectorAll('path')).filter(
+                        (h) =>
+                            h.getAttribute('fill') === fill &&
+                            Number(h.getAttribute('fill-opacity') ?? 1) > 0
+                    ).length
+                },
+                [id, SELECTION_HANDLE_FILL]
+            )
         expect(await handlesShown()).toBeGreaterThan(0)
 
         // ONE click on bare canvas. The clear used to hang off a DOM heuristic

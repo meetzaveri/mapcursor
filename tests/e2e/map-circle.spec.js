@@ -3,8 +3,10 @@
 // A circle is the natural mark for a radius — a blast radius, a catchment, a
 // hotspot — and drawing one as a polygon `area` is fiddly and never actually
 // round. What these tests protect: it is created at 50% opacity with its stroke
-// seeded from its fill, carries no opacity control and no inner text, and
-// counter-scales its stroke while its geometry stays world-scaled.
+// seeded from its fill, carries no opacity control, takes a name rather than
+// craftbase-style inner text (the shape is never resized by it), and
+// counter-scales its stroke while its geometry stays world-scaled. Its label
+// is covered separately, in map-circle-label.spec.js.
 
 import { test, expect } from './helpers/test.js'
 import {
@@ -72,9 +74,13 @@ const lastRecord = (page) =>
             stroke: ed.stroke,
             opacity: ed.opacity ?? null,
             linewidth: ed.linewidth,
-            // What the group actually paints — group-level, because the leaf is
-            // double-referenced in group.children (see circle.tsx unshift).
+            // What the circle actually paints. Opacity lives on the ELLIPSE,
+            // not the group: the group also holds the label sub-group, and a
+            // half-transparent NAME over a basemap is unreadable (see
+            // circle.tsx). The leaf is double-referenced in group.children
+            // (see the unshift there), so children[0] is the ellipse.
             paintedGroupOpacity: g.opacity,
+            paintedShapeOpacity: g.children?.[0]?.opacity ?? null,
             paintedLinewidth: g.children?.[0]?.linewidth ?? null,
         }
     })
@@ -101,7 +107,10 @@ test.describe('the map circle', () => {
         // column, not metadata.opacity — that legacy spelling is what every
         // other creation path still writes, and readOpacity prefers the column.
         expect(rec.opacity).toBe(0.5)
-        expect(rec.paintedGroupOpacity).toBe(0.5)
+        expect(rec.paintedShapeOpacity).toBe(0.5)
+        // The GROUP stays fully opaque — it carries the label too, and group
+        // opacity would multiply onto both.
+        expect(rec.paintedGroupOpacity).toBe(1)
         // Outline starts as the fill, so a new circle lands as one mark.
         expect(rec.stroke).toBe(rec.fill)
         // Not the whiteboard's pale shape fill, which at 50% over a basemap is
@@ -174,7 +183,9 @@ test.describe('the map circle', () => {
         expect(zoomedOut / atIdentity).toBeCloseTo(1 / Math.pow(0.25, 0.9), 1)
     })
 
-    test('does not open the text editor on double-click', async ({ page }) => {
+    test('double-click opens the label editor, not the shape text editor', async ({
+        page,
+    }) => {
         await openMapBase(page)
         const box = await getCanvasBox(page)
         await drawShape(page, 'circle', {
@@ -186,12 +197,13 @@ test.describe('the map circle', () => {
 
         // Dead centre of the circle just drawn.
         await page.mouse.dblclick(box.x + 380, box.y + 330)
-        await page.waitForTimeout(400)
 
-        // geoText is the map's labelling tool; a geo object carries no inner
-        // text. Without the guard this opened the shape text editor, for which
-        // GEO_CIRCLE has no controls at all.
-        await expect(page.locator('textarea.temp-input-area')).toHaveCount(0)
+        // The circle owns this editor, so it carries the circle's own id —
+        // NOT craftbase's anonymous shape-text textarea, which grew the shape
+        // to fit and would have changed the radius.
+        const editor = page.locator('textarea.temp-input-area')
+        await editor.waitFor({ state: 'visible', timeout: 15_000 })
+        await expect(editor).toHaveAttribute('id', /^circle-label-input-/)
     })
 
     test('a fill edit does not follow the selection onto whiteboard shapes', async ({
@@ -238,6 +250,56 @@ test.describe('the map circle', () => {
         // shape preference. Syncing it would repaint the next whiteboard
         // rectangle in map red.
         expect(after.defaultFill).toBe(fillBefore)
+    })
+
+    test('a fill edit carries the ring with it', async ({ page }) => {
+        await openMapBase(page)
+        const box = await getCanvasBox(page)
+        await drawShape(page, 'circle', {
+            startX: box.x + 300,
+            startY: box.y + 250,
+            endX: box.x + 460,
+            endY: box.y + 410,
+        })
+        await page.waitForTimeout(400)
+
+        // A new circle lands as ONE mark — stroke seeded from fill. Recolouring
+        // has to keep that promise, or the first fill edit strands the ring on
+        // the old colour and the mark reads as two.
+        await page.click(
+            '#floating-toolbar [data-section="fill"] [title="#FF5630"]'
+        )
+        await expect
+            .poll(async () => {
+                const r = await lastRecord(page)
+                return [r.fill?.toLowerCase(), r.stroke?.toLowerCase()]
+            })
+            .toEqual(['#ff5630', '#ff5630'])
+
+        // And the ellipse actually paints it, not just the record.
+        const painted = await page.evaluate(() => {
+            const children = Array.from(window.__mcTwo.scene.children)
+            const withData = children.filter((c) => c?.elementData?.id)
+            const g = withData[withData.length - 1]
+            return {
+                fill: g.children?.[0]?.fill,
+                stroke: g.children?.[0]?.stroke,
+            }
+        })
+        expect(painted.fill.toLowerCase()).toBe('#ff5630')
+        expect(painted.stroke.toLowerCase()).toBe('#ff5630')
+
+        // One-way: a STROKE edit leaves the fill alone, so the two can still
+        // be separated deliberately.
+        await page.click(
+            '#floating-toolbar [data-section="stroke"] [title="#0065FF"]'
+        )
+        await expect
+            .poll(async () => {
+                const r = await lastRecord(page)
+                return [r.fill?.toLowerCase(), r.stroke?.toLowerCase()]
+            })
+            .toEqual(['#ff5630', '#0065ff'])
     })
 })
 

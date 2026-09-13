@@ -46,6 +46,53 @@ type MapLibreMap = any
 export const BASEMAP_STYLE_URL =
     'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
 
+/**
+ * Water, pushed back toward being water.
+ *
+ * Positron ships water at `#d4dadc` and rivers at `#d1dbdf` — hue ~195°, but
+ * around 6% saturation, so the eye reads both as grey. That is deliberate on
+ * CARTO's part: Positron is built to sit UNDER data, and every feature is
+ * desaturated so the overlay carries the colour. It also means a lake reads as
+ * a field and a river as a road, which on a map people annotate geography with
+ * is a loss.
+ *
+ * These lift the saturation just far enough to be legible as water and no
+ * further. The ceiling is set by the chrome: the UI accent is indigo (~243°)
+ * precisely because blue belongs to water, and that separation only holds while
+ * water stays pale. Saturate past roughly this point and the basemap starts
+ * competing with the ink drawn on it — which is the problem Positron was
+ * chosen to avoid.
+ *
+ * Applied per layer rather than by swapping styles: Voyager has bluer water
+ * (`#b0d0d6`) but colours roads, parks and landuse too, and the calm ground is
+ * the reason Positron is here.
+ */
+const WATER_FILL = '#c2d8e3'
+const WATERWAY_LINE = '#b8d2df'
+
+/**
+ * Repaint the water layers, once the style has them.
+ *
+ * `setPaintProperty` throws if the layer is not in the style yet, and a style
+ * loaded over the network is not ready when `new Map()` returns — hence the
+ * `styledata` hook rather than a call after construction. `styledata` fires on
+ * every style mutation, not just the first, so each layer is checked with
+ * `getLayer` and the whole thing is a no-op once applied. Failing here must
+ * never take the backdrop down: worst case the map keeps CARTO's grey.
+ */
+function paintWater(map: MapLibreMap): void {
+    try {
+        if (map.getLayer('water')) {
+            map.setPaintProperty('water', 'fill-color', WATER_FILL)
+        }
+        if (map.getLayer('waterway')) {
+            map.setPaintProperty('waterway', 'line-color', WATERWAY_LINE)
+        }
+    } catch {
+        // A style without these layers, or one mid-swap. Not worth a broken map.
+    }
+}
+
 // DEFAULT_ANCHOR_ZOOM lives in utils/timezoneCities — see the note there.
 
 // Zoom limits live in ./zoomLimits — the camera needs them before this
@@ -284,6 +331,9 @@ export const mapBackdrop = {
                 zoom: zoom ?? 0,
             }),
         })
+
+        // Positron's water is grey by design; see paintWater.
+        map.on('styledata', () => paintWater(map))
 
         const handle: MapHandle = {
             map,

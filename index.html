@@ -6,17 +6,26 @@
         <link
             rel="icon"
             type="image/svg+xml"
-            href="/favicon-amber-bg.svg"
+            href="/favicon-indigo-bg.svg"
             media="(prefers-color-scheme: light)"
         />
         <link
             rel="icon"
             type="image/svg+xml"
-            href="/favicon-espresso-bg.svg"
+            href="/favicon-graphite-bg.svg"
             media="(prefers-color-scheme: dark)"
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#000000" />
+        <meta
+            name="theme-color"
+            content="#fafafc"
+            media="(prefers-color-scheme: light)"
+        />
+        <meta
+            name="theme-color"
+            content="#0f1115"
+            media="(prefers-color-scheme: dark)"
+        />
         <meta
             name="description"
             content="Mapcursor - draw and annotate on maps. Sketch routes, mark places and share a map link. No login, no signup."
@@ -31,7 +40,7 @@
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
-            href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&family=Caveat+Brush&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Caveat+Brush&family=Geist+Mono:wght@100..900&family=Geist:wght@400&family=Inter:wght@300..700&display=swap"
             rel="stylesheet"
         />
         <title>Mapcursor - Draw and annotate on maps</title>
@@ -95,7 +104,7 @@
                 /* Solid parchment only — the dot grid is canvas-only (behind
                    the dotGrid feature flag) and must never appear on the
                    loader. */
-                background-color: #f5f0e8;
+                background-color: #fafafc;
                 /* One cycle for all three route animations; they must share a
                    duration or the cursor drifts off the head of its line. */
                 --mc-cycle: 2.8s;
@@ -103,7 +112,7 @@
             /* Dark boot loader — kept in sync with the .dark tokens in
                src/App.css so the loader matches the resolved theme. */
             .dark #mc-boot {
-                background-color: #1c1814;
+                background-color: #0f1115;
             }
             #mc-boot svg {
                 width: 132px;
@@ -116,32 +125,32 @@
                anything. */
             #mc-boot .mc-map path,
             #mc-boot .mc-cursor path {
-                stroke: #1a1612;
+                stroke: #14161c;
             }
             .dark #mc-boot .mc-map path,
             .dark #mc-boot .mc-cursor path {
-                stroke: #f3ece0;
+                stroke: #e8eaf0;
             }
             #mc-boot .mc-wordmark {
-                font-family: 'Fraunces', Georgia, serif;
+                font-family: 'Inter', system-ui, sans-serif;
                 font-weight: 600;
                 font-size: 22px;
                 /* Pinned, not `normal`, which resolves off the font's own
-                   metrics and moved the column when Fraunces loaded. */
+                   metrics and moved the column when the webfont loaded. */
                 line-height: 1;
                 letter-spacing: 0.5px;
-                color: #1a1612;
+                color: #14161c;
             }
             .dark #mc-boot .mc-wordmark {
-                color: #f3ece0;
+                color: #e8eaf0;
             }
             #mc-boot .mc-caption {
                 margin-top: -10px;
-                font-family: 'Geist', system-ui, sans-serif;
+                font-family: 'Inter', system-ui, sans-serif;
                 font-size: 13px;
                 line-height: 1;
                 letter-spacing: 0.3px;
-                color: #8c7e6a;
+                color: #6b7180;
             }
             #mc-boot .mc-caption::after {
                 content: '';
@@ -444,7 +453,7 @@
                         <path
                             class="mc-route-line"
                             d="M70,75 L105,75 Q115,75 115,85 L115,115 L140,115"
-                            stroke="#C4901A"
+                            stroke="#6965db"
                             stroke-width="2.2"
                             stroke-linecap="round"
                             stroke-dasharray="1,5.5"

@@ -5,7 +5,9 @@ module.exports = {
         'text-ink-muted',
         'text-border-card',
         'bg-accent',
+        'bg-accent/10',
         'bg-topbar-hover',
+        'ring-accent/30',
     ],
     darkMode: 'class',
     content: [
@@ -27,9 +29,9 @@ module.exports = {
         // },
 
         fontFamily: {
-            ui: ['Geist', 'system-ui', 'sans-serif'],
-            display: ['Fraunces', 'Georgia', 'serif'],
-            sketch: ['Caveat Brush', 'cursive'],
+            ui: ['Inter', 'system-ui', 'sans-serif'],
+            display: ['Inter', 'system-ui', 'sans-serif'],
+            sketch: ['Avenir', 'system-ui', 'sans-serif'],
             mono: ['Geist Mono', 'monospace'], // added — for coordinates, hex values, dimension chips
         },
         // borderWidth: {
@@ -127,9 +129,11 @@ module.exports = {
 
                 // Chrome
                 topbar: 'rgb(var(--color-topbar) / <alpha-value>)', // espresso top bar
-                'topbar-hover': 'rgb(var(--color-topbar-hover) / <alpha-value>)', // tool hover bg in topbar
+                'topbar-hover':
+                    'rgb(var(--color-topbar-hover) / <alpha-value>)', // tool hover bg in topbar
 
-                // Accent — amber replaces blue as the interaction color
+                // Accent — indigo. Same value as HANDLE_STROKE in
+                // constants/misc.ts, so UI chrome and selection chrome agree.
                 accent: {
                     DEFAULT: 'rgb(var(--color-accent) / <alpha-value>)', // active tools, buttons, selections → bg-accent
                     dark: 'rgb(var(--color-accent-dark) / <alpha-value>)', // highlighted card borders → bg-accent-dark
@@ -168,17 +172,23 @@ module.exports = {
             },
 
             // ── box shadows ───────────────────────────────────────────────
-            // Offset flat shadow = physical index card feel (no blur = no softness)
+            // Soft, low-opacity elevation. The previous `3px 3px 0` was a
+            // blur-less offset — an index-card motif, and most of what made the
+            // chrome read as a sketchbook rather than an instrument. A panel
+            // floating over a basemap needs to look like it is floating.
             boxShadow: {
-                card: '3px 3px 0 rgb(var(--color-border-card))', // default card lift
-                'card-accent': '3px 3px 0 rgb(var(--color-accent-dark))', // highlighted/selected card
-                focus: '0 0 0 2px var(--color-accent-glow)', // amber focus ring
+                panel: '0 1px 2px rgb(15 17 21 / 0.05), 0 6px 20px rgb(15 17 21 / 0.08)', // floating toolbars, drawers
+                card: '0 1px 2px rgb(15 17 21 / 0.06), 0 8px 24px rgb(15 17 21 / 0.06)', // panels, cards
+                'card-accent':
+                    '0 2px 4px rgb(15 17 21 / 0.08), 0 12px 32px rgb(105 101 219 / 0.16)', // hover/selected — an indigo-tinted lift
+                focus: '0 0 0 3px var(--color-accent-glow)', // indigo focus ring
                 sticky: '2px 2px 8px rgba(0, 0, 0, 0.10)', // sticky note
             },
 
             // ── border radius ─────────────────────────────────────────────
             borderRadius: {
-                card: '4px', // cards/shapes — intentionally NOT rounded
+                card: '8px', // cards, panels, toolbars
+                panel: '12px', // modals, the largest floating surfaces
                 pill: '100px', // zoom bar, tags
             },
 

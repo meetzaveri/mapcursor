@@ -1,6 +1,14 @@
 import Two from 'two.js'
 import { markSelectionChrome } from '../../utils/svgExportShared'
 import { scheduleRender } from '../../utils/renderScheduler'
+import {
+    getSelectionStroke,
+    selectionHandleRadiusPx,
+    HANDLE_STROKE,
+    SELECTION_BOX_LINEWIDTH_PX,
+    SELECTION_HANDLE_FILL,
+    SELECTION_HANDLE_LINEWIDTH_PX,
+} from '../../utils/selectionTheme'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
@@ -16,20 +24,13 @@ interface SelectorVertices {
     y2: number
 }
 
-// Handle radius in SCREEN px. Touch needs a bigger target than a mouse for the
-// same reason selectionController applies an 8px hit slop on coarse pointers —
-// except this legacy selector has no slop mechanism: the browser hit-tests the
-// SVG dot itself, so the dot IS the target and it has to grow. At the mouse
-// value these handles measured ~5px across on a zoomed-out map base, which is
-// unhittable with a finger.
-const HANDLE_RADIUS_PX_MOUSE = 4
-const HANDLE_RADIUS_PX_TOUCH = 11
-
-function handleRadiusPx(): number {
-    const coarse =
-        typeof window !== 'undefined' &&
-        window.matchMedia?.('(pointer: coarse)')?.matches
-    return coarse ? HANDLE_RADIUS_PX_TOUCH : HANDLE_RADIUS_PX_MOUSE
+// Style one grab dot: the shared off-white body + indigo ring every selection
+// handle in the app wears (see utils/selectionTheme). Sizing is left to
+// setScale, which is the only place that knows the camera.
+function styleHandle(circle: ShapeLike): void {
+    circle.fill = SELECTION_HANDLE_FILL
+    circle.stroke = HANDLE_STROKE
+    circle.linewidth = SELECTION_HANDLE_LINEWIDTH_PX
 }
 
 export default class Selector {
@@ -66,8 +67,8 @@ export default class Selector {
         const area = this.two.makePath(x1, y1, x2, y1, x2, y2, x1, y2)
         area.fill = 'rgba(0,0,0,0)'
         area.opacity = 1
-        area.linewidth = 2
-        area.stroke = '#C4901A'
+        area.linewidth = SELECTION_BOX_LINEWIDTH_PX
+        area.stroke = getSelectionStroke()
         this.area = area
 
         let circleGroup: ShapeLike = null
@@ -75,25 +76,29 @@ export default class Selector {
             switch (this.showCircles) {
                 case 2: {
                     const yAxisMidpoint = (y1 + y2) / 2
-                    const circleLeft = this.two.makeCircle(x1, yAxisMidpoint, 3)
+                    const r = selectionHandleRadiusPx()
+                    const circleLeft = this.two.makeCircle(x1, yAxisMidpoint, r)
                     const circleRight = this.two.makeCircle(
                         x2,
                         yAxisMidpoint,
-                        3
+                        r
                     )
                     this.circle1 = circleLeft
                     this.circle2 = circleRight
                     this.circle3 = null
                     this.circle4 = null
+                    styleHandle(circleLeft)
+                    styleHandle(circleRight)
                     circleGroup = this.two.makeGroup(circleLeft, circleRight)
                     this.circleGroup = circleGroup
                     break
                 }
                 case 4: {
-                    const circle1 = this.two.makeCircle(x1, y1, 4)
-                    const circle2 = this.two.makeCircle(x2, y1, 4)
-                    const circle3 = this.two.makeCircle(x2, y2, 4)
-                    const circle4 = this.two.makeCircle(x1, y2, 4)
+                    const r = selectionHandleRadiusPx()
+                    const circle1 = this.two.makeCircle(x1, y1, r)
+                    const circle2 = this.two.makeCircle(x2, y1, r)
+                    const circle3 = this.two.makeCircle(x2, y2, r)
+                    const circle4 = this.two.makeCircle(x1, y2, r)
                     this.circle1 = circle1
                     this.circle2 = circle2
                     this.circle3 = circle3
@@ -104,9 +109,14 @@ export default class Selector {
                         circle3,
                         circle4
                     )
-                    circleGroup.linewidth = 1.5
                     circleGroup.opacity = 0
-                    circleGroup.stroke = '#C4901A'
+                    // Styled on the group so the ring/body survive Two.js's
+                    // group-level property propagation, and again per circle so
+                    // a later `group.stroke` write can't silently recolor them.
+                    circleGroup.linewidth = SELECTION_HANDLE_LINEWIDTH_PX
+                    circleGroup.fill = SELECTION_HANDLE_FILL
+                    circleGroup.stroke = HANDLE_STROKE
+                    ;[circle1, circle2, circle3, circle4].forEach(styleHandle)
                     this.circleGroup = circleGroup
                     break
                 }
@@ -149,20 +159,27 @@ export default class Selector {
 
     setScale(scale: number): void {
         const s = scale > 0 ? scale : 1
-        this.area.linewidth = 2 / s
+        this.area.linewidth = SELECTION_BOX_LINEWIDTH_PX / s
         if (this.showCircles && this.circle1) {
             // `base / s` is the local-unit radius that renders as `base` screen
             // px. Cap at 3× base so circles don't obscure the bounding box at
-            // extreme zoom-out. Unchanged for a mouse (base 4 → the previous
-            // `min(4 / s, 12)`); a coarse pointer gets a finger-sized dot.
-            const base = handleRadiusPx()
+            // extreme zoom-out.
+            const base = selectionHandleRadiusPx()
             const radius = Math.min(base / s, base * 3)
+            const linewidth = Math.min(
+                SELECTION_HANDLE_LINEWIDTH_PX / s,
+                SELECTION_HANDLE_LINEWIDTH_PX * 3
+            )
             this.circle1.radius = radius
+            this.circle1.linewidth = linewidth
             this.circle2.radius = radius
+            this.circle2.linewidth = linewidth
             if (this.showCircles === 4) {
                 this.circle3.radius = radius
+                this.circle3.linewidth = linewidth
                 this.circle4.radius = radius
-                this.circleGroup.linewidth = Math.min(1.5 / s, 4.5)
+                this.circle4.linewidth = linewidth
+                this.circleGroup.linewidth = linewidth
             }
         }
     }

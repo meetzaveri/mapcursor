@@ -57,7 +57,7 @@ const SupportPage: React.FC = () => {
                     <Link
                         to={routes.index}
                         className="flex items-center gap-1 text-sm text-ink-mid no-underline font-medium
-                            px-2 py-1 rounded-md hover:bg-accent/30 transition-all ease-in duration-150"
+                            px-2 py-1 rounded-md hover:bg-sidebar transition-all ease-in duration-150"
                     >
                         <ChevronLeft />
                         <span>{isMobile ? 'Back' : 'Back to canvas'}</span>
@@ -93,7 +93,7 @@ const SupportPage: React.FC = () => {
                     flex flex-col tablet-landscape:flex-row tablet-landscape:items-center gap-3 shadow-card"
                 >
                     <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-card bg-accent flex items-center justify-center flex-shrink-0">
+                        <div className="w-9 h-9 rounded-card bg-accent text-white flex items-center justify-center flex-shrink-0">
                             <img
                                 src={EnvelopeIcon}
                                 className="w-5 h-5"
@@ -144,7 +144,7 @@ const SupportPage: React.FC = () => {
                             className="flex items-start gap-3 bg-card-bg border border-border-card rounded-card p-4 no-underline
                                 shadow-card hover:shadow-card-accent transition-shadow ease-in duration-150"
                         >
-                            <div className="w-9 h-9 rounded-card bg-accent/20 flex items-center justify-center flex-shrink-0">
+                            <div className="w-9 h-9 rounded-card bg-accent/10 flex items-center justify-center flex-shrink-0">
                                 {card.icon}
                             </div>
                             <div className="flex flex-col">

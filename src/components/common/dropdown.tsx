@@ -238,7 +238,7 @@ function Dropdown<T extends string>({
                     cursor-pointer transition-all ease-in-out duration-200
                     disabled:opacity-40 disabled:cursor-not-allowed
                     ${triggerClassName}
-                    ${open ? 'bg-accent/50 text-ink' : 'text-ink-mid hover:bg-accent/50 hover:text-ink'}
+                    ${open ? 'bg-accent/10 text-accent-dark ring-1 ring-accent/30' : 'text-ink-mid hover:bg-sidebar hover:text-ink'}
                 `}
             >
                 {HeadIcon && (
@@ -298,7 +298,7 @@ function Dropdown<T extends string>({
                                                   isSelected
                                                       ? 'text-ink'
                                                       : 'text-ink-mid'
-                                              } ${isActive ? 'bg-accent/50' : ''}`
+                                              } ${isActive ? 'bg-accent/10' : ''}`
                                     }
                                 `}
                             >

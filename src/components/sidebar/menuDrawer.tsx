@@ -22,9 +22,9 @@ const HamburgerIcon = (): ReactElement => (
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
     >
-        <rect x="2" y="3.5" width="12" height="1.5" rx="0.75" fill="#8C7E6A" />
-        <rect x="2" y="7.25" width="12" height="1.5" rx="0.75" fill="#8C7E6A" />
-        <rect x="2" y="11" width="12" height="1.5" rx="0.75" fill="#8C7E6A" />
+        <rect x="2" y="3.5" width="12" height="1.5" rx="0.75" fill="currentColor" />
+        <rect x="2" y="7.25" width="12" height="1.5" rx="0.75" fill="currentColor" />
+        <rect x="2" y="11" width="12" height="1.5" rx="0.75" fill="currentColor" />
     </svg>
 )
 
@@ -38,14 +38,14 @@ const ExternalIcon = (): ReactElement => (
     >
         <path
             d="M5 2H2a1 1 0 00-1 1v7a1 1 0 001 1h7a1 1 0 001-1V7"
-            stroke="#8C7E6A"
+            stroke="currentColor"
             strokeWidth="1.2"
             strokeLinecap="round"
             strokeLinejoin="round"
         />
         <path
             d="M7.5 1.5H10.5M10.5 1.5V4.5M10.5 1.5L5.5 6.5"
-            stroke="#8C7E6A"
+            stroke="currentColor"
             strokeWidth="1.2"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -63,7 +63,7 @@ const TrashIcon = (): ReactElement => (
     >
         <path
             d="M2 3.5h10M5.5 3.5V2.5a1 1 0 011-1h1a1 1 0 011 1v1M6 6v4M8 6v4M3 3.5l.7 7a1 1 0 001 .9h4.6a1 1 0 001-.9l.7-7"
-            stroke="#ef4444"
+            stroke="currentColor"
             strokeWidth="1.1"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -81,14 +81,14 @@ const DownloadIcon = (): ReactElement => (
     >
         <path
             d="M7 1.5v7M4 5.5L7 8.5l3-3"
-            stroke="#8C7E6A"
+            stroke="currentColor"
             strokeWidth="1.1"
             strokeLinecap="round"
             strokeLinejoin="round"
         />
         <path
             d="M2 9.5v1.5a1 1 0 001 1h8a1 1 0 001-1V9.5"
-            stroke="#8C7E6A"
+            stroke="currentColor"
             strokeWidth="1.1"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -106,14 +106,14 @@ const UploadIcon = (): ReactElement => (
     >
         <path
             d="M7 8.5v-7M4 4.5L7 1.5l3 3"
-            stroke="#8C7E6A"
+            stroke="currentColor"
             strokeWidth="1.1"
             strokeLinecap="round"
             strokeLinejoin="round"
         />
         <path
             d="M2 9.5v1.5a1 1 0 001 1h8a1 1 0 001-1V9.5"
-            stroke="#8C7E6A"
+            stroke="currentColor"
             strokeWidth="1.1"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -129,10 +129,10 @@ const SearchIcon = (): ReactElement => (
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
     >
-        <circle cx="6.25" cy="6.25" r="4" stroke="#8C7E6A" strokeWidth="1.1" />
+        <circle cx="6.25" cy="6.25" r="4" stroke="currentColor" strokeWidth="1.1" />
         <path
             d="M9.25 9.25L12 12"
-            stroke="#8C7E6A"
+            stroke="currentColor"
             strokeWidth="1.1"
             strokeLinecap="round"
         />
@@ -246,7 +246,7 @@ const MenuDrawer = (): ReactElement => {
             <div
                 ref={refNode}
                 id={MENU_BUTTON_ID}
-                className="relative bg-card-bg border border-border-panel rounded-card"
+                className="relative bg-card-bg border border-border-panel shadow-panel rounded-card"
                 style={{
                     position: 'fixed',
                     top: '8px',
@@ -259,7 +259,7 @@ const MenuDrawer = (): ReactElement => {
                     className={`
                         w-10 h-10 flex items-center justify-center rounded cursor-pointer
                         transition-all ease-in-out duration-200
-                        ${showMenu ? 'bg-accent/50' : 'hover:bg-accent/50'}
+                        ${showMenu ? 'bg-accent/10 text-accent-dark ring-1 ring-accent/30' : 'hover:bg-sidebar'}
                     `}
                     onClick={(): void => setShowMenu((prev) => !prev)}
                 >
@@ -275,12 +275,12 @@ const MenuDrawer = (): ReactElement => {
                         pointerEvents: showMenu ? 'auto' : 'none',
                     }}
                 >
-                    <div className="bg-card-bg border border-border-panel rounded-lg shadow-lg py-1 w-max min-w-[188px] max-w-[calc(100vw-20px)]">
+                    <div className="bg-card-bg border border-border-panel rounded-card shadow-card py-1 w-max min-w-[188px] max-w-[calc(100vw-20px)]">
                         {showSearchEntry && (
                             <>
                                 <button
                                     className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                        hover:bg-accent/50 rounded cursor-pointer
+                                        hover:bg-sidebar rounded cursor-pointer
                                         transition-colors ease-in-out duration-150"
                                     style={{ width: 'calc(100% - 8px)' }}
                                     onClick={handlePlaceSearchClick}
@@ -296,7 +296,7 @@ const MenuDrawer = (): ReactElement => {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center justify-between px-3 py-2 mx-1 text-sm text-ink-mid
-                                hover:bg-accent/50 rounded cursor-pointer no-underline
+                                hover:bg-sidebar rounded cursor-pointer no-underline
                                 transition-colors ease-in-out duration-150"
                             onClick={(): void => setShowMenu(false)}
                         >
@@ -310,12 +310,12 @@ const MenuDrawer = (): ReactElement => {
                                 >
                                     <path
                                         d="M2 1h10a1 1 0 011 1v10a1 1 0 01-1 1H2a1 1 0 01-1-1V2a1 1 0 011-1z"
-                                        stroke="#8C7E6A"
+                                        stroke="currentColor"
                                         strokeWidth="1.1"
                                     />
                                     <path
                                         d="M4 4.5h6M4 7h6M4 9.5h3.5"
-                                        stroke="#8C7E6A"
+                                        stroke="currentColor"
                                         strokeWidth="1.1"
                                         strokeLinecap="round"
                                     />
@@ -328,7 +328,7 @@ const MenuDrawer = (): ReactElement => {
                         <Link
                             to={routes.support}
                             className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                hover:bg-accent/50 rounded cursor-pointer no-underline
+                                hover:bg-sidebar rounded cursor-pointer no-underline
                                 transition-colors ease-in-out duration-150"
                             onClick={(): void => setShowMenu(false)}
                         >
@@ -343,12 +343,12 @@ const MenuDrawer = (): ReactElement => {
                                     cx="7"
                                     cy="7"
                                     r="5.5"
-                                    stroke="#8C7E6A"
+                                    stroke="currentColor"
                                     strokeWidth="1.1"
                                 />
                                 <path
                                     d="M7 4.5v3.5M7 9.5v.5"
-                                    stroke="#8C7E6A"
+                                    stroke="currentColor"
                                     strokeWidth="1.1"
                                     strokeLinecap="round"
                                 />
@@ -359,7 +359,7 @@ const MenuDrawer = (): ReactElement => {
                         <Link
                             to={routes.privacy}
                             className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                hover:bg-accent/50 rounded cursor-pointer no-underline
+                                hover:bg-sidebar rounded cursor-pointer no-underline
                                 transition-colors ease-in-out duration-150"
                             onClick={(): void => setShowMenu(false)}
                         >
@@ -372,13 +372,13 @@ const MenuDrawer = (): ReactElement => {
                             >
                                 <path
                                     d="M7 1.25l4.5 1.75v3.5c0 2.6-1.9 4.7-4.5 5.5-2.6-.8-4.5-2.9-4.5-5.5V3z"
-                                    stroke="#8C7E6A"
+                                    stroke="currentColor"
                                     strokeWidth="1.1"
                                     strokeLinejoin="round"
                                 />
                                 <path
                                     d="M5.25 7l1.25 1.25L9 5.75"
-                                    stroke="#8C7E6A"
+                                    stroke="currentColor"
                                     strokeWidth="1.1"
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
@@ -391,7 +391,7 @@ const MenuDrawer = (): ReactElement => {
 
                         <button
                             className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                hover:bg-accent/30 rounded cursor-pointer
+                                hover:bg-sidebar rounded cursor-pointer
                                 transition-colors ease-in-out duration-150"
                             style={{ width: 'calc(100% - 8px)' }}
                             onClick={handleShortcutsClick}
@@ -410,7 +410,7 @@ const MenuDrawer = (): ReactElement => {
                         <div className="relative">
                             <button
                                 className="flex items-center justify-between gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                    hover:bg-accent/50 rounded cursor-pointer
+                                    hover:bg-sidebar rounded cursor-pointer
                                     transition-colors ease-in-out duration-150"
                                 style={{ width: 'calc(100% - 8px)' }}
                                 onClick={(): void => {
@@ -438,7 +438,7 @@ const MenuDrawer = (): ReactElement => {
                                 >
                                     <button
                                         className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                            hover:bg-accent/50 rounded cursor-pointer
+                                            hover:bg-sidebar rounded cursor-pointer
                                             transition-colors ease-in-out duration-150"
                                         style={{ width: 'calc(100% - 8px)' }}
                                         onClick={handleExportJson}
@@ -462,7 +462,7 @@ const MenuDrawer = (): ReactElement => {
                         <div className="relative">
                             <button
                                 className="flex items-center justify-between gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                    hover:bg-accent/50 rounded cursor-pointer
+                                    hover:bg-sidebar rounded cursor-pointer
                                     transition-colors ease-in-out duration-150"
                                 style={{ width: 'calc(100% - 8px)' }}
                                 onClick={(): void => {
@@ -490,7 +490,7 @@ const MenuDrawer = (): ReactElement => {
                                 >
                                     <button
                                         className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                            hover:bg-accent/50 rounded cursor-pointer
+                                            hover:bg-sidebar rounded cursor-pointer
                                             transition-colors ease-in-out duration-150"
                                         style={{ width: 'calc(100% - 8px)' }}
                                         onClick={handleImportJson}
@@ -513,7 +513,7 @@ const MenuDrawer = (): ReactElement => {
 
                         <button
                             className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
-                                hover:bg-accent/50 rounded cursor-pointer
+                                hover:bg-sidebar rounded cursor-pointer
                                 transition-colors ease-in-out duration-150
                                 disabled:opacity-50 disabled:cursor-default"
                             style={{ width: 'calc(100% - 8px)' }}

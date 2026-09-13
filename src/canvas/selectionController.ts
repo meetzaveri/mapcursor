@@ -12,8 +12,23 @@ import {
     measureTextWidth,
     type FontSpec,
 } from '../utils/textLayout'
-import { DEFAULT_TEXT_FONT_FAMILY, HANDLE_STROKE } from '../constants/misc'
+import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 import { markSelectionChrome } from '../utils/svgExportShared'
+import {
+    buildCircleLabel,
+    circleLabelColorOf,
+    circleLabelFontFamilyOf,
+    circleLabelFontSizeOf,
+    circleLabelOf,
+} from '../factory/circleLabel'
+import {
+    getSelectionStroke,
+    selectionHandleRadiusPx,
+    HANDLE_STROKE,
+    SELECTION_BOX_LINEWIDTH_PX,
+    SELECTION_HANDLE_FILL,
+    SELECTION_HANDLE_LINEWIDTH_PX,
+} from '../utils/selectionTheme'
 
 // Two.js scene shapes carry codebase-specific bookkeeping (elementData,
 // _renderer, etc.) outside the published types. Stay loose here; Stage 12
@@ -41,10 +56,6 @@ interface ShapeAdapter {
     // does on a corner, permanently. Set for the circle, which is a proximity
     // radius and so has no oval state to be dragged into.
     lockAspect?: boolean
-    // Ring colour for the 4 corner handles, when this shape wants something
-    // other than the theme ink the box is drawn in. The circle takes the shared
-    // geo handle indigo so its grab points match route's and area's.
-    handleStroke?: string
 }
 
 // Font spec for a single standalone text line node.
@@ -111,7 +122,6 @@ const TEXT_ADAPTER: ShapeAdapter = {
 const CIRCLE_ADAPTER: ShapeAdapter = {
     ...DEFAULT_ADAPTER,
     lockAspect: true,
-    handleStroke: HANDLE_STROKE,
 }
 
 const SHAPE_ADAPTERS: Record<string, ShapeAdapter> = {
@@ -121,32 +131,18 @@ const SHAPE_ADAPTERS: Record<string, ShapeAdapter> = {
     newText: TEXT_ADAPTER,
 }
 
-// Handle dot diameter in *screen* px, stepped across 3 zoom ranges so the dots
-// stay stable instead of rescaling continuously with zoom.
-function handleScreenPx(scale: number): number {
-    if (scale < 0.5) return 8
-    if (scale < 2) return 11
-    return 14
+// Handle dot diameter in *screen* px. Constant at every zoom, and the same
+// number the vertex handles and the legacy ObjectSelector use — a corner dot on
+// a map circle and a vertex dot on a route are one affordance, so they are one
+// size (see utils/selectionTheme).
+function handleScreenPx(): number {
+    return selectionHandleRadiusPx() * 2
 }
 const HANDLE_HIT_SLOP_MOUSE = 3
 const HANDLE_HIT_SLOP_TOUCH = 8
 const MIN_SCALE_DIMENSION = 20
 // Surface-unit padding between the shape edge and the selection box border.
 export const SELECTION_PADDING = 5
-
-// Selection box + resize-handle stroke. Follows the active theme's `ink` so it
-// stays high-contrast against the canvas in BOTH themes: near-black on the light
-// parchment, light-warm on the dark canvas. Read live from the `--color-ink` CSS
-// variable (RGB channels, set in App.css + flipped by `.dark`) because this is a
-// Two.js scene color, not a CSS class — it can't inherit the token otherwise.
-// The muted `accent.dark` gold used previously blended into the bg.
-const getSelectionStroke = (): string => {
-    if (typeof document === 'undefined') return '#1A1612'
-    const channels = getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-ink')
-        .trim()
-    return channels ? `rgb(${channels})` : '#1A1612'
-}
 
 interface ToolbarState {
     element: Record<string, ShapeLike>
@@ -322,16 +318,17 @@ export default class SelectionController {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const box = new (Two as any).Rectangle(0, 0, 0, 0)
         box.noFill()
-        const selectionStroke = getSelectionStroke()
-        box.stroke = selectionStroke
-        box.linewidth = 1.5
+        box.stroke = getSelectionStroke()
+        box.linewidth = SELECTION_BOX_LINEWIDTH_PX
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const endpoints = new (Two as any).Points(box.vertices)
-        endpoints.size = 10
-        endpoints.fill = '#FFFCF5'
-        endpoints.stroke = selectionStroke
-        endpoints.linewidth = 1.5
+        endpoints.size = handleScreenPx()
+        endpoints.fill = SELECTION_HANDLE_FILL
+        // Fixed in both themes, unlike the box: a grab dot is indigo wherever it
+        // appears — route and area vertices, group corners, text, this box.
+        endpoints.stroke = HANDLE_STROKE
+        endpoints.linewidth = SELECTION_HANDLE_LINEWIDTH_PX
 
         ui.add(box, endpoints)
         this.two.add(ui)
@@ -422,7 +419,6 @@ export default class SelectionController {
         this.targets.add(group)
 
         this._bringToFront()
-        this._applyHandleStroke()
         this.ui.visible = true
         // Per-shape `.dragger-picker { cursor: pointer }` (common.css) sits on
         // the SVG node directly under the cursor and beats the root's inline
@@ -467,28 +463,15 @@ export default class SelectionController {
     }
 
     /**
-     * Re-apply the theme-resolved stroke to the selection box + handles. Called
-     * when the theme toggles so an active selection re-colors live (the stroke
-     * is otherwise only computed at _buildUi time). No-op safe when detached.
+     * Re-apply the theme-resolved stroke to the selection box. Called when the
+     * theme toggles so an active selection re-colors live (the stroke is
+     * otherwise only computed at _buildUi time). No-op safe when detached.
      */
     applyThemeStroke(): void {
-        const stroke = getSelectionStroke()
-        if (this.box) this.box.stroke = stroke
-        this._applyHandleStroke()
+        if (this.box) this.box.stroke = getSelectionStroke()
+        // The handles are deliberately NOT repainted: their indigo is fixed in
+        // both themes, so a theme toggle only moves the box.
         this.two.update()
-    }
-
-    /**
-     * Ring the 4 corner handles: the active adapter's colour if it names one,
-     * the theme ink otherwise. The `ui` overlay is built once and reused for
-     * every selection, so this has to run on each attach — not just at build
-     * time — or a circle's indigo would follow the selection onto the next
-     * shape, and the theme toggle would repaint it as ink.
-     */
-    private _applyHandleStroke(): void {
-        if (!this.endpoints) return
-        this.endpoints.stroke =
-            this.currentAdapter?.handleStroke ?? getSelectionStroke()
     }
 
     // For CSS-transform move-drags: hand back the selection-chrome SVG node and
@@ -525,12 +508,16 @@ export default class SelectionController {
             return
 
         const scale = this.zui.scale || 1
-        this.box.linewidth = 1.5 / scale
+        this.box.linewidth = SELECTION_BOX_LINEWIDTH_PX / scale
         // Two.Points render with sizeAttenuation=false, so `size` is already a
         // screen-px value (the renderer divides out the scene scale). Set it
         // directly — no /scale — else the dots inflate when zoomed out.
-        const handleSize = handleScreenPx(scale)
-        this.endpoints.size = handleSize
+        this.endpoints.size = handleScreenPx()
+        // `linewidth` gets no such treatment from the renderer: it is a world
+        // unit like any other stroke, so it thickens as you zoom in unless it
+        // is counter-scaled here — which is why a map circle's ring used to
+        // stop matching a route's at anything but 100%.
+        this.endpoints.linewidth = SELECTION_HANDLE_LINEWIDTH_PX / scale
 
         const { width, height } = this.currentAdapter.getLocalSize(
             this.currentShape
@@ -567,7 +554,7 @@ export default class SelectionController {
         // Grab radius is tied to the visible dot (half its diameter) plus a few
         // px of slop, so resize only fires on the dot — not in a bloated zone
         // around it. Constant in screen px at any zoom.
-        const hitRadiusPx = handleScreenPx(scale) / 2 + this._hitSlopPx()
+        const hitRadiusPx = handleScreenPx() / 2 + this._hitSlopPx()
         const hitLimit = hitRadiusPx / scale
 
         // Corners win over edges so the corner-resize/rotate zone isn't shadowed
@@ -1016,6 +1003,21 @@ export default class SelectionController {
 
         this.currentAdapter.applySize(this.currentShape, newWidth, newHeight)
         this.currentGroup.translation.set(nextX, nextY)
+        // A circle's label wraps to the inscribed box, which is a function of
+        // the width being dragged — so it has to re-flow live. Nothing else
+        // would tell the element: ElementRenderWrapper froze its props at
+        // mount, and the store write only lands on pointer-up.
+        if (this.currentGroup.elementData?.componentType === 'circle') {
+            buildCircleLabel(this.two, this.currentGroup, {
+                text: circleLabelOf(this.currentGroup.elementData),
+                fontFamily: circleLabelFontFamilyOf(
+                    this.currentGroup.elementData
+                ),
+                fontSize: circleLabelFontSizeOf(this.currentGroup.elementData),
+                color: circleLabelColorOf(this.currentGroup.elementData),
+                width: newWidth,
+            })
+        }
         this.syncToTarget()
         this.two.update()
         this.callbacks.onTransform(this.currentGroup)

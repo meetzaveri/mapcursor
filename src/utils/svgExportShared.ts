@@ -5,6 +5,42 @@
 // loaded fonts, so without embedding, canvas text falls back to a system font.
 
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
+import avenirUrl from '../assets/fonts/AvenirLTProBook.otf'
+import frutigerUrl from '../assets/fonts/Frutiger.woff'
+
+// Canvas families we ship ourselves (declared in src/styles/fonts.css) rather
+// than pull from Google Fonts. Export has to embed these from our own origin —
+// the Google CSS endpoint has never heard of them, so without this branch every
+// label drawn in the shipped default exports in a system fallback instead.
+// Keyed by the exact family name Two.js writes onto <text>.
+const SELF_HOSTED_FONT_FILES: Record<string, string> = {
+    Avenir: avenirUrl,
+    Frutiger: frutigerUrl,
+}
+
+/** `format()` keyword for a font URL, taken from its (hash-preserved) suffix. */
+function fontFormatFor(url: string): string {
+    if (url.endsWith('.woff2')) return 'woff2'
+    if (url.endsWith('.woff')) return 'woff'
+    if (url.endsWith('.ttf')) return 'truetype'
+    return 'opentype'
+}
+
+/**
+ * Inline @font-face for a self-hosted family, or null if we don't ship it (in
+ * which case the caller falls through to the Google Fonts path).
+ */
+async function selfHostedFontCss(family: string): Promise<string | null> {
+    const url = SELF_HOSTED_FONT_FILES[family]
+    if (!url) return null
+    const dataUri = await fetchAsDataUri(url)
+    if (!dataUri) return null
+    return (
+        `@font-face{font-family:'${family}';` +
+        `src:url(${dataUri}) format('${fontFormatFor(url)}');` +
+        `font-weight:400;font-style:normal;}`
+    )
+}
 
 export const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -48,20 +84,27 @@ function collectUsedFamilies(svg: SVGSVGElement): string[] {
             text.getAttribute('font-family') || text.style.fontFamily || ''
         // font-family can be a comma list of fallbacks; take the primary and
         // strip any surrounding quotes Two.js / the browser may have added.
-        const primary = raw.split(',')[0]?.trim().replace(/^["']|["']$/g, '')
+        const primary = raw
+            .split(',')[0]
+            ?.trim()
+            .replace(/^["']|["']$/g, '')
         if (primary) families.add(primary)
     })
     return [...families]
 }
 
 /**
- * Fetch one Google font family's CSS with its url() references inlined as
- * base64 data URIs. Returns the inlined CSS, or null on any failure. Only the
+ * Return one family's @font-face CSS with the binary inlined as a base64 data
+ * URI: from our own assets when we self-host the family, otherwise from Google
+ * Fonts. Returns null on any failure. From Google, only the
  * Regular 400 weight is requested (canvas text is always 400). Each family is
  * fetched independently so an unavailable family can't void the whole export.
  */
 async function fetchInlinedFontCss(family: string): Promise<string | null> {
     try {
+        const selfHosted = await selfHostedFontCss(family)
+        if (selfHosted) return selfHosted
+
         const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
             family
         )}:wght@400&display=swap`

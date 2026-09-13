@@ -63,10 +63,11 @@ const Content = styled.div`
     max-width: calc(100vw - 32px);
     overflow: auto;
     box-shadow:
-        0 3px 6px rgba(0, 0, 0, 0.16),
-        0 3px 6px rgba(0, 0, 0, 0.23);
-    background-color: white;
-    border-radius: 2px;
+        0 1px 2px rgb(15 17 21 / 0.06),
+        0 8px 24px rgb(15 17 21 / 0.06),
+        0 24px 60px rgb(15 17 21 / 0.14);
+    background-color: rgb(var(--color-card));
+    border-radius: 12px;
 `
 
 export interface ModalProps {

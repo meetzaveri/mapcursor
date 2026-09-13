@@ -48,18 +48,18 @@ const BorderStyleBox = ({
                             onChangeStrokeType?.(type.value)
                         }
                         className={`flex-1 h-8 flex items-center justify-center rounded cursor-pointer transition-all ease-in-out duration-200 ${
-                            isSelected ? 'bg-accent/20' : 'hover:bg-accent/20'
+                            isSelected ? 'bg-accent/10' : 'hover:bg-sidebar'
                         }`}
                         style={{
                             border: isSelected
-                                ? '2px solid #C4901A'
-                                : '1px solid #C4B89A',
+                                ? '2px solid rgb(var(--color-accent-dark))'
+                                : '1px solid rgb(var(--color-border-card))',
                         }}
                     >
                         <span
                             className="text-base font-bold tracking-widest"
                             style={{
-                                color: isSelected ? '#C4901A' : '#8C7E6A',
+                                color: isSelected ? 'rgb(var(--color-accent-dark))' : 'rgb(var(--color-ink-muted))',
                                 paddingBottom:
                                     type.value === 'dotted' ? '0.4rem' : '0px',
                             }}
@@ -87,12 +87,12 @@ const BorderStyleBox = ({
                     data-parent="floating-toolbar"
                     onClick={(): void => onChangeBorderWidth(value)}
                     className={`flex-1 w-1/4 h-8 flex items-center justify-center rounded cursor-pointer transition-all ease-in-out duration-200 ${
-                        isSelected ? 'bg-accent/20' : 'hover:bg-accent/20'
+                        isSelected ? 'bg-accent/10' : 'hover:bg-sidebar'
                     }`}
                     style={{
                         border: isSelected
-                            ? '2px solid #C4901A'
-                            : '1px solid #C4B89A',
+                            ? '2px solid rgb(var(--color-accent-dark))'
+                            : '1px solid rgb(var(--color-border-card))',
                     }}
                 >
                     {value === 0 ? (
@@ -101,8 +101,8 @@ const BorderStyleBox = ({
                             style={{
                                 background:
                                     currentWidth === value
-                                        ? '#C4901A'
-                                        : '#8C7E6A',
+                                        ? 'rgb(var(--color-accent-dark))'
+                                        : 'rgb(var(--color-ink-muted))',
                             }}
                         ></div>
                     ) : (
@@ -112,8 +112,8 @@ const BorderStyleBox = ({
                                 height: strokeHeight,
                                 backgroundColor:
                                     currentWidth === value
-                                        ? '#C4901A'
-                                        : '#8C7E6A',
+                                        ? 'rgb(var(--color-accent-dark))'
+                                        : 'rgb(var(--color-ink-muted))',
                             }}
                         ></div>
                     )}

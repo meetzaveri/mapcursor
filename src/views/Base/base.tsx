@@ -2019,9 +2019,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         if (sel?.group?.data?.elementData) {
             sel.group.data.elementData.metadata = updatedMetadata
         }
-        // Re-wrap + re-fit height: some families (e.g. Fraunces) render wider
-        // than Caveat at the same size, changing the wrap — and switching back
-        // to the narrower family must give the height back.
+        // Re-wrap + re-fit height: families differ in width at the same size
+        // (Frutiger sets wider than Avenir), changing the wrap — and switching
+        // back to the narrower family must give the height back.
         reflowShapeTextAfterStyleChange(
             componentId,
             updatedMetadata,

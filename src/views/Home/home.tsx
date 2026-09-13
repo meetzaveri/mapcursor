@@ -10,7 +10,6 @@ import BlueStarSVG from '../../assets/blue_star.svg'
 
 // import ImageContainer from '../../components/ProgressiveImageLoader/loader'
 // import CraftbaseBoardScreenshotBlurJPG from '../../assets/blur_craftbase_screenshot.jpg'
-import Brainstorming from '../../assets/brainstorming_craftbase.png'
 import Button from '../../components/common/button'
 
 const HomePage: React.FC = () => {
@@ -103,18 +102,20 @@ const HomePage: React.FC = () => {
                         h-full mt-16
                         flex items-center  flex-wrap"
                     >
-                        <div className="w-full lg:w-5/12 h-full flex items-center justify-center">
+                        <div className="w-full h-full flex items-center justify-center">
                             <div className="text-left transition-opacity duration-300 ease-in-out">
                                 <h1 className="text-base lg:text-3xl 2xl:text-4xl font-bold font-display">
-                                    Draw and Annotate on Maps with Unique
-                                    Shareable Links
+                                    Draw and Annotate on Maps
                                 </h1>
                                 <p className="pt-4 2xl:pt-8 text-sm lg:text-lg 2xl:text-xl ">
-                                    Sketch on maps in mapcursor. Trace routes,
-                                    mark places and drop notes on real
-                                    geography. Each shared map gets a unique
-                                    URL. No accounts. No login/signup. Just
-                                    start annotating.
+                                    Mapcursor provides a way to annotate and
+                                    draw on maps with ease. Whether you want to
+                                    drop some points, draw a route, mark an
+                                    area, sketch with pencil or simply annotate
+                                    some place with a plain text, you can do it
+                                    on our map base. All the data stays on local
+                                    on your machine unless you publicly share
+                                    the map canvas.
                                 </p>
                                 {/* <p className="pt-4 2xl:pt-8 text-sm lg:text-lg 2xl:text-xl ">
                                     With real-time updates across all devices,
@@ -141,15 +142,6 @@ const HomePage: React.FC = () => {
                                         </div>
                                     </Button>
                                 </div>
-                            </div>
-                        </div>
-                        <div className="w-full lg:w-7/12 pt-8 lg:pt-0 h-full ">
-                            <div className="lg:pl-4 w-full flex items-center lg:justify-end justify-center ">
-                                <img
-                                    src={Brainstorming}
-                                    alt="Mapcursor annotated map"
-                                    className="w-full lg:w-11/12 shadow-md"
-                                />
                             </div>
                         </div>
                     </div>

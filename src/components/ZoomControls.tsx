@@ -68,7 +68,7 @@ const ZoomControls = (): ReactElement => {
         >
             <button
                 onClick={(): void => zoom(-1)}
-                className="w-7 h-7 flex items-center justify-center rounded text-ink-muted hover:bg-accent hover:text-ink transition-colors duration-150"
+                className="w-7 h-7 flex items-center justify-center rounded text-ink-muted hover:bg-sidebar hover:text-ink transition-colors duration-150"
                 title="Zoom out"
             >
                 {/* stroke/color="currentColor" cancels the SVG's hardcoded
@@ -85,7 +85,7 @@ const ZoomControls = (): ReactElement => {
             </span>
             <button
                 onClick={(): void => zoom(1)}
-                className="w-7 h-7 flex items-center justify-center rounded text-ink-muted hover:bg-accent hover:text-ink transition-colors duration-150"
+                className="w-7 h-7 flex items-center justify-center rounded text-ink-muted hover:bg-sidebar hover:text-ink transition-colors duration-150"
                 title="Zoom in"
             >
                 <ZoomInIcon

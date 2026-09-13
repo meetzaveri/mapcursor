@@ -110,13 +110,7 @@ const ACCEPTS: Record<InspectableProperty, Set<string>> = {
         'text',
         'pencil',
     ]),
-    textColor: new Set([
-        'text',
-        'text',
-        'rectangle',
-        'diamond',
-        'circle',
-    ]),
+    textColor: new Set(['text', 'text', 'rectangle', 'diamond', 'circle']),
     textSize: new Set([
         'text',
         'text',
@@ -154,9 +148,12 @@ function readChildValue(child: ChildEntry, key: InspectableProperty): unknown {
             if (typeof child.opacity === 'number') return child.opacity
             return meta?.opacity ?? 1
         case 'textColor':
+            // A circle's label ink is a column too (see circleLabelColorOf) —
+            // `metadata.textFill` is the shape-with-text spelling, which a
+            // circle deliberately does not use.
             if (
                 child.componentType === 'text' ||
-                child.componentType === 'text'
+                child.componentType === 'circle'
             )
                 return child.textColor
             return meta?.textFill

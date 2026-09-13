@@ -34,7 +34,8 @@ import PencilIcon from '../../wireframeAssets/pencil.svg?react'
 const EDITABLE_TEXT_TYPES: ReadonlySet<string> = new Set([
     'text',
     'point',
-    'text',
+    // A circle's label editor speaks the same TEXT_EDIT_* handshake.
+    'circle',
 ])
 
 interface MobileTextControlsProps {

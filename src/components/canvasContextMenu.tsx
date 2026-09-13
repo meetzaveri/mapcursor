@@ -26,11 +26,12 @@ const MENU_MARGIN = 8
 
 // Shared icon tone — matches the menu's ink-mid text. The source SVGs hardcode
 // a blue stroke; SVGR spreads props after the original attrs, so this wins.
-const ICON_STROKE = '#8C7E6A'
+// Icons inherit the row's text token; see menuDrawer for the same move.
+const ICON_STROKE = 'currentColor'
 
 const itemClass =
     `w-full flex items-center justify-between px-3 py-2 mx-0 text-sm text-ink-mid ` +
-    `hover:bg-accent/30 rounded cursor-pointer transition-colors ease-in-out duration-150`
+    `hover:bg-sidebar rounded cursor-pointer transition-colors ease-in-out duration-150`
 
 const shortcutClass = 'text-[10px] text-ink-muted tracking-wide'
 

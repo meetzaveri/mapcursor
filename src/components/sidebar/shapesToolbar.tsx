@@ -162,7 +162,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                 className={`
                     ${btnSize} flex items-center justify-center rounded cursor-pointer
                     transition-all ease-in-out duration-200 text-ink-muted
-                    ${historyLog.length === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-accent/50 hover:text-ink'}
+                    ${historyLog.length === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-sidebar hover:text-ink'}
                 `}
                 onClick={(): void => {
                     if (historyLog.length > 0) {
@@ -180,7 +180,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                 className={`
                     ${btnSize} flex items-center justify-center rounded cursor-pointer
                     transition-all ease-in-out duration-200 text-ink-muted
-                    ${bucketLog.length === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-accent/50 hover:text-ink'}
+                    ${bucketLog.length === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-sidebar hover:text-ink'}
                 `}
                 onClick={(): void => {
                     if (bucketLog.length > 0) {
@@ -199,7 +199,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                 so the bottom row stays uncrowded. Desktop keeps them inline. */}
             {isMobile && (
                 <div
-                    className="fixed bg-card-bg border border-border-panel rounded-card flex items-center flex-row px-1 py-1 gap-0.5"
+                    className="fixed bg-card-bg border border-border-panel shadow-panel rounded-card flex items-center flex-row px-1 py-1 gap-0.5"
                     style={{ bottom: '64px', left: '10px', zIndex: 10 }}
                 >
                     {undoButton}
@@ -208,7 +208,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
             )}
             <div
                 id={SHAPES_TOOLBAR_ID}
-                className={`fixed bg-card-bg border border-border-panel rounded-card flex items-center flex-row
+                className={`fixed bg-card-bg border border-border-panel shadow-panel rounded-card flex items-center flex-row
                     ${isMobile ? 'px-1 py-1 gap-0.5' : 'top-2 left-1/2 px-2 py-1 gap-1'}`}
                 style={
                     isMobile
@@ -238,8 +238,8 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                 transition-all ease-in-out duration-200
                                 ${
                                     isActive
-                                        ? 'bg-accent/50 text-ink dark:bg-accent/50/30 dark:text-white'
-                                        : 'text-ink-muted hover:bg-accent/50 dark:hover:bg-accent/50/30 hover:text-ink'
+                                        ? 'bg-accent/10 text-accent-dark ring-1 ring-accent/30'
+                                        : 'text-ink-muted hover:bg-sidebar hover:text-ink'
                                 }
                             `}
                                 onMouseEnter={(e): void => {
@@ -367,8 +367,8 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                         transition-all ease-in-out duration-200
                                         ${
                                             isActive
-                                                ? 'bg-accent/50 text-ink dark:bg-accent/50/30 dark:text-white'
-                                                : 'text-ink-muted hover:bg-accent/50 dark:hover:bg-accent/50/30 hover:text-ink'
+                                                ? 'bg-accent/10 text-accent-dark ring-1 ring-accent/30'
+                                                : 'text-ink-muted hover:bg-sidebar hover:text-ink'
                                         }
                                     `}
                                         onClick={(): void =>
@@ -428,8 +428,8 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                     }
                 >
                     <div
-                        className={`bg-card-bg rounded-card flex items-center flex-row
-                        ${isMobile ? 'px-1 py-1 gap-0.5 border-t-2 border-accent-dark' : 'px-2 py-1 gap-1 border-b-2 border-accent-dark'}`}
+                        className={`bg-card-bg shadow-panel rounded-card flex items-center flex-row
+                        ${isMobile ? 'px-1 py-1 gap-0.5 border border-border-panel' : 'px-2 py-1 gap-1 border border-border-panel'}`}
                     >
                         {shapeDrawerElements.map((item) => {
                             const Icon = item.elementIcon
@@ -446,8 +446,8 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                     transition-all ease-in-out duration-200
                                     ${
                                         isActive
-                                            ? 'bg-accent/50 text-ink dark:bg-accent/50/30 dark:text-white'
-                                            : 'text-ink-muted hover:bg-accent/50 dark:hover:bg-accent/50/30 hover:text-ink'
+                                            ? 'bg-accent/10 text-accent-dark ring-1 ring-accent/30'
+                                            : 'text-ink-muted hover:bg-sidebar hover:text-ink'
                                     }
                                 `}
                                         onClick={(): void => {
@@ -476,7 +476,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                 segment next to the eraser icon). */}
             {isMobile && showEraserSizes && drawerAnchor && (
                 <div
-                    className="fixed bg-card-bg border border-border-panel rounded-card flex items-center flex-row px-1 py-1 gap-0.5"
+                    className="fixed bg-card-bg border border-border-panel shadow-panel rounded-card flex items-center flex-row px-1 py-1 gap-0.5"
                     style={{
                         bottom: window.innerHeight - drawerAnchor.rectTop + 6,
                         left: drawerAnchor.left,
@@ -501,8 +501,8 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                     transition-all ease-in-out duration-200
                                     ${
                                         isActive
-                                            ? 'bg-accent/50 text-ink dark:bg-accent/50/30 dark:text-white'
-                                            : 'text-ink-muted hover:bg-accent/50 dark:hover:bg-accent/50/30 hover:text-ink'
+                                            ? 'bg-accent/10 text-accent-dark ring-1 ring-accent/30'
+                                            : 'text-ink-muted hover:bg-sidebar hover:text-ink'
                                     }
                                 `}
                                     onClick={(): void =>

@@ -119,7 +119,7 @@ const ShareLinkPopup = (): ReactElement => {
                     onClick={backdropReady ? handleShareClick : undefined}
                 >
                     {/* <div className="pr-2 text-white">Share</div>{' '} */}
-                    <div className="px-2 py-2 hover:bg-accent/50 rounded-md">
+                    <div className="px-2 py-2 hover:bg-sidebar rounded-md">
                         <ShareIcon
                             width={20}
                             height={20}

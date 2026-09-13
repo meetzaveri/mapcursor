@@ -28,7 +28,7 @@ const INITIAL_DEFAULTS: ElementDefaultsState = {
     defaultStrokeType: null,
     defaultOpacity: 1,
     defaultTextColor: '#000',
-    defaultTextSize: 'M',
+    defaultTextSize: 'S',
     defaultTextFontFamily: DEFAULT_TEXT_FONT_FAMILY,
 }
 

@@ -14,7 +14,7 @@ import { SVG_NS, embedFonts, stripSelectionChrome } from './svgExportShared'
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 
 // Light-theme fallbacks, used only if the live computed style can't be read.
-const CANVAS_BG_FALLBACK = '#f5f0e8' // --color-canvas (App.css)
+const CANVAS_BG_FALLBACK = '#fafafc' // --color-canvas (App.css)
 const WATERMARK_TEXT = 'Made with mapcursor.com'
 const MAX_DPR = 2 // cap device-pixel scaling to bound output file size
 
@@ -127,7 +127,7 @@ function appendWatermark(
     text.setAttribute('text-anchor', 'end')
     text.setAttribute('font-family', DEFAULT_TEXT_FONT_FAMILY)
     text.setAttribute('font-size', '20')
-    text.setAttribute('fill', '#8C7E6A')
+    text.setAttribute('fill', '#6B7180')
     text.setAttribute('fill-opacity', '0.8')
     text.textContent = WATERMARK_TEXT
     // Last child → drawn on top of everything.

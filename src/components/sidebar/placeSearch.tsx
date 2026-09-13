@@ -157,7 +157,7 @@ const PlaceSearch = (): ReactElement | null => {
                                 type="button"
                                 onClick={(): void => handlePick(place)}
                                 className="w-full text-left px-3 py-2 text-xs text-ink
-                                    hover:bg-accent/50 cursor-pointer block"
+                                    hover:bg-sidebar cursor-pointer block"
                             >
                                 {place.label}
                             </button>

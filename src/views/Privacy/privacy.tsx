@@ -51,7 +51,7 @@ const PrivacyPage: React.FC = () => {
                     <Link
                         to={routes.index}
                         className="flex items-center gap-1 text-sm text-ink-mid no-underline font-medium
-                            px-2 py-1 rounded-md hover:bg-accent/30 transition-all ease-in duration-150"
+                            px-2 py-1 rounded-md hover:bg-sidebar transition-all ease-in duration-150"
                     >
                         <ChevronLeft />
                         <span>{isMobile ? 'Back' : 'Back to canvas'}</span>

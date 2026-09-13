@@ -14,8 +14,17 @@ import {
 import {
     computeCounterScale,
     isStrokeScaled,
+    resolveLabelResist,
     resolveResist,
 } from './counterScale'
+import {
+    buildCircleLabel,
+    circleLabelColorOf,
+    circleLabelFontFamilyOf,
+    circleLabelFontSizeOf,
+    circleLabelOf,
+    getCircleLabelNodes,
+} from '../factory/circleLabel'
 
 // Scene-bound selectedComponent shape: `.shape.data`, `.text.data`, and
 // `.group.data.elementData` are scaffolded by newCanvas / element renderers
@@ -144,23 +153,26 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         if (!id) return
 
         // Zoom-resistance is a real column, so this is a plain scalar write —
-        // no metadata merge. The type gate matters: nothing but text reads
-        // the column, and letting it onto another componentType would put a
+        // no metadata merge. The type gate matters: only the two types with a
+        // LABEL read the column (a text's whole group, a circle's label
+        // sub-group), and letting it onto another componentType would put a
         // value on a row that ignores it and then ship that value into every
         // export and every share insert.
         if (propertyKey === 'zoomResistant') {
             const textGroup = selectedComponent?.group?.data
-            if (textGroup?.elementData?.componentType !== 'text') return
+            const resistType = textGroup?.elementData?.componentType
+            if (resistType !== 'text' && resistType !== 'circle') return
             if (textGroup.elementData) {
                 textGroup.elementData.zoomResistant = value
             }
             updateComponentBulkPropertiesInLocalStore(id, {
                 zoomResistant: value,
             })
-            // The element component owns group.scale and the selection outline —
-            // it is the only place that knows the live camera and holds the
-            // selector instance. Filtered by id on the far side, so the other
-            // labels on this base are untouched.
+            // The element component owns the scaled node (a text's group, a
+            // circle's label sub-group) and the selection outline — it is the
+            // only place that knows the live camera and holds the selector
+            // instance. Filtered by id on the far side, so the other labels on
+            // this base are untouched.
             window.dispatchEvent(
                 new CustomEvent(TEXT_RESIST_CHANGED_EVENT, {
                     detail: { id, resist: value ? TEXT_RESIST : 0 },
@@ -246,17 +258,99 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             return
         }
 
+        // A circle's label font and size. Handled here rather than by the
+        // generic text paths below for the same reasons the point is: the
+        // label is a sub-group of Two.Text nodes parked in the circle's group,
+        // not a text layer, and `selectedComponent.shape.data` for a circle is
+        // the ELLIPSE — so the shared handlers would restyle nothing and write
+        // into a text record's metadata shape that a circle does not have.
+        //
+        // It rebuilds rather than poking each node because a size or family
+        // change re-wraps the text AND moves the cap band the block is centred
+        // on; only buildCircleLabel knows both.
+        const circleGroup = selectedComponent?.group?.data
+
+        // A circle's label ink. A COLUMN, not metadata — see circleLabelColorOf
+        // for why — so this is a plain scalar write, and the nodes are painted
+        // directly rather than through the shared text handler below, which
+        // reaches for getShapeTextNodes and would find nothing.
+        if (
+            circleGroup?.elementData?.componentType === 'circle' &&
+            propertyKey === 'textColor'
+        ) {
+            const elementData = circleGroup.elementData
+            getCircleLabelNodes(circleGroup).forEach((n) => (n.fill = value))
+            elementData.textColor = value
+            if (!opts?.preview) {
+                updateComponentBulkPropertiesInLocalStore(id, {
+                    textColor: value,
+                })
+            }
+            twoJSInstance?.update()
+            return
+        }
+
+        if (
+            circleGroup?.elementData?.componentType === 'circle' &&
+            (propertyKey === 'textFontFamily' || propertyKey === 'textSize')
+        ) {
+            const elementData = circleGroup.elementData
+            // textSize arrives as a ladder label ('S'…'XL') and resolves
+            // against the POINT ladder, which a circle's label shares. An
+            // unknown label is dropped rather than written.
+            const size =
+                propertyKey === 'textSize'
+                    ? POINT_LABEL_SIZES.find((s) => s.label === value)?.value
+                    : undefined
+            if (propertyKey === 'textSize' && !size) return
+
+            const metadata = {
+                ...(elementData.metadata ?? {}),
+                ...(propertyKey === 'textSize'
+                    ? { textFontSize: size }
+                    : { textFontFamily: value }),
+            }
+            if (!opts?.preview) {
+                elementData.metadata = metadata
+                updateComponentBulkPropertiesInLocalStore(id, { metadata })
+            }
+            // Preview still repaints — it just doesn't persist — so the rebuild
+            // reads the merged metadata either way.
+            const rebuilt = buildCircleLabel(twoJSInstance, circleGroup, {
+                text: circleLabelOf({ metadata }),
+                fontFamily: circleLabelFontFamilyOf({ metadata }),
+                fontSize: circleLabelFontSizeOf({ metadata }),
+                color: circleLabelColorOf(elementData),
+                width: elementData.width ?? 100,
+            })
+            // buildCircleLabel reuses the sub-group and leaves its transform
+            // alone, so re-seed the counter-scale from the live camera. This is
+            // the same value the zoomChanged listener would compute, so it is
+            // idempotent for an existing label — and it is the only thing that
+            // scales a sub-group created after mount.
+            if (rebuilt) {
+                rebuilt.scale = computeCounterScale(
+                    twoJSInstance?.scene?.scale ?? 1,
+                    resolveLabelResist(elementData)
+                )
+            }
+            twoJSInstance?.update()
+            return
+        }
+
         const shapeType = selectedComponent?.shape?.type
         const elementType =
             selectedComponent?.group?.data?.elementData?.componentType
-        // rectangle/diamond/circle all embed text the same way; route all
-        // three through the shape-with-text handlers.
+        // rectangle/diamond embed text the same way; route both through the
+        // shape-with-text handlers. `circle` was in this list as craftbase
+        // residue — a map circle's label is handled above and is invisible to
+        // getShapeTextNodes by design, so the branch was unreachable and only
+        // a trap for the next reader.
         const isShapeWithText =
             typeof selectedComponent?.text?.data?.value === 'string' &&
             (shapeType === 'rectangle' ||
                 elementType === 'rectangle' ||
-                elementType === 'diamond' ||
-                elementType === 'circle')
+                elementType === 'diamond')
 
         // 3. Route text properties — these have their own bulky resize logic.
         if (propertyKey === 'textSize') {
@@ -307,7 +401,26 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         if (propertyKey === 'fill') {
             if (shapeData) shapeData.fill = value
             if (elementData) elementData.fill = value
-            updateComponentBulkPropertiesInLocalStore(id, { fill: value })
+            // A radius map reads as ONE mark: its ring is its fill. A new
+            // circle is created that way (see the circle branch in
+            // primary.tsx), and recolouring it has to keep that promise —
+            // otherwise the first fill edit silently strands the ring on the
+            // old colour. The mirror is deliberately one-way: `stroke` below
+            // does not touch `fill`, so a user who wants the two apart can
+            // still separate them, and picking a fill afterwards re-joins them.
+            //
+            // Neither colour syncs to the defaults (see the guard in step 1) —
+            // this is that circle's identity on the basemap, not a preference.
+            if (isCircle) {
+                if (shapeData) shapeData.stroke = value
+                if (elementData) elementData.stroke = value
+                updateComponentBulkPropertiesInLocalStore(id, {
+                    fill: value,
+                    stroke: value,
+                })
+            } else {
+                updateComponentBulkPropertiesInLocalStore(id, { fill: value })
+            }
         } else if (propertyKey === 'stroke') {
             if (shapeData) shapeData.stroke = value
             if (elementData) elementData.stroke = value

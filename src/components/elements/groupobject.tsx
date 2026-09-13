@@ -9,6 +9,12 @@ const factoryModules: Record<string, () => Promise<any>> = import.meta.glob(
 import { useBaseContext } from '../../views/Base/baseContext'
 import getEditComponents from '../utils/editWrapper'
 import {
+    selectionHandleRadiusPx,
+    HANDLE_STROKE,
+    SELECTION_HANDLE_FILL,
+    SELECTION_HANDLE_LINEWIDTH_PX,
+} from '../../utils/selectionTheme'
+import {
     VERTEX_PATH_TYPES,
     VERTEX_PATH_REVERTED_EVENT,
 } from '../utils/vertexHandles'
@@ -17,7 +23,17 @@ import {
     updateX1Y1Vertices,
     updateX2Y2Vertices,
 } from '../../utils/updateVertices'
-import { isStandaloneTextType } from '../../constants/misc'
+import {
+    componentTypes,
+    isStandaloneTextType,
+} from '../../constants/misc'
+import {
+    buildCircleLabel,
+    circleLabelColorOf,
+    circleLabelFontFamilyOf,
+    circleLabelFontSizeOf,
+    circleLabelOf,
+} from '../../factory/circleLabel'
 import {
     applyCounterScaleToCopies,
     applyCounterScaleToCopy,
@@ -30,11 +46,6 @@ const GROUP_RESIZE_ENABLED = true
 const GROUP_RESIZE_MIN_SCALE = 0.1
 // Floor for any scaled stroke width so lines never vanish.
 const GROUP_RESIZE_MIN_STROKE = 0.5
-// Corner resize-handle size in SCREEN px (radius). The handles live in surface
-// space (children of the group), so their radius is counter-scaled by the
-// camera zoom (and the live resize scale) to keep a constant, easily-grabbable
-// size at ANY zoom — mirroring the single-element SelectionController handles.
-const GROUP_HANDLE_SCREEN_RADIUS = 7
 import {
     applyShapeText,
     getGroupFill,
@@ -531,6 +542,22 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     )
                 }
 
+                // A map circle's label is NOT embedded shape text — it is a
+                // sub-group the circleLabel factory owns, invisible to
+                // applyShapeText by design. A copy is raw factory output, so
+                // without this a grouped circle loses its name for the life of
+                // the selection. applyCounterScaleToCopy below then scales the
+                // sub-group at the label's own resist.
+                if (item.componentType === componentTypes.circle) {
+                    buildCircleLabel(two, coreObject, {
+                        text: circleLabelOf(item),
+                        fontFamily: circleLabelFontFamilyOf(item),
+                        fontSize: circleLabelFontSizeOf(item),
+                        color: circleLabelColorOf(item),
+                        width: item.width || 100,
+                    })
+                }
+
                 coreObject.elementData = item
                 // Seed zoom-resistance on the copy from the current camera. The
                 // originals get this from their own component; a copy is raw
@@ -949,7 +976,10 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         // Counter-scale the 4 corner handles so they hold a constant screen
         // size — grabbable at low zoom without precise aim, like the single-
         // element handles. `effectiveScale` folds in the live resize scale so
-        // they don't balloon while the group is being dragged.
+        // they don't balloon while the group is being dragged. The size itself
+        // is the shared one: a group's corner dot is the same affordance as a
+        // route vertex or a shape's resize dot, so it is the same dot (see
+        // utils/selectionTheme).
         const cornerHandles = [
             selector.circle1,
             selector.circle2,
@@ -958,11 +988,11 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         ]
         const sizeResizeHandles = (effectiveScale: number): void => {
             const s = effectiveScale > 0 ? effectiveScale : 1
-            const r = GROUP_HANDLE_SCREEN_RADIUS / s
+            const r = selectionHandleRadiusPx() / s
             cornerHandles.forEach((c: ShapeLike) => {
                 if (!c) return
                 c.radius = r
-                c.linewidth = 1.5 / s
+                c.linewidth = SELECTION_HANDLE_LINEWIDTH_PX / s
             })
         }
         sizeHandlesRef.current = sizeResizeHandles
@@ -984,10 +1014,10 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             }
             cornerCircles.forEach(({ name, circle }) => {
                 if (!circle) return
-                // Clear, filled handle (cream fill, amber ring) so it reads as a
-                // grab dot at any zoom.
-                circle.fill = '#FFFCF5'
-                circle.stroke = '#C4901A'
+                // Clear, filled handle (cream fill, indigo ring) so it reads as
+                // the same grab dot every other selection shows.
+                circle.fill = SELECTION_HANDLE_FILL
+                circle.stroke = HANDLE_STROKE
                 const elem = circle._renderer?.elem as SVGElement | undefined
                 if (!elem) return
                 elem.style.cursor = cursorFor[name] ?? 'pointer'

@@ -147,7 +147,7 @@ const ColorPicker = ({
                     onClick={handleToggle}
                     className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
                         expanded
-                            ? 'bg-accent/20 border-[1.5px] border-accent-dark text-ink'
+                            ? 'bg-accent/10 border-[1.5px] border-accent-dark text-accent-dark'
                             : 'bg-canvas border border-border-card text-ink-mid'
                     }`}
                 >

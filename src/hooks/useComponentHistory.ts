@@ -13,6 +13,14 @@ import {
 } from '../utils/canvasUtils'
 import { lineHeightFor } from '../utils/textLayout'
 import {
+    buildCircleLabel,
+    circleLabelColorOf,
+    circleLabelFontFamilyOf,
+    circleLabelFontSizeOf,
+    circleLabelOf,
+    getCircleLabelNodes,
+} from '../factory/circleLabel'
+import {
     buildPointVisual,
     pointColorOf,
     pointFontFamilyOf,
@@ -141,16 +149,38 @@ function applyPropertyToTwoJSGroup(
     const isStandaloneText = isStandaloneTextType(
         group.elementData?.componentType
     )
+    // A circle's label is a sub-group of Two.Text nodes, deliberately invisible
+    // to getShapeTextNodes (that is what keeps the dead shape-with-text path
+    // dead) — so every revert that touches it has to rebuild explicitly, or
+    // undo is a silent no-op on screen while the store rolls back.
+    const isCircle = group.elementData?.componentType === 'circle'
 
     switch (name) {
         case 'fill':
         case 'stroke':
         case 'linewidth':
+            shape[name] = value
+            break
         case 'width':
         case 'height':
             shape[name] = value
+            // A circle's label wraps to its width, and reapplyTextFromMeta
+            // re-flows it afterwards off elementData — so the reverted width
+            // has to land there too, not just on the Two.js node.
+            if (isCircle && group.elementData) group.elementData[name] = value
             break
         case 'textColor':
+            // A circle's label reads its ink off this column, and its line
+            // nodes are invisible to getShapeTextNodes (see isCircle above) —
+            // so paint them explicitly and mirror the column onto elementData,
+            // which is what the next rebuild reads.
+            if (isCircle) {
+                if (group.elementData) group.elementData.textColor = value
+                getCircleLabelNodes(group).forEach(
+                    (n: ShapeLike) => (n.fill = value)
+                )
+                break
+            }
             // Standalone text records color as a top-level prop; it renders
             // via each line node's `.fill`. Revert all lines, not just line 1.
             if (textNodes.length > 0) {
@@ -166,13 +196,16 @@ function applyPropertyToTwoJSGroup(
             }
             break
         case 'zoomResistant': {
-            // Map text's counter-scale switch. It has no Two.js field of its
-            // own — the text component owns group.scale and the selection
-            // outline — so mirror it onto elementData (what resolveResist and
-            // the group-overlay copies read) and let the component re-scale
-            // itself against the live camera. Covers undo and redo alike:
-            // applyBulkProps routes every reverted key through here.
-            if (group.elementData?.componentType !== 'text') break
+            // The label counter-scale switch, for map text and the map
+            // circle alike. It has no Two.js field of its own — the element
+            // component owns the scaled node (a text's group, a circle's
+            // label sub-group) and the selection outline — so mirror it onto
+            // elementData (what resolveLabelResist and the group-overlay
+            // copies read) and let the component re-scale itself against the
+            // live camera. Covers undo and redo alike: applyBulkProps routes
+            // every reverted key through here.
+            const resistType = group.elementData?.componentType
+            if (resistType !== 'text' && resistType !== 'circle') break
             group.elementData.zoomResistant = value
             window.dispatchEvent(
                 new CustomEvent(TEXT_RESIST_CHANGED_EVENT, {
@@ -185,10 +218,19 @@ function applyPropertyToTwoJSGroup(
             break
         }
         case 'opacity':
-            // Opacity persists in the top-level `opacity` field. Apply at the
-            // GROUP level (shape + text dim uniformly and repaint reliably) and
-            // neutralize the leaf/text so they don't compound with the group's
-            // opacity. Mirrors applyProperty and the *-with-text components.
+            // A circle carries opacity on its ELLIPSE, not its group: it is
+            // created half-transparent so the basemap reads through it, and a
+            // half-transparent NAME over a basemap is unreadable. Group-level
+            // opacity would multiply onto both. Mirrors circle.tsx.
+            if (isCircle) {
+                shape.opacity = value
+                group.opacity = 1
+                break
+            }
+            // Everything else: apply at the GROUP level (shape + text dim
+            // uniformly and repaint reliably) and neutralize the leaf/text so
+            // they don't compound with the group's opacity. Mirrors
+            // applyProperty and the *-with-text components.
             group.opacity = value
             shape.opacity = 1
             if (textNodes.length > 0) {
@@ -197,6 +239,11 @@ function applyPropertyToTwoJSGroup(
             break
         case 'metadata':
             if (value && typeof value === 'object' && !Array.isArray(value)) {
+                // A circle's label is rebuilt wholesale by reapplyTextFromMeta
+                // (which runs after width lands, and has the Two instance) —
+                // the per-key pokes below would find nothing, since a circle's
+                // label is invisible to getShapeTextNodes by design.
+                if (isCircle) break
                 // Fallback single node for legacy/non-multiline shapes where
                 // getShapeTextNodes finds no text layer.
                 const fallbackTextNode: ShapeLike =
@@ -479,7 +526,49 @@ export function useComponentHistory({
             return
         }
 
-        if (ct === 'rectangle' || ct === 'diamond' || ct === 'circle') {
+        // A circle's label is a sub-group of Two.Text nodes the circleLabel
+        // factory owns, so rebuild it from the restored record — the same
+        // contract the point above uses, and for the same reason: the per-node
+        // pokes in applyPropertyToTwoJSGroup cannot see it (getShapeTextNodes
+        // returns [] for a circle by design).
+        if (ct === 'circle') {
+            const elementData = group.elementData
+            if (elementData) {
+                const record = stateRefForComponentStore.current[elementData.id]
+                // REPLACE, don't merge. A revert is as often the removal of a
+                // key as a change to one: naming a circle that had never been
+                // named writes `label` onto a metadata object that did not have
+                // it, and merging the reverted object over the current one
+                // would leave that key standing. The store row is the reverted
+                // authority (applyBulkProps commits it first); `m` covers a
+                // revert that never reached the store.
+                const revertedMeta =
+                    record?.metadata && !Array.isArray(record.metadata)
+                        ? record.metadata
+                        : m
+                elementData.metadata = { ...(revertedMeta || {}) }
+                if (record?.width !== undefined) {
+                    elementData.width = record.width
+                }
+                // Ink is a COLUMN, not metadata, so it does not ride the
+                // replace above — and the rebuild below re-reads it.
+                if (record?.textColor !== undefined) {
+                    elementData.textColor = record.textColor
+                }
+            }
+            buildCircleLabel(two, group, {
+                text: circleLabelOf(elementData),
+                fontFamily: circleLabelFontFamilyOf(elementData),
+                fontSize: circleLabelFontSizeOf(elementData),
+                color: circleLabelColorOf(elementData),
+                width:
+                    elementData?.width ?? group.children?.[0]?.width ?? 100,
+            })
+            two.update()
+            return
+        }
+
+        if (ct === 'rectangle' || ct === 'diamond') {
             const shapeChild = group.children?.[0]
             const width = shapeChild?.width
             if (!width) return
@@ -505,6 +594,37 @@ export function useComponentHistory({
             }
             two.update()
         }
+    }
+
+    // A resize revert carries no `metadata`, so reapplyTextFromMeta does not
+    // run for it — but a circle's label wraps to the inscribed box, which is a
+    // function of the width just reverted. Re-flow it here so undoing a resize
+    // puts the name back the way undoing an edit does.
+    const rewrapCircleAfterResize = (
+        group: ShapeLike,
+        props: BulkProps
+    ): void => {
+        const two = twoJSInstanceRef.current
+        if (!two || !group) return
+        if (group.elementData?.componentType !== 'circle') return
+        if (props.width === undefined && props.height === undefined) return
+        // Already rebuilt by the metadata path — don't do it twice.
+        if (
+            props.metadata &&
+            typeof props.metadata === 'object' &&
+            !Array.isArray(props.metadata)
+        ) {
+            return
+        }
+        const record = group.elementData
+        buildCircleLabel(two, group, {
+            text: circleLabelOf(record),
+            fontFamily: circleLabelFontFamilyOf(record),
+            fontSize: circleLabelFontSizeOf(record),
+            color: circleLabelColorOf(record),
+            width: record?.width ?? group.children?.[0]?.width ?? 100,
+        })
+        two.update()
     }
 
     const applyBulkProps = (
@@ -571,6 +691,7 @@ export function useComponentHistory({
             ) {
                 reapplyTextFromMeta(group, props.metadata)
             }
+            rewrapCircleAfterResize(group, props)
 
             // The multi-point path family (curved line + geo route/area) stores
             // an absolute vertex array in metadata and owns its path + vertex
@@ -787,6 +908,7 @@ export function useComponentHistory({
                     ) {
                         reapplyTextFromMeta(sceneGroup, propsToApply.metadata)
                     }
+                    rewrapCircleAfterResize(sceneGroup, propsToApply)
                     if (
                         propsToApply.width !== undefined ||
                         propsToApply.height !== undefined
