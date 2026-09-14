@@ -213,7 +213,8 @@ function Point(props: ElementProps): ReactElement {
             const labelNode = getPointLabelNode(group)
             const circleNode = group.children?.[0]
             const circleElem = circleNode?._renderer?.elem as
-                SVGGraphicsElement | undefined
+                | SVGGraphicsElement
+                | undefined
             if (!labelNode || !circleElem) return
             // Already editing — don't stack a second input.
             if (document.getElementById(`point-label-input-${props.id}`)) return
@@ -264,7 +265,7 @@ function Point(props: ElementProps): ReactElement {
             input.style.lineHeight = `${lineH}px`
             input.style.height = `${lineH}px`
             input.style.left = `${circleRect.right + POINT_LABEL_GAP * effScale}px`
-            input.style.top = `${circleRect.top + circleRect.height / 2 - lineH / 2}px`
+            input.style.top = `${circleRect.top + 2 + circleRect.height / 2 - lineH / 2}px`
 
             document.getElementById('main-two-root')?.append(input)
 
@@ -344,10 +345,9 @@ function Point(props: ElementProps): ReactElement {
                 }
                 restoreSelectorAfterEditRef.current = false
 
-                const labelPatch = setProperties(
-                    group.elementData ?? props,
-                    { label: value }
-                )
+                const labelPatch = setProperties(group.elementData ?? props, {
+                    label: value,
+                })
                 // Frozen props mean React won't re-render this element, so the
                 // scene node above and elementData here are the live copies —
                 // keep both in step with the store write.
