@@ -131,6 +131,13 @@ import type {
     ComponentStore,
     CameraChangeEvent,
 } from '../../types/base'
+import {
+    geometryFields,
+    moveGeometryTo,
+    pointGeometry,
+    readProperties,
+    setProperties,
+} from '../../utils/geometry'
 import { BaseContext, useBaseContext } from './baseContext'
 
 // Re-exported so existing importers (`from '.../views/Base/base'`) and the
@@ -1304,16 +1311,17 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             linewidth: defaultLinewidth,
             strokeType: defaultStrokeType,
             children: {},
-            metadata: {
-                ...(typeItem.metadata || {}),
-                ...(fontSizePx !== undefined && { fontSize: fontSizePx }),
-                ...(defaultTextFontFamily && {
-                    textFontFamily: defaultTextFontFamily,
-                }),
-                opacity: 1,
-            },
-            x: Math.trunc(x),
-            y: Math.trunc(y),
+            ...geometryFields(
+                pointGeometry(Math.trunc(x), Math.trunc(y)),
+                {
+                    ...(typeItem.metadata || {}),
+                    ...(fontSizePx !== undefined && { fontSize: fontSizePx }),
+                    ...(defaultTextFontFamily && {
+                        textFontFamily: defaultTextFontFamily,
+                    }),
+                    opacity: 1,
+                }
+            ),
             x2: 0,
             baseId: baseId,
             width: typeItem.width,
@@ -1455,24 +1463,46 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             prevY: stateRefForComponentStore.current[id]?.y ?? 0,
         })
 
+        // Move the GEOMETRY, not just the columns. This is the placement path
+        // for an element created off-screen and positioned by a later click
+        // (point, text, and anything else the canvas parks at -9999), so
+        // writing `x`/`y` alone left the record's own coordinates back at its
+        // creation position — it looked right until the next load, then
+        // reappeared where it was born.
+        const current = stateRefForComponentStore.current[id]
+        const moved = moveGeometryTo(current, Math.trunc(x), Math.trunc(y))
+        const placement = moved ?? { x: Math.trunc(x), y: Math.trunc(y) }
+
         const updatedComponentStore = { ...stateRefForComponentStore.current }
         updatedComponentStore[id] = {
             ...updatedComponentStore[id],
-            x: Math.trunc(x),
-            y: Math.trunc(y),
+            ...placement,
             updatedBy: userId,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any
         stateRefForComponentStore.current = updatedComponentStore
         setComponentStore(updatedComponentStore)
 
+        // Sync the LIVE scene copy as well. `ElementRenderWrapper` freezes each
+        // element's props at mount, and these elements are created off-screen —
+        // so `group.elementData` still holds the -9999 placeholder geometry,
+        // and it is the copy the element's own editors commit from. A point's
+        // label blur does exactly that (`setProperties(group.elementData, …)`),
+        // which wrote the placeholder position straight back over the placement
+        // and put the pin back off-screen on the next load.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const group = twoJSInstanceRef.current?.scene?.children?.find(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (child: any) => child?.elementData?.id === id
+        )
+        if (group?.elementData) Object.assign(group.elementData, placement)
+
         if (isPersistedRef.current) {
             updateComponentInfo({
                 variables: {
                     id: id,
                     updateObj: {
-                        x: Math.trunc(x),
-                        y: Math.trunc(y),
+                        ...placement,
                         updatedBy: userId,
                     },
                 },
@@ -1854,25 +1884,22 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             node.leading = textSize
             node.translation.set(0, (i - (n - 1) / 2) * lineH)
         })
-        const componentId = sel?.group?.data?.elementData?.id
-        const existingMetadata = sel?.group?.data?.elementData?.metadata ?? {}
-        const updatedMetadata = {
-            ...existingMetadata,
+        const elementData = sel?.group?.data?.elementData
+        const componentId = elementData?.id
+        const patch = setProperties(elementData, {
             fontSize: textSize,
             // Reconstruct the raw multiline string from every line node,
             // not just line 1 — otherwise a reload would drop lines 2..N.
             content: nodes.map((node) => node.value).join('\n'),
-        }
+        })
         // Keep the in-place elementData.metadata current too. Other property
         // handlers (e.g. opacity in applyProperty) read it as the merge base; if
         // left stale they'd write the OLD fontSize back to the store and the
         // resize would silently revert on reload.
-        if (sel?.group?.data?.elementData) {
-            sel.group.data.elementData.metadata = updatedMetadata
+        if (elementData && patch.metadata) {
+            elementData.metadata = patch.metadata
         }
-        updateComponentBulkPropertiesInLocalStore(componentId, {
-            metadata: updatedMetadata,
-        })
+        updateComponentBulkPropertiesInLocalStore(componentId, patch)
         twoJSInstance?.update()
         syncOpenTextarea({ fontSize: textSize })
     }
@@ -1886,14 +1913,18 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     // leaving the box stuck at its tallest-ever size). A height the user set by
     // dragging is preserved — see `resolveHeightForTextStyleChange`. Width
     // stays user-driven either way.
+    // Takes PROPERTY BAGS, not metadata envelopes — `shapeTextStyleFromMeta`
+    // and `applyShapeText` read named keys, and the envelope only wraps back
+    // around them at the store-write boundary below.
     const reflowShapeTextAfterStyleChange = (
         componentId: string,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        updatedMetadata: any,
-        // Metadata as it was BEFORE this change — the style the current height
-        // was fitted to, needed to tell auto-fit from a user-dragged height.
+        updatedProps: any,
+        // Properties as they were BEFORE this change — the style the current
+        // height was fitted to, needed to tell auto-fit from a user-dragged
+        // height.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        previousMetadata: any
+        previousProps: any
     ) => {
         const group = sel?.group?.data
         const shapePath = sel?.shape?.data
@@ -1902,22 +1933,24 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         // blur path owns the reflow+persist — don't fight it; just persist
         // the metadata so the editor reads the latest style.
         const editingActive = !!document.querySelector('.temp-input-area')
+        const metadataPatch = setProperties(
+            stateRefForComponentStore.current[componentId],
+            updatedProps
+        )
         if (editingActive || !group || !shapePath || !kind) {
-            updateComponentBulkPropertiesInLocalStore(componentId, {
-                metadata: updatedMetadata,
-            })
+            updateComponentBulkPropertiesInLocalStore(componentId, metadataPatch)
             return
         }
 
         const rawText =
-            typeof updatedMetadata.textContent === 'string'
-                ? updatedMetadata.textContent
+            typeof updatedProps.textContent === 'string'
+                ? updatedProps.textContent
                 : ''
         const width = shapePath.width
         // Re-render the wrapped multiline layer at the new style.
-        applyShapeText(twoJSInstance, group, kind, width, updatedMetadata)
-        const { font: nextFont } = shapeTextStyleFromMeta(updatedMetadata)
-        const { font: prevFont } = shapeTextStyleFromMeta(previousMetadata)
+        applyShapeText(twoJSInstance, group, kind, width, updatedProps)
+        const { font: nextFont } = shapeTextStyleFromMeta(updatedProps)
+        const { font: prevFont } = shapeTextStyleFromMeta(previousProps)
         const newH = resolveHeightForTextStyleChange({
             kind,
             width,
@@ -1930,7 +1963,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         if (heightChanged) shapePath.height = newH
         twoJSInstance?.update()
         updateComponentBulkPropertiesInLocalStore(componentId, {
-            metadata: updatedMetadata,
+            ...metadataPatch,
             width: Math.round(width),
             height: Math.round(newH),
         })
@@ -1953,17 +1986,18 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const componentId = sel?.group?.data?.elementData?.id
         // stateRefForComponentStore is always current; group.elementData.metadata
         // is only set at mount and is stale after blur updates the store.
-        const existingMetadata =
-            stateRefForComponentStore.current[componentId]?.metadata ?? {}
-        const updatedMetadata = { ...existingMetadata, textFontSize: textSize }
-        if (sel?.group?.data?.elementData) {
-            sel.group.data.elementData.metadata = updatedMetadata
+        const storeRecord = stateRefForComponentStore.current[componentId]
+        const existingProps = readProperties(storeRecord)
+        const updatedProps = { ...existingProps, textFontSize: textSize }
+        const patch = setProperties(storeRecord, { textFontSize: textSize })
+        if (sel?.group?.data?.elementData && patch.metadata) {
+            sel.group.data.elementData.metadata = patch.metadata
         }
 
         reflowShapeTextAfterStyleChange(
             componentId,
-            updatedMetadata,
-            existingMetadata
+            updatedProps,
+            existingProps
         )
         syncOpenTextarea({ fontSize: textSize })
     }
@@ -1977,23 +2011,20 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const familyNodes = getShapeTextNodes(sel?.group?.data)
         const nodes = familyNodes.length > 0 ? familyNodes : [twoText]
         nodes.forEach((node) => (node.family = fontFamily))
-        const componentId = sel?.group?.data?.elementData?.id
-        const existingMetadata = sel?.group?.data?.elementData?.metadata ?? {}
-        const updatedMetadata = {
-            ...existingMetadata,
+        const elementData = sel?.group?.data?.elementData
+        const componentId = elementData?.id
+        const patch = setProperties(elementData, {
             textFontFamily: fontFamily,
             // Reconstruct the raw multiline string from every line node,
             // not just line 1 — otherwise a reload would drop lines 2..N.
             content: nodes.map((node) => node.value).join('\n'),
-        }
+        })
         // Keep in-place elementData.metadata current so later handlers (opacity,
         // etc.) merge onto the new family instead of writing a stale one back.
-        if (sel?.group?.data?.elementData) {
-            sel.group.data.elementData.metadata = updatedMetadata
+        if (elementData && patch.metadata) {
+            elementData.metadata = patch.metadata
         }
-        updateComponentBulkPropertiesInLocalStore(componentId, {
-            metadata: updatedMetadata,
-        })
+        updateComponentBulkPropertiesInLocalStore(componentId, patch)
         twoJSInstance?.update()
         syncOpenTextarea({ fontFamily })
         // Make selection universal: future new elements pick up this family.
@@ -2010,22 +2041,25 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         )
         twoJSInstance?.update()
         const componentId = sel?.group?.data?.elementData?.id
-        const existingMetadata =
-            stateRefForComponentStore.current[componentId]?.metadata ?? {}
-        const updatedMetadata = {
-            ...existingMetadata,
+        const storeRecord = stateRefForComponentStore.current[componentId]
+        const existingProps = readProperties(storeRecord)
+        const updatedProps = {
+            ...existingProps,
             textFontFamily: fontFamily,
         }
-        if (sel?.group?.data?.elementData) {
-            sel.group.data.elementData.metadata = updatedMetadata
+        const patch = setProperties(storeRecord, {
+            textFontFamily: fontFamily,
+        })
+        if (sel?.group?.data?.elementData && patch.metadata) {
+            sel.group.data.elementData.metadata = patch.metadata
         }
         // Re-wrap + re-fit height: families differ in width at the same size
         // (Frutiger sets wider than Avenir), changing the wrap — and switching
         // back to the narrower family must give the height back.
         reflowShapeTextAfterStyleChange(
             componentId,
-            updatedMetadata,
-            existingMetadata
+            updatedProps,
+            existingProps
         )
         syncOpenTextarea({ fontFamily })
         // Make selection universal: future new elements pick up this family.
@@ -2197,12 +2231,15 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     ) => {
         let finalObj = { ...obj }
         if (obj.textColor !== undefined) {
-            const existingMeta =
-                stateRefForComponentStore.current[id]?.metadata ?? {}
-            const updatedMeta = { ...existingMeta, textFill: obj.textColor }
-            finalObj.metadata = updatedMeta
-            if (sel?.group?.data?.elementData) {
-                sel.group.data.elementData.metadata = updatedMeta
+            const patch = setProperties(
+                stateRefForComponentStore.current[id],
+                { textFill: obj.textColor }
+            )
+            if (patch.metadata) {
+                finalObj.metadata = patch.metadata
+                if (sel?.group?.data?.elementData) {
+                    sel.group.data.elementData.metadata = patch.metadata
+                }
             }
         }
         updateComponentBulkPropertiesInLocalStore(id, finalObj)

@@ -34,6 +34,13 @@ import {
     TEXT_RESIST_CHANGED_EVENT,
 } from '../constants/misc'
 import { toComponentColumns } from '../utils/componentColumns'
+import {
+    geometryPositions,
+    moveGeometryTo,
+    readGeometry,
+    readProperties,
+    replaceProperties,
+} from '../utils/geometry'
 import type { ComponentRecord, ComponentStore } from '../types/base'
 import {
     VERTEX_PATH_TYPES,
@@ -237,8 +244,11 @@ function applyPropertyToTwoJSGroup(
                 textNodes.forEach((n: ShapeLike) => (n.opacity = 1))
             }
             break
-        case 'metadata':
-            if (value && typeof value === 'object' && !Array.isArray(value)) {
+        case 'metadata': {
+            // Only the PROPERTIES half maps onto Two.js fields; the geometry
+            // half is reverted by the path/position branches below.
+            const revertedProps = readProperties({ metadata: value })
+            if (Object.keys(revertedProps).length > 0) {
                 // A circle's label is rebuilt wholesale by reapplyTextFromMeta
                 // (which runs after width lands, and has the Two instance) —
                 // the per-key pokes below would find nothing, since a circle's
@@ -256,7 +266,7 @@ function applyPropertyToTwoJSGroup(
                     if (textNodes.length > 0) textNodes.forEach(fn)
                     else if (fallbackTextNode) fn(fallbackTextNode)
                 }
-                Object.entries(value as Record<string, unknown>).forEach(
+                Object.entries(revertedProps).forEach(
                     ([k, v]) => {
                         if (k === 'opacity') {
                             // Opacity is applied at the GROUP level (see
@@ -306,6 +316,7 @@ function applyPropertyToTwoJSGroup(
                 )
             }
             break
+        }
         default:
             break
     }
@@ -414,8 +425,13 @@ export function useComponentHistory({
         const two = twoJSInstanceRef.current
         const updatedStore = { ...stateRefForComponentStore.current }
         const current = updatedStore[id]
+        // Restore the position through the GEOMETRY — the x/y columns are a
+        // cache of it, so reverting them alone would leave the record's own
+        // coordinates at the post-move position and the undo would come back on
+        // the next load.
+        const placement = moveGeometryTo(current, x, y) ?? { x, y }
         if (current) {
-            updatedStore[id] = { ...current, x, y }
+            updatedStore[id] = { ...current, ...placement }
         }
         stateRefForComponentStore.current = updatedStore
         setComponentStore(updatedStore)
@@ -426,11 +442,16 @@ export function useComponentHistory({
         if (group) {
             group.translation.x = x
             group.translation.y = y
+            // The element's frozen props keep a stale snapshot otherwise, and
+            // the next drag would measure its delta from the old origin.
+            if (group.elementData) {
+                Object.assign(group.elementData, placement)
+            }
             two?.update()
         }
         if (isPersistedRef.current) {
             updateComponentInfo({
-                variables: { id, updateObj: { x, y } },
+                variables: { id, updateObj: placement },
             })
         }
         requestAnimationFrame(() => two?.update())
@@ -449,17 +470,9 @@ export function useComponentHistory({
         meta: BulkProps['metadata']
     ): void => {
         const two = twoJSInstanceRef.current
-        if (
-            !two ||
-            !group ||
-            !meta ||
-            typeof meta !== 'object' ||
-            Array.isArray(meta)
-        ) {
-            return
-        }
+        if (!two || !group || !meta) return
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const m = meta as Record<string, any>
+        const m = readProperties({ metadata: meta }) as Record<string, any>
         const ct = group.elementData?.componentType
 
         if (isStandaloneTextType(ct)) {
@@ -510,11 +523,14 @@ export function useComponentHistory({
                 // current one would leave that key standing. The store row is
                 // the reverted authority (applyBulkProps commits it first);
                 // `m` covers a revert that never reached the store.
-                const revertedMeta =
-                    record?.metadata && !Array.isArray(record.metadata)
+                // The store row is the reverted authority when it carries a
+                // geometry; `replaceProperties` covers a revert that never
+                // reached the store, keeping the element's own geometry.
+                elementData.metadata =
+                    record && readGeometry(record)
                         ? record.metadata
-                        : m
-                elementData.metadata = { ...(revertedMeta || {}) }
+                        : (replaceProperties(elementData, m).metadata ??
+                          elementData.metadata)
             }
             buildPointVisual(two, group, {
                 color: pointColorOf(elementData),
@@ -542,11 +558,14 @@ export function useComponentHistory({
                 // would leave that key standing. The store row is the reverted
                 // authority (applyBulkProps commits it first); `m` covers a
                 // revert that never reached the store.
-                const revertedMeta =
-                    record?.metadata && !Array.isArray(record.metadata)
+                // The store row is the reverted authority when it carries a
+                // geometry; `replaceProperties` covers a revert that never
+                // reached the store, keeping the element's own geometry.
+                elementData.metadata =
+                    record && readGeometry(record)
                         ? record.metadata
-                        : m
-                elementData.metadata = { ...(revertedMeta || {}) }
+                        : (replaceProperties(elementData, m).metadata ??
+                          elementData.metadata)
                 if (record?.width !== undefined) {
                     elementData.width = record.width
                 }
@@ -609,13 +628,7 @@ export function useComponentHistory({
         if (group.elementData?.componentType !== 'circle') return
         if (props.width === undefined && props.height === undefined) return
         // Already rebuilt by the metadata path — don't do it twice.
-        if (
-            props.metadata &&
-            typeof props.metadata === 'object' &&
-            !Array.isArray(props.metadata)
-        ) {
-            return
-        }
+        if (props.metadata) return
         const record = group.elementData
         buildCircleLabel(two, group, {
             text: circleLabelOf(record),
@@ -684,22 +697,15 @@ export function useComponentHistory({
                 }
             }
 
-            if (
-                props.metadata &&
-                typeof props.metadata === 'object' &&
-                !Array.isArray(props.metadata)
-            ) {
-                reapplyTextFromMeta(group, props.metadata)
-            }
+            if (props.metadata) reapplyTextFromMeta(group, props.metadata)
             rewrapCircleAfterResize(group, props)
 
-            // The multi-point path family (curved line + geo route/area) stores
-            // an absolute vertex array in metadata and owns its path + vertex
-            // handles (frozen props, so no re-render). Sync elementData for
-            // later drags/reload, then let the component re-flow through its own
-            // refs via this event (works for undo AND redo).
+            // Route and area own their path + vertex handles (frozen props, so
+            // no re-render). Sync elementData for later drags/reload, then let
+            // the component re-flow through its own refs via this event (works
+            // for undo AND redo).
             if (
-                Array.isArray(props.metadata) &&
+                props.metadata &&
                 VERTEX_PATH_TYPES.has(group.elementData?.componentType)
             ) {
                 group.elementData.metadata = props.metadata
@@ -867,10 +873,10 @@ export function useComponentHistory({
                             )
                         }
                     }
-                    // Pencil metadata reconstruction
+                    // Pencil path reconstruction
                     if (
                         sceneGroup.elementData?.componentType === 'pencil' &&
-                        Array.isArray(propsToApply.metadata)
+                        propsToApply.metadata
                     ) {
                         const path = sceneGroup.children?.[0]
                         if (path?.vertices) {
@@ -879,17 +885,16 @@ export function useComponentHistory({
                             const baseY =
                                 propsToApply.y ?? sceneGroup.translation.y
                             path.vertices = []
-                            ;(
-                                propsToApply.metadata as Array<{
-                                    x: number
-                                    y: number
-                                }>
-                            ).forEach((point) => {
+                            geometryPositions(
+                                readGeometry({
+                                    metadata: propsToApply.metadata,
+                                })
+                            ).forEach(([px, py]) => {
                                 path.vertices.push(
                                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                     new (Two as any).Anchor(
-                                        point.x - baseX,
-                                        point.y - baseY
+                                        px - baseX,
+                                        py - baseY
                                     )
                                 )
                             })
@@ -901,11 +906,7 @@ export function useComponentHistory({
                             sceneGroup.elementData[k] = v
                         })
                     }
-                    if (
-                        propsToApply.metadata &&
-                        typeof propsToApply.metadata === 'object' &&
-                        !Array.isArray(propsToApply.metadata)
-                    ) {
+                    if (propsToApply.metadata) {
                         reapplyTextFromMeta(sceneGroup, propsToApply.metadata)
                     }
                     rewrapCircleAfterResize(sceneGroup, propsToApply)

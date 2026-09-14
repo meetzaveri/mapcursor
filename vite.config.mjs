@@ -9,7 +9,7 @@ export default defineConfig({
         host: true,
         allowedHosts: [
             '10.106.71.95',
-            'dd43-2409-40c1-2009-b75e-49e5-1a81-c376-8bab.ngrok-free.app',
+            'ee38-2409-40c1-5477-4eb-c4f3-8a6a-2618-eaf5.ngrok-free.app',
         ],
     },
     test: {

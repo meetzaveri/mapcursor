@@ -38,6 +38,14 @@ import {
     applyCounterScaleToCopies,
     applyCounterScaleToCopy,
 } from '../../utils/counterScale'
+import {
+    geometryPositions,
+    readGeometry,
+    readProperties,
+    scaleGeometry,
+    setProperties,
+    translateGeometry,
+} from '../../utils/geometry'
 
 // PROTOTYPE FLAG — group resize. Flip to false to fully disable the corner
 // resize handles + baking and fall back to the old move-only group overlay.
@@ -202,32 +210,23 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             element.translation.x = newX
             element.translation.y = newY
 
-            let newMetadata = element.elementData.metadata
-            if (
-                (element.elementData.componentType === 'pencil' ||
-                    element.elementData.componentType === 'curvedLine') &&
-                Array.isArray(element.elementData.metadata)
-            ) {
-                // A group move is a uniform translation: shift the ABSOLUTE
-                // vertex array by the same delta as the element origin. Floats,
-                // no per-vertex parseInt — truncating each vertex fed rounded
-                // points into the factory's Chaikin smoothing on the next
-                // rebuild and bent the stroke ("uneven" pasted/reloaded copies).
-                // Don't rebuild the live anchors from metadata here either: the
-                // factory already smoothed them (pencil Chaikin / curvedLine's
-                // curve) and the translation above moves them, so re-deriving
-                // from the raw simplified metadata would drop the smoothing and
-                // render the stroke jagged.
-                const dxMeta = newX - prevTx
-                const dyMeta = newY - prevTy
-                newMetadata = element.elementData.metadata.map(
-                    (vert: ShapeLike) => ({
-                        x: vert.x + dxMeta,
-                        y: vert.y + dyMeta,
-                        ...(vert.lw !== undefined ? { lw: vert.lw } : {}),
-                    })
-                )
-            }
+            // A group move is a uniform translation: shift the geometry by the
+            // same delta as the element origin. Unrounded — truncating each
+            // vertex fed rounded points into the factory's Chaikin smoothing on
+            // the next rebuild and bent the stroke ("uneven" pasted/reloaded
+            // copies). Don't rebuild the live anchors from the geometry here
+            // either: the factory already smoothed them and the translation
+            // above moves them, so re-deriving from the raw simplified
+            // coordinates would drop the smoothing and render it jagged.
+            const moved = translateGeometry(
+                element.elementData,
+                newX - prevTx,
+                newY - prevTy,
+                { round: false }
+            )
+            const newMetadata = moved
+                ? moved.metadata
+                : element.elementData.metadata
 
             const childId = element.elementData.id
             const current = (stateRefForComponentStore?.current?.[childId] ??
@@ -306,36 +305,18 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     const absX = gx + localX
                     const absY = gy + localY
 
-                    let childMetadata = child.metadata
-                    // pencil + curvedLine store an absolute {x,y} vertex array;
-                    // rebase it from the group's child space back to the
-                    // standalone's absolute origin on materialize (else the
-                    // dissolved member renders off-screen). (area/route share this
-                    // shape but aren't grouped in practice — left as-is.)
-                    if (
-                        (child.componentType === 'pencil' ||
-                            child.componentType === 'curvedLine') &&
-                        Array.isArray(child.metadata)
-                    ) {
-                        childMetadata = child.metadata.map(
-                            (vert: ShapeLike) => {
-                                const lwProp =
-                                    vert.lw !== undefined ? { lw: vert.lw } : {}
-                                // Group-relative child vertex → absolute =
-                                // group translation + vertex. Anchor every
-                                // vertex (incl. the first) to its own group-
-                                // relative coord, not the stored member origin
-                                // (child.x), which can drift from metadata[0]
-                                // for a vertex-edited curvedLine and would jump
-                                // vertex 0 on ungroup.
-                                return {
-                                    x: gx + vert.x,
-                                    y: gy + vert.y,
-                                    ...lwProp,
-                                }
-                            }
-                        )
-                    }
+                    // Rebase the member's geometry from the group's child
+                    // space back to absolute on materialize, or the dissolved
+                    // member renders off-screen. Every type takes this path
+                    // now, and each vertex is anchored to its own relative
+                    // coordinate rather than to the stored member origin —
+                    // which used to drift and jump vertex 0 on ungroup.
+                    const rebased = translateGeometry(child, gx, gy, {
+                        round: false,
+                    })
+                    const childMetadata = rebased
+                        ? rebased.metadata
+                        : child.metadata
 
                     const childData = {
                         ...child,
@@ -515,11 +496,12 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 // as the stacked multiline block (same as the newText component)
                 // so a grouped/duplicated text keeps its line breaks.
                 if (isStandaloneTextType(item.componentType)) {
+                    const textProps = readProperties(item)
                     layoutStandaloneText(
                         two,
                         coreObject,
-                        item.metadata?.content ?? '',
-                        item.metadata?.fontSize || 36
+                        (textProps.content as string) ?? '',
+                        (textProps.fontSize as number) || 36
                     )
                 }
 
@@ -531,7 +513,7 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 // (SVG <text> ignores newlines), so a grouped shape with multiline
                 // text spilled out of its container. Mirrors the standalone-text
                 // (`newText`) handling above.
-                const meta = item.metadata || {}
+                const meta = readProperties(item)
                 if (meta.hasText && meta.textContent) {
                     applyShapeText(
                         two,
@@ -705,59 +687,62 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     if (current.y2 != null) updateObj.y2 = current.y2 * s
                 }
 
-                // pencil + curvedLine store an ABSOLUTE vertex array → scale
-                // every vertex about O (and its per-vertex stroke width lw).
-                let newMetadata = current.metadata
-                if (
-                    (ct === 'pencil' || ct === 'curvedLine') &&
-                    Array.isArray(current.metadata)
-                ) {
-                    newMetadata = current.metadata.map((vert: ShapeLike) => {
-                        const p = scaleAbout(vert.x, vert.y, s, O)
-                        return {
-                            x: p.x,
-                            y: p.y,
-                            ...(vert.lw !== undefined
-                                ? {
-                                      lw: Math.max(
-                                          GROUP_RESIZE_MIN_STROKE,
-                                          vert.lw * s
-                                      ),
-                                  }
-                                : {}),
+                // Scale the geometry about O, and with it the per-point
+                // stroke widths a pencil keeps in `properties.widths`. Those
+                // are a property rather than a coordinate, so they are scaled
+                // here explicitly — `scaleGeometry` deliberately leaves them
+                // alone, which is what keeps every geometry operation
+                // length-preserving and the two arrays in step.
+                const scaled = scaleGeometry(current, s, O)
+                let newMetadata = scaled ? scaled.metadata : current.metadata
+                if (scaled) {
+                    const widths = readProperties(current).widths
+                    if (Array.isArray(widths)) {
+                        newMetadata = {
+                            geometry: scaled.metadata.geometry,
+                            properties: {
+                                ...scaled.metadata.properties,
+                                widths: widths.map((w) =>
+                                    typeof w === 'number'
+                                        ? Math.max(
+                                              GROUP_RESIZE_MIN_STROKE,
+                                              w * s
+                                          )
+                                        : w
+                                ),
+                            },
                         }
-                    })
+                    }
                     updateObj.metadata = newMetadata
+                    updateObj.x = scaled.x
+                    updateObj.y = scaled.y
                 }
 
                 // Shape-with-text + standalone text store their font size in an
                 // OBJECT metadata bag. The group.scale transform grew the text
                 // in transit, so scale the font too (and re-render below) —
                 // otherwise the text snaps back to its original size on release.
-                const objMeta =
-                    current.metadata &&
-                    typeof current.metadata === 'object' &&
-                    !Array.isArray(current.metadata)
-                        ? current.metadata
-                        : null
+                const objMeta = readProperties(current)
                 const isStandaloneText = isStandaloneTextType(ct)
                 const hasShapeText =
-                    !!objMeta?.hasText &&
-                    typeof objMeta?.textContent === 'string'
-                if (objMeta && hasShapeText) {
-                    const oldSize = objMeta.textFontSize || 24
-                    newMetadata = {
-                        ...objMeta,
-                        textFontSize: Math.max(4, Math.round(oldSize * s)),
+                    !!objMeta.hasText && typeof objMeta.textContent === 'string'
+                const sizeKey = hasShapeText
+                    ? 'textFontSize'
+                    : isStandaloneText
+                      ? 'fontSize'
+                      : null
+                if (sizeKey) {
+                    const oldSize =
+                        (objMeta[sizeKey] as number) ||
+                        (sizeKey === 'textFontSize' ? 24 : 36)
+                    const sizePatch = setProperties(
+                        { metadata: newMetadata },
+                        { [sizeKey]: Math.max(4, Math.round(oldSize * s)) }
+                    )
+                    if (sizePatch.metadata) {
+                        newMetadata = sizePatch.metadata
+                        updateObj.metadata = newMetadata
                     }
-                    updateObj.metadata = newMetadata
-                } else if (objMeta && isStandaloneText) {
-                    const oldSize = objMeta.fontSize || 36
-                    newMetadata = {
-                        ...objMeta,
-                        fontSize: Math.max(4, Math.round(oldSize * s)),
-                    }
-                    updateObj.metadata = newMetadata
                 }
 
                 // ---- mutate the live (frozen) element, same contract as
@@ -810,20 +795,19 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                         }
                     }
                 }
-                if (ct === 'pencil' && Array.isArray(newMetadata)) {
+                if (ct === 'pencil' && newMetadata) {
                     const path = element.children?.[0]
                     if (path?.vertices) {
-                        path.vertices = newMetadata.map(
-                            (pt: ShapeLike) =>
+                        path.vertices = geometryPositions(
+                            readGeometry({ metadata: newMetadata })
+                        ).map(
+                            ([px, py]) =>
                                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                new (Two as any).Anchor(
-                                    pt.x - newX,
-                                    pt.y - newY
-                                )
+                                new (Two as any).Anchor(px - newX, py - newY)
                         )
                     }
                 }
-                if (VERTEX_PATH_TYPES.has(ct) && Array.isArray(newMetadata)) {
+                if (VERTEX_PATH_TYPES.has(ct) && newMetadata) {
                     element.elementData.metadata = newMetadata
                     window.dispatchEvent(
                         new CustomEvent(VERTEX_PATH_REVERTED_EVENT, {

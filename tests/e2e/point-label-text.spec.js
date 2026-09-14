@@ -11,7 +11,7 @@
 // pin must not follow the selection onto the next.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 // Santa Clara County, at the default anchor zoom (mirrors the other map specs).
@@ -36,12 +36,14 @@ const pointRecord = (id, label, metadata) => ({
     componentType: 'point',
     zoomResistant: null,
     children: null,
-    metadata: { label, ...metadata },
-    // Offset so the two pins never overlap and each keeps its own hit area.
-    x: 0,
+    // Placed well inside the viewport, and offset from each other so the two
+    // pins never overlap and each keeps its own hit area. They used to sit at
+    // surface (0, 0) and reach the screen only because the factory teleported
+    // anything at the origin to (500, 200) — a coercion that was a live bug on
+    // a map base, where (0, 0) IS the georeference anchor.
+    ...pointAt(200, id === PLAIN_ID ? 360 : 200, { label, ...metadata }),
     x1: 0,
     x2: 0,
-    y: id === PLAIN_ID ? 160 : 0,
     y1: 0,
     y2: 0,
     fill: '#FF5630',
@@ -70,11 +72,9 @@ const geoTextRecord = (id, content) => ({
     componentType: 'text',
     zoomResistant: null,
     children: null,
-    metadata: { content, fontSize: 24 },
-    x: 0,
+    ...pointAt(200, 120, { content, fontSize: 24 }),
     x1: 0,
     x2: 0,
-    y: -200,
     y1: 0,
     y2: 0,
     fill: 'transparent',
@@ -124,7 +124,7 @@ async function openMapBase(page, components) {
     })
     await page.goto(`/map/${BASE_ID}`)
     for (const label of components.map(
-        (c) => c.metadata.label || c.metadata.content
+        (c) => c.metadata.properties.label || c.metadata.properties.content
     )) {
         await page.locator(`text=${label}`).first().waitFor({ timeout: 15_000 })
     }

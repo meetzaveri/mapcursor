@@ -10,6 +10,8 @@ import {
     getCanvasBox,
     drawShape,
     clickPointerTool,
+    lineThrough,
+    pointAt,
 } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
@@ -53,30 +55,26 @@ const geoRecord = (id, componentType, extra) => ({
 })
 
 const COMPONENTS = [
-    geoRecord(ROUTE_ID, 'route', {
-        x: 200,
-        y: 200,
-        metadata: [
+    geoRecord(
+        ROUTE_ID,
+        'route',
+        lineThrough([
             { x: 200, y: 200 },
             { x: 500, y: 260 },
             { x: 700, y: 200 },
-        ],
-    }),
+        ])
+    ),
     geoRecord(TEXT_ID, 'text', {
-        x: 200,
-        y: 420,
         stroke: null,
         linewidth: 2,
-        metadata: { content: MAP_LABEL, fontSize: 24 },
+        ...pointAt(200, 420, { content: MAP_LABEL, fontSize: 24 }),
     }),
     geoRecord(POINT_ID, 'point', {
-        x: 200,
-        y: 560,
         fill: '#FF5630',
         stroke: '#FF5630',
         width: 20,
         height: 20,
-        metadata: { label: PIN_LABEL },
+        ...pointAt(200, 560, { label: PIN_LABEL }),
     }),
 ]
 
@@ -278,7 +276,15 @@ test('paste hands the selection to the clone', async ({ page }) => {
             let best = null
             let bestDist = Infinity
             rects.forEach((r) => {
-                const b = document.getElementById(r.id).getBoundingClientRect()
+                // `two.add` puts the clone's group in `scene.children` right
+                // away, but its SVG node is only appended on the next
+                // `two.update()`. Skipping the un-rendered ones keeps that
+                // window a "not ready yet" for the poll below — throwing a
+                // TypeError out of page.evaluate escapes expect.poll and fails
+                // the test outright, which is how this read flaked under load.
+                const elem = document.getElementById(r.id)
+                if (!elem) return
+                const b = elem.getBoundingClientRect()
                 const d =
                     Math.abs(b.x + b.width / 2 - cx) +
                     Math.abs(b.y + b.height / 2 - cy)
@@ -287,13 +293,19 @@ test('paste hands the selection to the clone', async ({ page }) => {
                     best = r.elementData.id
                 }
             })
+            if (!best) return null
             return { id: best, dist: Math.round(bestDist) }
         })
 
     // The clone mounts through React.lazy, so give the poll room: on a loaded
     // machine the chunk fetch + mount can outlast the default expect timeout.
+    // A not-ready read counts as "still on the source", so the poll keeps
+    // waiting rather than passing on an undefined id and then tripping over a
+    // null `final` below.
     await expect
-        .poll(async () => (await selected())?.id, { timeout: 15_000 })
+        .poll(async () => (await selected())?.id ?? sourceId, {
+            timeout: 15_000,
+        })
         .not.toBe(sourceId)
     const final = await selected()
     expect(

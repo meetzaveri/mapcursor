@@ -1,7 +1,10 @@
 import Main from './main'
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 import { scheduleRender } from '../utils/renderScheduler'
+import { readProperties } from '../utils/geometry'
+import type { ComponentMetadata } from '../types/base'
 
+/** The named keys a text record keeps in `metadata.properties`. */
 export interface TextMetadata {
     content?: string
     fontSize?: number
@@ -10,7 +13,8 @@ export interface TextMetadata {
 
 export interface TextProperties {
     textColor?: string
-    metadata?: TextMetadata
+    /** `geometry` is a Point; `properties` matches {@link TextMetadata}. */
+    metadata?: ComponentMetadata | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,7 +30,7 @@ export default class TextFactory extends Main<TextProperties> {
             content = '',
             fontSize = 36,
             textFontFamily = DEFAULT_TEXT_FONT_FAMILY,
-        } = this.properties?.metadata ?? {}
+        } = readProperties(this.properties) as TextMetadata
 
         // Use native Two.js text instead of a foreignObject wrapper
         const twoText = two.makeText(content || '', 0, 0)

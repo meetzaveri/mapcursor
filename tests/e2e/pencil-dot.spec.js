@@ -51,9 +51,10 @@ test.describe('Pencil — click without drag draws a dot', () => {
         const record = draft?.[id]
         expect(record?.componentType).toBe('pencil')
         // Two vertices, a hair apart — not a zero-length (invisible) path.
-        expect(Array.isArray(record?.metadata)).toBe(true)
-        expect(record.metadata.length).toBe(2)
-        expect(record.metadata[1].x).toBeGreaterThan(record.metadata[0].x)
+        const coords = record?.metadata?.geometry?.coordinates
+        expect(record?.metadata?.geometry?.type).toBe('LineString')
+        expect(coords).toHaveLength(2)
+        expect(coords[1][0]).toBeGreaterThan(coords[0][0])
 
         // The stroke path is the group's last <path>; it must carry round caps
         // and a non-empty `d` with a line segment, or nothing is drawn.

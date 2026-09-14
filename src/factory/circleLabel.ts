@@ -7,6 +7,7 @@ import {
 import { capCenterOffset } from '../utils/fontMetrics'
 import { lineHeightFor, wrapText } from '../utils/textLayout'
 import { usableTextWidth } from '../utils/shapeTextFit'
+import { readProperties } from '../utils/geometry'
 
 // The map circle's name, drawn centred inside the ring.
 //
@@ -43,7 +44,7 @@ export const CIRCLE_LABEL_FLAG = '__mcCircleLabel'
 
 /** The circle's label text. Empty until typed. */
 export function circleLabelOf(record: ShapeLike): string {
-    const label = record?.metadata?.label
+    const label = readProperties(record).label
     return typeof label === 'string' ? label : ''
 }
 
@@ -70,7 +71,7 @@ export function circleLabelColorOf(record: ShapeLike): string {
  * existed — those read as DEFAULT_TEXT_FONT_FAMILY.
  */
 export function circleLabelFontFamilyOf(record: ShapeLike): string {
-    const family = record?.metadata?.textFontFamily
+    const family = readProperties(record).textFontFamily
     return typeof family === 'string' && family
         ? family
         : DEFAULT_TEXT_FONT_FAMILY
@@ -83,7 +84,7 @@ export function circleLabelFontFamilyOf(record: ShapeLike): string {
  * (24) already overshoots.
  */
 export function circleLabelFontSizeOf(record: ShapeLike): number {
-    const size = record?.metadata?.textFontSize
+    const size = readProperties(record).textFontSize
     return typeof size === 'number' && size > 0 ? size : POINT_LABEL_FONT_SIZE
 }
 

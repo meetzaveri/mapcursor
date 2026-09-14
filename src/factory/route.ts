@@ -1,15 +1,15 @@
 import Main from './main'
 import Two from 'two.js'
 import { strokeTypeToDashes } from '../utils/misc'
-import type { GeoVertex } from './area'
+import { geometryPositions, readGeometry } from '../utils/geometry'
+import type { ComponentMetadata } from '../types/base'
 
 export interface RouteProperties {
     stroke?: string
     linewidth?: number
     strokeType?: string | null
-    // Absolute vertex coords (same convention as pencil); the factory makes
-    // them relative to the group origin (x, y).
-    metadata: GeoVertex[]
+    /** `geometry` is a LineString in absolute surface coords. */
+    metadata?: ComponentMetadata | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,11 +23,14 @@ export default class RouteFactory extends Main<RouteProperties> {
         const two = this.two
         const prevX = this.x
         const prevY = this.y
-        const { stroke, linewidth, strokeType, metadata } = this.properties
+        const { stroke, linewidth, strokeType } = this.properties
 
-        const vertices = Array.isArray(metadata) ? metadata : []
-        const anchors = vertices.map(
-            (p) => new (Two as ShapeLike).Anchor(p.x - prevX, p.y - prevY)
+        // A route is a LineString. Positions are absolute surface coords, so
+        // the path is rebuilt relative to the origin the geometry itself
+        // reports — `prevX`/`prevY` come from `geometryOrigin`, not the columns.
+        const positions = geometryPositions(readGeometry(this.properties))
+        const anchors = positions.map(
+            ([x, y]) => new (Two as ShapeLike).Anchor(x - prevX, y - prevY)
         )
 
         // closed = false → open polyline (route)

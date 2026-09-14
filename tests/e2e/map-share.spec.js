@@ -15,6 +15,7 @@ import {
     baseRow,
     GQL_MOCK_RESPONSES,
     readCamera,
+    pointAt,
 } from './helpers/index.js'
 // The landing camera is derived from pure projection math, so it is computed in
 // Node. It used to run in-page via `await import('/src/…​.ts')`, which only the
@@ -37,11 +38,9 @@ const point = (id, x, y) => ({
     id,
     componentType: 'point',
     children: null,
-    metadata: { content: 'The Old Peacock' },
-    x,
+    ...pointAt(x, y, { content: 'The Old Peacock' }),
     x1: 0,
     x2: 0,
-    y,
     y1: 0,
     y2: 0,
     fill: '#e5484d',

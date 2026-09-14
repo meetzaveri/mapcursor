@@ -11,10 +11,10 @@ import PointFactory, {
     POINT_CHROME_FLAG,
 } from '../../factory/point'
 import getEditComponents from '../utils/editWrapper'
-import { computeCounterScale } from '../../utils/counterScale'
+import { computeCounterScale, resolveResist } from '../../utils/counterScale'
+import { setProperties } from '../../utils/geometry'
 import { isPanMode } from '../../utils/drawModeUtils'
 import {
-    DEFAULT_RESIST,
     POINT_LABEL_COLOR,
     POINT_LABEL_GAP,
     POINT_RADIUS,
@@ -63,7 +63,7 @@ function Point(props: ElementProps): ReactElement {
     const labelRef = useRef<string>(pointLabelOf(props))
 
     const two = props.twoJSInstance
-    const resist = props.metadata?.resist ?? DEFAULT_RESIST
+    const resist = resolveResist(props)
 
     useEffect(() => {
         const prevX = props.x
@@ -344,19 +344,20 @@ function Point(props: ElementProps): ReactElement {
                 }
                 restoreSelectorAfterEditRef.current = false
 
-                const updatedMetadata = {
-                    ...(group.elementData?.metadata ?? props.metadata ?? {}),
-                    label: value,
-                }
+                const labelPatch = setProperties(
+                    group.elementData ?? props,
+                    { label: value }
+                )
                 // Frozen props mean React won't re-render this element, so the
                 // scene node above and elementData here are the live copies —
                 // keep both in step with the store write.
-                if (group.elementData) {
-                    group.elementData.metadata = updatedMetadata
+                if (group.elementData && labelPatch.metadata) {
+                    group.elementData.metadata = labelPatch.metadata
                 }
-                updateComponentBulkPropertiesInLocalStore?.(props.id, {
-                    metadata: updatedMetadata,
-                })
+                updateComponentBulkPropertiesInLocalStore?.(
+                    props.id,
+                    labelPatch
+                )
             }
 
             input.addEventListener('blur', commit)

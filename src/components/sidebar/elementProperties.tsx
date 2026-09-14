@@ -236,7 +236,7 @@ function readEffectiveValues({
     // children disagree.
     if (setKey === 'GROUP' && selectedGroup) {
         const inspected = inspectGroupValues(selectedGroup, defaults)
-        // textSize is stored numeric in metadata; map to the toolbar label.
+        // textSize is stored numeric in properties; map to the toolbar label.
         let textSizeOut = inspected.textSize
         if (textSizeOut !== MIXED) {
             const match = TEXT_SIZES_ARRAY.find((s) =>
@@ -300,7 +300,7 @@ function readEffectiveValues({
         linewidth: shapeData?.linewidth ?? defaults.defaultLinewidth,
         strokeType: elementData?.strokeType ?? 'solid',
         // Opacity lives in the top-level `opacity` field (legacy rows fall
-        // back to metadata.opacity).
+        // back to properties.opacity).
         opacity: readOpacity(elementData),
         // A circle's label ink is a COLUMN (see circleLabelColorOf), and its
         // line nodes never reach `textData` — so neither generic arm resolves
@@ -505,7 +505,7 @@ const FontFamilyRow = ({
     onChange: (v: string) => void
 }) => {
     // Self-hosted faces (src/styles/fonts.css). These spellings are persisted
-    // verbatim into `metadata.textFontFamily`, so they must match the
+    // verbatim into `properties.textFontFamily`, so they must match the
     // @font-face family names exactly.
     const families = [
         { label: 'Avenir', family: 'Avenir' },

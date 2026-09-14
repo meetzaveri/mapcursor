@@ -655,8 +655,9 @@ a bare String. Adding a fourth type is one `INSERT`, not a constraint swap.
   textColor: text | null,
   opacity: float | null,
   position: integer,      // NOT NULL; Z-order (see reorder.md)
-  metadata: jsonb | null, // polymorphic: vertex array for pencil/route/area/
-                          // curvedLine; object for text/point; carries baseTypeScope
+  metadata: jsonb | null, // { geometry, properties } — a GeoJSON Feature minus
+                          // its `type` tag. Uniform across every componentType;
+                          // coordinates are SURFACE units. See utils/geometry.ts
   children: jsonb | null,
   isDummy: boolean | null,
   createdBy: text,        // NOT NULL
@@ -668,9 +669,10 @@ a bare String. Adding a fourth type is one `INSERT`, not a constraint swap.
 }
 ```
 
-Note `metadata` is a union type Postgres cannot constrain and Hasura types as
-opaque `jsonb`; the client branches on `Array.isArray(metadata)` in several
-places. Splitting the vertex array into its own column is a known follow-up.
+Hasura types `metadata` as opaque `jsonb`, so the envelope's shape is enforced
+client-side by `ComponentMetadata` in `src/types/base.ts` — making that type a
+closed interface is what turns any unconverted read or write into a compile
+error. Nothing branches on the record's shape any more.
 
 ## Zoom resistance
 
@@ -682,7 +684,7 @@ detached copy in a group overlay will disagree.
 
 Two inputs, and they are not interchangeable:
 
-- **`metadata.resist`** — the numeric strength, and the _only_ mechanism for
+- **`properties.resist`** — the numeric strength, and the _only_ mechanism for
   `point` / `area` / `route` / geo `pencil` / geo `circle`. Point and geoText
   counter-scale the whole group; area/route/geo-pencil/geo-circle counter-scale
   stroke width only (`GROUP_SCALED_TYPES` vs `isStrokeScaled` — don't unify
@@ -760,21 +762,39 @@ Rules that live in more than one file, each of which had drifted at least once.
   not once the bare wheel became the map's primary control. The step is clamped
   because macOS trackpads keep emitting inertial events after the fingers lift,
   and one of those can otherwise cross several zoom levels in a frame.
-- **The absolute-vertex-metadata family owns its geometry in `metadata`, not
-  in `x`/`y`.** pencil, area, route and curvedLine store ABSOLUTE vertex coords
-  and their factories rebuild the path as `metadata - (x, y)`, so `x`/`y` is
-  only the origin those vertices were made relative to. Two consequences, both
-  of which shipped as bugs: **moving one must shift the vertex array too** (in
-  the same store write, so one undo reverts both) — persisting the new origin
-  alone is worse than persisting nothing, because the factory then subtracts the
-  new origin from the old vertices and the shape lands back where the drag
-  started; and **anything asking "where is it?" must ask the vertices**, which
-  is why paste positions these types off `vertexMetadataCenter` rather than
-  `x`/`y` (that is wherever the first click happened to fall). `hasAbsoluteVertexMetadata`
-  / `shiftVertexMetadata` / `vertexMetadataCenter` (`utils/vertexMetadata.ts`)
-  are the shared readers — reach for the type list there, never a fresh
-  `componentType === 'area' || ...` chain, which is how curvedLine ended up with
-  a move fix its three siblings never got.
+- **`metadata.geometry` is the single source of truth for position; `x`/`y` are
+  a cache.** Every record carries `metadata: { geometry, properties }` — a
+  GeoJSON Feature minus its redundant `type` tag, uniform across every
+  componentType. `utils/geometry.ts` is the ONLY module that may construct or
+  destructure it, and the rule that makes the whole thing hold is that its
+  writers (`geometryFields` / `setGeometry` / `translateGeometry` /
+  `scaleGeometry`) emit `metadata`, `x` and `y` **together**, always deriving
+  the columns from the geometry. Never write `x`/`y` on their own, and never
+  read them back as truth — use `geometryOrigin(record)` (for where a shape is
+  drawn from) or `geometryCenter(record)` (for where it visually sits, which is
+  what paste needs; a route's origin is wherever the first click happened to
+  fall). This replaced a polymorphic column that was a bare vertex array for
+  route/area/pencil and a bag of named keys for point/text/circle. Three things
+  came with the collapse: a route can finally carry a named property at all
+  (`properties.resist` reaches `resolveResist` now — on an array `.resist` was
+  always `undefined`, so area/route/pencil silently ran on the default); the
+  four mutually disagreeing "which types have array metadata" lists are gone,
+  along with `utils/vertexMetadata.ts`; and the old failure mode — persist a new
+  origin, leave the coordinates, watch the shape snap back on the next load —
+  is now unreachable rather than merely fixed. Two details that are easy to get
+  wrong by hand, which is why fixtures build through the real constructors
+  (`pointAt` / `lineThrough` / `polygonOver` in `tests/e2e/helpers`): a polygon
+  is STORED closed per RFC 7946 but RENDERED open (`geometryPositions` opens it,
+  because `factory/area.ts` builds its path with `closed = true` and closes the
+  shape itself), and a pencil's per-point widths live in `properties.widths` as
+  a parallel array — never as a third coordinate element, which in GeoJSON means
+  altitude. Covered by `tests/e2e/geometry-envelope.spec.js`.
+- **Factories take their origin from the geometry, not from their `x`/`y`
+  arguments.** `factory/main.ts` resolves it through `geometryOrigin`, which is
+  also what retired the `x === 0 ? 500 : x` coercion that used to stand there.
+  On a map base that was a live bug, not a nicety: surface (0, 0) IS the
+  georeference anchor, so anything drawn exactly on it was teleported 500 units
+  east.
 - **Bare-canvas clicks clear the selection from the hit test, not from the DOM.**
   "Selected" is drawn by three owners — the controller's box, the element-owned
   chrome that answers `clearSelector` (geoText, point) and the React

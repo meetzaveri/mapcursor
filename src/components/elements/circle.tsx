@@ -8,12 +8,12 @@ import { readOpacity } from '../../utils/canvasUtils'
 import { scheduleRender } from '../../utils/renderScheduler'
 import {
     componentTypes,
-    DEFAULT_RESIST,
     TEXT_RESIST_CHANGED_EVENT,
 } from '../../constants/misc'
 import {
     computeCounterScale,
     resolveLabelResist,
+    resolveResist,
 } from '../../utils/counterScale'
 import {
     buildCircleLabel,
@@ -55,9 +55,9 @@ function Circle(props: ElementProps): ReactElement {
 
     // A circle's STROKE counter-scales against the camera while its geometry
     // stays world-glued, so a 5km radius stays 5km (see isStrokeScaled).
-    // A circle's metadata is an object without `resist`, so this lands on the
-    // default — the same value area and route run at.
-    const resist = props.metadata?.resist ?? DEFAULT_RESIST
+    // Unless one was stored, this lands on the default — the same value area
+    // and route run at. `resolveResist` is the single reader.
+    const resist = resolveResist(props)
     // The LABEL counter-scales at its own rate, under the user's "Zoom
     // resistant" switch. Two resists on one element: reading the column for
     // the stroke as well would make that switch delete the ring at low zoom.

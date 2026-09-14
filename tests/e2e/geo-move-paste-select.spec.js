@@ -1,16 +1,21 @@
-// The absolute-vertex-metadata family (area / route / pencil / curvedLine) and
-// the three things that kept going wrong with it: a move that did not survive a
-// reload, a paste that landed away from the cursor, and a selection that would
-// not let go.
+// The multi-point geometries (area / route / pencil) and the three things that
+// kept going wrong with them: a move that did not survive a reload, a paste
+// that landed away from the cursor, and a selection that would not let go.
 //
-// All three come from the same place. These types keep their geometry as
-// ABSOLUTE coords in `metadata`, and their factories rebuild the path as
-// `metadata - (x, y)` — so `x`/`y` is only the origin those vertices were made
-// relative to. Anything that moves one of them has to move both, and anything
-// that asks "where is it?" has to ask the vertices, not `x`/`y`.
+// All three came from the same place — `x`/`y` used to be an independently
+// written second source of truth for position, so a move could persist a new
+// origin while leaving the coordinates where they were, and the next load would
+// rebuild the path relative to the wrong point. Now `geometry` is the only
+// truth and the columns are a cache `setGeometry` derives from it, so the two
+// cannot come apart. These tests hold that line.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+import {
+    baseRow,
+    GQL_MOCK_RESPONSES,
+    lineThrough,
+    polygonOver,
+} from './helpers/index.js'
 // The handle body colour, read from the same module the app paints it with, so
 // unifying the selection chrome can never silently un-anchor this assertion.
 import { SELECTION_HANDLE_FILL } from '../../src/utils/selectionTheme.ts'
@@ -52,25 +57,25 @@ const geo = (id, componentType, extra) => ({
 })
 
 const COMPONENTS = [
-    geo(AREA_ID, 'area', {
-        x: 150,
-        y: 150,
-        metadata: [
+    geo(
+        AREA_ID,
+        'area',
+        polygonOver([
             { x: 150, y: 150 },
             { x: 400, y: 150 },
             { x: 400, y: 360 },
             { x: 150, y: 360 },
-        ],
-    }),
-    geo(ROUTE_ID, 'route', {
-        x: 150,
-        y: 480,
-        metadata: [
+        ])
+    ),
+    geo(
+        ROUTE_ID,
+        'route',
+        lineThrough([
             { x: 150, y: 480 },
             { x: 400, y: 540 },
             { x: 650, y: 480 },
-        ],
-    }),
+        ])
+    ),
 ]
 
 async function openMapBase(page) {
@@ -116,9 +121,13 @@ async function openMapBase(page) {
 
 /**
  * The record as persisted, plus the number that decides where a reload puts it:
- * `metadata[0] - (x, y)`, the offset the factory rebuilds the path from. A move
- * must leave that offset untouched — if it drifts, the element is drawn
- * somewhere it has never been.
+ * the geometry's own first position, which is the origin the factory rebuilds
+ * the path from. It must always equal the persisted `x`/`y` — those columns are
+ * a cache of exactly this value, and any path that lets them disagree draws the
+ * element somewhere it has never been.
+ *
+ * Read inline rather than through `geometryOrigin`: this runs in the page, and
+ * a spec cannot import app modules into `page.evaluate` against a bundle.
  */
 const record = (page, id) =>
     page.evaluate((id) => {
@@ -126,15 +135,15 @@ const record = (page, id) =>
             (c) => c?.elementData?.id === id
         )
         const ed = g?.elementData
-        if (!ed || !Array.isArray(ed.metadata)) return null
-        return {
-            x: ed.x,
-            y: ed.y,
-            offset: {
-                x: ed.metadata[0].x - ed.x,
-                y: ed.metadata[0].y - ed.y,
-            },
-        }
+        const geom = ed?.metadata?.geometry
+        if (!geom) return null
+        const first =
+            geom.type === 'Polygon'
+                ? geom.coordinates[0][0]
+                : geom.type === 'LineString'
+                  ? geom.coordinates[0]
+                  : geom.coordinates
+        return { x: ed.x, y: ed.y, origin: { x: first[0], y: first[1] } }
     }, id)
 
 /** A screen point that lies on the element's own stroke. */
@@ -182,14 +191,17 @@ for (const [name, id] of [
         // The origin moved...
         expect(after.x).toBe(before.x + 120)
         expect(after.y).toBe(before.y + 90)
-        // ...and the vertices came with it. Persisting the new origin ALONE was
-        // worse than persisting nothing: on the next load the factory subtracts
-        // the new origin from the old vertices and the shape lands exactly back
-        // where the drag started, so the move looked lost on every reload.
+        // ...and the geometry came with it. Persisting the new origin ALONE was
+        // worse than persisting nothing: on the next load the factory would
+        // rebuild the path against an origin its own coordinates disagreed
+        // with, and the shape landed exactly back where the drag started — so
+        // the move looked lost on every reload.
         expect(
-            after.offset,
-            'origin and vertices disagree after a move'
-        ).toEqual(before.offset)
+            after.origin,
+            'the x/y cache disagrees with the geometry after a move'
+        ).toEqual({ x: after.x, y: after.y })
+        expect(after.origin.x - before.origin.x).toBe(120)
+        expect(after.origin.y - before.origin.y).toBe(90)
     })
 
     test(`clicking empty canvas deselects ${name} on the first click`, async ({
@@ -253,15 +265,15 @@ test('a pasted area lands under the cursor', async ({ page }) => {
             if (!g) return null
             const box = document.getElementById(g.id).getBoundingClientRect()
             const ed = g.elementData
+            const ring = ed.metadata.geometry.coordinates[0]
             return {
                 centre: {
                     x: Math.round(box.x + box.width / 2),
                     y: Math.round(box.y + box.height / 2),
                 },
-                offset: {
-                    x: ed.metadata[0].x - ed.x,
-                    y: ed.metadata[0].y - ed.y,
-                },
+                origin: { x: ring[0][0], y: ring[0][1] },
+                storedX: ed.x,
+                storedY: ed.y,
             }
         }, AREA_ID)
 
@@ -272,14 +284,16 @@ test('a pasted area lands under the cursor', async ({ page }) => {
         .toBe(true)
     const pasted = await clone()
 
-    // Under the cursor, not a corner's-worth away from it: the offset used to be
-    // measured from `x`/`y`, which for these types is wherever the first vertex
-    // happened to fall.
+    // Under the cursor, not a corner's-worth away from it: the paste offset used
+    // to be measured from `x`/`y`, which for these types is wherever the first
+    // vertex happened to fall.
     expect(Math.abs(pasted.centre.x - cursor.x)).toBeLessThan(12)
     expect(Math.abs(pasted.centre.y - cursor.y)).toBeLessThan(12)
 
     // And the clone is born consistent — origin and vertices in step, so its
     // own first drag/reload behaves.
-    const source = await record(page, AREA_ID)
-    expect(pasted.offset).toEqual(source.offset)
+    expect(
+        pasted.origin,
+        'the clone was born with its origin and geometry disagreeing'
+    ).toEqual({ x: pasted.storedX, y: pasted.storedY })
 })

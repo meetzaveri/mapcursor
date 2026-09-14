@@ -5,6 +5,7 @@ import { useQuery } from '@apollo/client'
 import ShapesToolbar from './shapesToolbar'
 import PlaceSearch from './placeSearch'
 import TextZoomHint from '../textZoomHint'
+import ToolHint from '../toolHint'
 import { GET_COMPONENT_TYPES } from '../../schema/queries'
 import SpinnerWithSize from '../common/spinnerWithSize'
 import { generateUUID } from '../../utils/misc'
@@ -12,6 +13,11 @@ import { prefetchElementModule } from '../../elementModules'
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import type { ComponentRecord } from '../../types/base'
+import {
+    geometryFields,
+    pointGeometry,
+    setProperties,
+} from '../../utils/geometry'
 import {
     ELEMENT_DEFAULTS,
     CIRCLE_DEFAULTS,
@@ -118,8 +124,17 @@ const PrimarySidebar = (): ReactElement => {
                         strokeType: defaultStrokeType,
                         stroke: defaultStrokeColor ?? '#3A342C',
                         children: {},
-                        x: -9999,
-                        y: -9999,
+                        // Parked off-screen; the canvas places it on the next
+                        // click. `geometryFields` derives x/y from the
+                        // geometry, so the two can never disagree.
+                        ...geometryFields(pointGeometry(-9999, -9999), {
+                            ...((item.metadata as Record<string, unknown>) ??
+                                {}),
+                            opacity: 1,
+                            ...(defaultTextFontFamily && {
+                                textFontFamily: defaultTextFontFamily,
+                            }),
+                        }),
                         x1: 0,
                         x2: 0,
                         y1: 0,
@@ -128,14 +143,6 @@ const PrimarySidebar = (): ReactElement => {
                         baseName: null,
                         isDummy: null,
                         createdAt: null,
-                        metadata: {
-                            ...((item.metadata as Record<string, unknown>) ??
-                                {}),
-                            opacity: 1,
-                            ...(defaultTextFontFamily && {
-                                textFontFamily: defaultTextFontFamily,
-                            }),
-                        },
                         width: item.width ?? 120,
                         height: item.height ?? 120,
                         fill: item.fill ?? '#f4f4f2',
@@ -157,8 +164,12 @@ const PrimarySidebar = (): ReactElement => {
                 strokeType: defaultStrokeType,
                 stroke: defaultStrokeColor ?? '#3A342C',
                 children: {},
-                x: -9999,
-                y: -9999,
+                ...geometryFields(pointGeometry(-9999, -9999), {
+                    opacity: 1,
+                    ...(defaultTextFontFamily && {
+                        textFontFamily: defaultTextFontFamily,
+                    }),
+                }),
                 x1: 0,
                 x2: 0,
                 y1: 0,
@@ -167,12 +178,6 @@ const PrimarySidebar = (): ReactElement => {
                 baseName: null,
                 isDummy: null,
                 createdAt: null,
-                metadata: {
-                    opacity: 1,
-                    ...(defaultTextFontFamily && {
-                        textFontFamily: defaultTextFontFamily,
-                    }),
-                },
                 width: fb.width,
                 height: fb.height,
                 fill: fb.fill,
@@ -233,17 +238,7 @@ const PrimarySidebar = (): ReactElement => {
             // `stroke` mirrors it so anything reading either sees one colour.
             stroke: POINT_COLOR,
             children: {},
-            x: -9999,
-            y: -9999,
-            x1: 0,
-            x2: 0,
-            y1: 0,
-            y2: 0,
-            baseId,
-            baseName: null,
-            isDummy: null,
-            createdAt: null,
-            metadata: {
+            ...geometryFields(pointGeometry(-9999, -9999), {
                 // Named on placement — the canvas opens the editor as soon as
                 // the element mounts.
                 label: '',
@@ -257,7 +252,15 @@ const PrimarySidebar = (): ReactElement => {
                 ...(defaultTextFontFamily && {
                     textFontFamily: defaultTextFontFamily,
                 }),
-            },
+            }),
+            x1: 0,
+            x2: 0,
+            y1: 0,
+            y2: 0,
+            baseId,
+            baseName: null,
+            isDummy: null,
+            createdAt: null,
             width: POINT_RADIUS * 2,
             height: POINT_RADIUS * 2,
             fill: POINT_COLOR,
@@ -359,20 +362,16 @@ const PrimarySidebar = (): ReactElement => {
                 }
 
                 setTimeout(() => {
-                    if (DRAW_SHAPE_TYPES.includes(label)) {
-                        // Circle is the only drag-to-draw tool, and it draws
-                        // centre-out as a radius — say so, or the first drag
-                        // reads as a bounding box that mysteriously recentres.
-                        setHintText(
-                            'Click the centre, then drag out the radius'
-                        )
-                    } else {
-                        setHintText('Click anywhere to place element there.')
-                    }
+                    // Circle's own guidance is persistent and lives in
+                    // ToolHint — it is armed for a whole drag, not a click, so
+                    // a transient pill was gone before the gesture began.
                     const clickEl = document.getElementById(
                         'show-click-anywhere-btn'
                     )
-                    if (clickEl) clickEl.style.opacity = '1'
+                    if (!DRAW_SHAPE_TYPES.includes(label)) {
+                        setHintText('Click anywhere to place element there.')
+                        if (clickEl) clickEl.style.opacity = '1'
+                    }
                     if (savingEl) {
                         savingEl.style.opacity = '0'
                         savingEl.style.zIndex = '-1'
@@ -396,14 +395,32 @@ const PrimarySidebar = (): ReactElement => {
                                 strokeType: defaultStrokeType,
                                 stroke: defaultStrokeColor ?? '#3A342C',
                                 children: {},
-                                x: Math.floor(
-                                    window.outerWidth -
-                                        (randomNumber * window.outerWidth) / 100
-                                ),
-                                y: Math.floor(
-                                    window.outerHeight -
-                                        (randomNumber * window.outerHeight) /
-                                            100
+                                ...geometryFields(
+                                    pointGeometry(
+                                        Math.floor(
+                                            window.outerWidth -
+                                                (randomNumber *
+                                                    window.outerWidth) /
+                                                    100
+                                        ),
+                                        Math.floor(
+                                            window.outerHeight -
+                                                (randomNumber *
+                                                    window.outerHeight) /
+                                                    100
+                                        )
+                                    ),
+                                    {
+                                        ...((item.metadata as Record<
+                                            string,
+                                            unknown
+                                        >) ?? {}),
+                                        opacity: 1,
+                                        ...(defaultTextFontFamily && {
+                                            textFontFamily:
+                                                defaultTextFontFamily,
+                                        }),
+                                    }
                                 ),
                                 x1: 0,
                                 x2: label.includes('divider') ? 100 : 0,
@@ -413,16 +430,6 @@ const PrimarySidebar = (): ReactElement => {
                                 baseName: null,
                                 isDummy: null,
                                 createdAt: null,
-                                metadata: {
-                                    ...((item.metadata as Record<
-                                        string,
-                                        unknown
-                                    >) ?? {}),
-                                    opacity: 1,
-                                    ...(defaultTextFontFamily && {
-                                        textFontFamily: defaultTextFontFamily,
-                                    }),
-                                },
                                 width: item.width ?? 120,
                                 height: item.height ?? 120,
                                 fill: useShapeFill
@@ -449,13 +456,24 @@ const PrimarySidebar = (): ReactElement => {
                         strokeType: defaultStrokeType,
                         stroke: defaultStrokeColor ?? '#3A342C',
                         children: {},
-                        x: Math.floor(
-                            window.outerWidth -
-                                (randomNumber * window.outerWidth) / 100
-                        ),
-                        y: Math.floor(
-                            window.outerHeight -
-                                (randomNumber * window.outerHeight) / 100
+                        ...geometryFields(
+                            pointGeometry(
+                                Math.floor(
+                                    window.outerWidth -
+                                        (randomNumber * window.outerWidth) / 100
+                                ),
+                                Math.floor(
+                                    window.outerHeight -
+                                        (randomNumber * window.outerHeight) /
+                                            100
+                                )
+                            ),
+                            {
+                                opacity: 1,
+                                ...(defaultTextFontFamily && {
+                                    textFontFamily: defaultTextFontFamily,
+                                }),
+                            }
                         ),
                         x1: 0,
                         x2: label.includes('divider') ? 100 : 0,
@@ -465,12 +483,6 @@ const PrimarySidebar = (): ReactElement => {
                         baseName: null,
                         isDummy: null,
                         createdAt: null,
-                        metadata: {
-                            opacity: 1,
-                            ...(defaultTextFontFamily && {
-                                textFontFamily: defaultTextFontFamily,
-                            }),
-                        },
                         width: fb.width,
                         height: fb.height,
                         fill: useShapeFill ? (defaultFill ?? fb.fill) : fb.fill,
@@ -500,8 +512,7 @@ const PrimarySidebar = (): ReactElement => {
                         // happens to carry for a circle — that value was never
                         // a text colour, since a circle had no text until now.
                         textColor: CIRCLE_LABEL_COLOR,
-                        metadata: {
-                            ...((shapeData as ComponentRecord).metadata ?? {}),
+                        ...setProperties(shapeData as ComponentRecord, {
                             // Named after drawing — empty until typed.
                             label: '',
                             // The label picks up the current text style, exactly
@@ -514,7 +525,7 @@ const PrimarySidebar = (): ReactElement => {
                             ...(defaultTextFontFamily && {
                                 textFontFamily: defaultTextFontFamily,
                             }),
-                        },
+                        }),
                     }
                 }
 
@@ -553,49 +564,22 @@ const PrimarySidebar = (): ReactElement => {
                 className="fixed w-full flex justify-center top-0  opacity-0
                 transition-opacity ease-out duration-300"
             >
-                <div
-                    className="w-auto mt-2
-                         bg-reds-r400 text-reds-r50
-                            px-4 py-2 rounded-md shadow-md
-                            "
-                >
-                    <div className="flex items-center  ">
-                        <div className="w-auto text-sm text-left">
+                <div className="w-auto mt-2 bg-hint text-hint-fg px-3 py-2 rounded-card shadow-panel">
+                    <div className="flex items-center">
+                        <div className="w-auto text-xs leading-snug text-left">
                             {hintText}
                         </div>
                     </div>
                 </div>
             </div>
-            {/* Curved-line draw nudge. Sits just under the shapes toolbar.
-                Shown by handleMultiClickDraw('curvedLine'); hidden by the
-                canvas on finish/cancel (finishGeoDraw / cancelGeoDraw).
-                Desktop-only: mobile has no Esc/Enter and uses the on-screen
-                ✓/✗ draw controls instead, so the keyboard nudge is omitted. */}
-            {!isMobile && (
-                <div
-                    id="multi-click-draw-hint"
-                    className="fixed w-full flex justify-center pointer-events-none
-                opacity-0 transition-opacity ease-out duration-300"
-                    style={{ top: '55px', zIndex: -1 }}
-                >
-                    <div className="w-auto bg-ink text-card-bg px-4 py-2 rounded-md shadow-md">
-                        <div className="text-sm text-center whitespace-nowrap">
-                            Click to add points · press{' '}
-                            <kbd className="px-1 rounded border border-current">
-                                Enter
-                            </kbd>{' '}
-                            or{' '}
-                            <kbd className="px-1 rounded border border-current">
-                                Esc
-                            </kbd>{' '}
-                            to finish
-                        </div>
-                    </div>
-                </div>
-            )}
-            {/* One-shot tip for the "Zoom resistant" switch. Shares the
-                top: 55px slot above and stands down while a multi-click draw
-                is armed. */}
+            {/* Persistent per-tool guidance (area / route / radius map).
+                Replaced the curved-line "press Esc/Enter" nudge, which had been
+                dead since curvedLine stopped routing through
+                handleMultiClickDraw — nothing set its opacity any more. */}
+            <ToolHint />
+            {/* One-shot tip for the "Zoom resistant" switch. Desktop only, and
+                shares ToolHint's desktop slot — so it stands down while one of
+                those tools is armed. */}
             <TextZoomHint />
             <div className="absolute top-2 right-1rem flex items-center px-2 gap-1">
                 <div

@@ -1,13 +1,17 @@
 import Main from './main'
 import Two from 'two.js'
-import { chaikinSmooth } from '../utils/pencilHelper'
-import type { PencilPoint } from '../utils/pencilHelper'
+import { chaikinSmooth, pencilPointsOf } from '../utils/pencilHelper'
 import { strokeTypeToDashes } from '../utils/misc'
+import type { ComponentMetadata } from '../types/base'
 
 export interface PencilProperties {
     stroke?: string
     linewidth?: number
-    metadata: PencilPoint[]
+    /**
+     * `geometry` is a LineString in absolute surface coords; the per-point
+     * pressure widths ride alongside in `properties.widths`.
+     */
+    metadata?: ComponentMetadata | null
     strokeType?: string | null
 }
 
@@ -22,12 +26,15 @@ export default class PencilFactory extends Main<PencilProperties> {
         const two = this.two
         const prevX = this.x
         const prevY = this.y
-        const { stroke, linewidth, metadata, strokeType } = this.properties
+        const { stroke, linewidth, strokeType } = this.properties
+
+        // Coordinates and per-point widths are stored as parallel arrays; this
+        // re-pairs them into the {x, y, lw} points the smoothing works on.
+        const points = pencilPointsOf(this.properties)
 
         // Chaikin smoothing rounds the polyline without overshoot. Matches
         // the smoothing applied during live preview in newCanvas.js.
-        const smoothed =
-            metadata.length > 2 ? chaikinSmooth(metadata, 2) : metadata
+        const smoothed = points.length > 2 ? chaikinSmooth(points, 2) : points
 
         const path = two.makePath()
         smoothed.forEach((point) => {

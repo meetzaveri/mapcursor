@@ -17,6 +17,7 @@ import {
     setupLocalBase,
     getCanvasBox,
     readCamera,
+    pointAt,
 } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
@@ -35,8 +36,8 @@ const point = () => ({
     id: POINT_ID,
     componentType: 'point',
     children: null,
-    metadata: { content: 'The Old Peacock' },
-    x: 0, x1: 0, x2: 0, y: 0, y1: 0, y2: 0,
+    ...pointAt(0, 0, { content: 'The Old Peacock' }),
+    x1: 0, x2: 0, y1: 0, y2: 0,
     fill: '#e5484d', width: 10, height: 10,
     iconStroke: null, stroke: '#e5484d', linewidth: 2, strokeType: null,
     textColor: '#3A342C', opacity: 1, position: 1,

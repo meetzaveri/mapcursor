@@ -11,8 +11,54 @@ import type { ServerBaseConfig } from '../baseTypes/serverConfig'
 
 // --- DB shape (mirrors CLAUDE.md "Component schema (from DB)") ----------
 
+/**
+ * A single position, in SURFACE units — never lng/lat.
+ *
+ * The order is `[x, y]`, which lines up positionally with GeoJSON's
+ * `[easting, northing]`. That is not a coincidence: a surface unit already IS a
+ * Web Mercator pixel at the base's `anchor.zoom` (512px tiles — see
+ * `baseTypes/mercator.ts`), so `surfaceToLngLat` is an exact conversion in both
+ * directions and the camera cancels out of it entirely.
+ *
+ * The coordinate space is a property of the BASE, not of each record: every
+ * position here only means somewhere on Earth relative to that base's
+ * `mapAnchorLng/Lat/Zoom`. There is deliberately no per-record `space` marker —
+ * a redundant field can go stale, a single invariant cannot.
+ */
+export type SurfacePosition = [number, number]
+
+/**
+ * The geometry of an element, as a GeoJSON geometry whose coordinates are in
+ * surface units. Structurally assignable to the matching `geojson` type, so a
+ * GeoJSON adapter is a projection pass over `coordinates` and nothing more.
+ *
+ * Every live componentType maps onto exactly one of these three:
+ *   point / text / circle → Point
+ *   route / pencil        → LineString
+ *   area                  → Polygon (one closed outer ring, per RFC 7946)
+ */
+export type SurfaceGeometry =
+    | { type: 'Point'; coordinates: SurfacePosition }
+    | { type: 'LineString'; coordinates: SurfacePosition[] }
+    | { type: 'Polygon'; coordinates: SurfacePosition[][] }
+
+/**
+ * The metadata envelope — a GeoJSON `Feature` minus its redundant `type` tag.
+ *
+ * This is uniform across EVERY componentType. It replaced a polymorphic column
+ * that was a bare vertex array for route/area/pencil and a bag of named keys
+ * for point/text/circle — two shapes with no common root, which is why a route
+ * could not carry a named property at all (an array's non-index keys do not
+ * survive `JSON.stringify`, so they never reached jsonb).
+ *
+ * `geometry` is the single source of truth for position. The `x`/`y` columns
+ * are a write-only cache derived from it by `setGeometry` — never read back as
+ * truth. See `utils/geometry.ts`, which is the only module that should
+ * construct or destructure this.
+ */
 export interface ComponentMetadata {
-    [key: string]: unknown
+    geometry: SurfaceGeometry
+    properties: Record<string, unknown>
 }
 
 export interface ComponentRecord {

@@ -7,6 +7,7 @@ import {
 import { isPanMode } from '../../utils/drawModeUtils'
 import { lineHeightFor } from '../../utils/textLayout'
 import { usableTextWidth } from '../../utils/shapeTextFit'
+import { setProperties } from '../../utils/geometry'
 import {
     buildCircleLabel,
     circleLabelColorOf,
@@ -186,15 +187,14 @@ export function openCircleLabelEditor({
         const value = input.value.trim()
         input.remove()
 
-        const updatedMetadata = {
-            ...(group.elementData?.metadata ?? {}),
+        const labelPatch = setProperties(group.elementData ?? record, {
             label: value,
-        }
+        })
         // Frozen props mean React won't re-render this element, so the scene
         // nodes and elementData here are the live copies — keep both in step
         // with the store write.
-        if (group.elementData) {
-            group.elementData.metadata = updatedMetadata
+        if (group.elementData && labelPatch.metadata) {
+            group.elementData.metadata = labelPatch.metadata
         }
 
         const rebuilt = buildCircleLabel(two, group, {
@@ -210,10 +210,9 @@ export function openCircleLabelEditor({
         }
         two.update()
 
-        // Only `metadata` — the geometry is untouched by naming a circle.
-        updateComponentBulkPropertiesInLocalStore?.(id, {
-            metadata: updatedMetadata,
-        })
+        // Properties only — naming a circle leaves its geometry alone, and
+        // `setProperties` carries the existing geometry through unchanged.
+        updateComponentBulkPropertiesInLocalStore?.(id, labelPatch)
     }
 
     input.addEventListener('blur', commit)

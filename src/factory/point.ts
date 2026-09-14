@@ -9,32 +9,22 @@ import {
     DEFAULT_TEXT_FONT_FAMILY,
 } from '../constants/misc'
 import { capCenterOffset } from '../utils/fontMetrics'
+import { readProperties } from '../utils/geometry'
+import type { ComponentMetadata } from '../types/base'
 
 export interface PointProperties {
     fill?: string
     stroke?: string
-    metadata?: {
-        /** The location name shown beside the circle. Empty until typed. */
-        label?: string
-        resist?: number
-        /**
-         * The label's font family. Absent on every point written before the
-         * font control existed — those read as `DEFAULT_TEXT_FONT_FAMILY`.
-         */
-        textFontFamily?: string
-        /**
-         * The label's font size, in surface units. Absent on every point
-         * written before the size control existed — those read as
-         * `POINT_LABEL_FONT_SIZE`.
-         */
-        textFontSize?: number
-        /**
-         * Legacy: the pre-generic point catalog wrote a category id here and
-         * derived the pin's colour from it. Its presence is the marker for an
-         * old point — see `pointColorOf`.
-         */
-        category?: string
-    } | null
+    /**
+     * `geometry` is a Point. `properties` carries the label and its styling:
+     *
+     *   label          the location name shown beside the circle
+     *   resist         zoom-resistance strength
+     *   textFontFamily / textFontSize   the label's face and size
+     *   category       legacy marker — the pre-generic catalog derived the
+     *                  pin's colour from it; see `pointColorOf`
+     */
+    metadata?: ComponentMetadata | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,7 +47,7 @@ export const POINT_CHROME_FLAG = '__mcPointChrome'
  * actually picks a colour (applyProperty strips `metadata.category` on write).
  */
 export function pointColorOf(record: ShapeLike): string {
-    if (record?.metadata?.category) return POINT_COLOR
+    if (readProperties(record).category) return POINT_COLOR
     return record?.fill || record?.stroke || POINT_COLOR
 }
 
@@ -69,7 +59,7 @@ export function pointColorOf(record: ShapeLike): string {
  * existed carries nothing and falls back to the design default.
  */
 export function pointFontFamilyOf(record: ShapeLike): string {
-    const family = record?.metadata?.textFontFamily
+    const family = readProperties(record).textFontFamily
     return typeof family === 'string' && family
         ? family
         : DEFAULT_TEXT_FONT_FAMILY
@@ -83,13 +73,13 @@ export function pointFontFamilyOf(record: ShapeLike): string {
  * not a pixel count. See `pointFontFamilyOf`.
  */
 export function pointFontSizeOf(record: ShapeLike): number {
-    const size = record?.metadata?.textFontSize
+    const size = readProperties(record).textFontSize
     return typeof size === 'number' && size > 0 ? size : POINT_LABEL_FONT_SIZE
 }
 
 /** The label text of a point record, normalised to a string. */
 export function pointLabelOf(record: ShapeLike): string {
-    const label = record?.metadata?.label
+    const label = readProperties(record).label
     return typeof label === 'string' ? label : ''
 }
 

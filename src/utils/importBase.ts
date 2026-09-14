@@ -1,5 +1,6 @@
 import type { ComponentRecord, ComponentStore } from '../types/base'
 import { GROUP_COMPONENT } from '../constants/misc'
+import { readGeometry } from './geometry'
 
 export interface BaseViewport {
     scale: number
@@ -50,8 +51,11 @@ function isValidRecord(value: unknown): value is ComponentRecord {
         typeof r.componentType === 'string' &&
         r.componentType.length > 0 &&
         r.componentType !== GROUP_COMPONENT &&
-        Number.isFinite(r.x) &&
-        Number.isFinite(r.y)
+        // Geometry, not `x`/`y`, is what makes a record renderable: the columns
+        // are only a cache of it. Checking it here is also what stops a file
+        // written before the geometry envelope from importing as a set of rows
+        // that mount as nothing — they are counted in `skipped` instead.
+        readGeometry(r) !== null
     )
 }
 

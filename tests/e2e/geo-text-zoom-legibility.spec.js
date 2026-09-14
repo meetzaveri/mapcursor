@@ -13,7 +13,7 @@
 // future tweak that is still perfectly readable.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 // Santa Clara County, at the default anchor zoom.
@@ -33,8 +33,8 @@ const geoTextRecord = (id) => ({
     id,
     componentType: 'text',
     children: null,
-    metadata: { content: LABEL, fontSize: FONT_SIZE },
-    x: 0, x1: 0, x2: 0, y: 0, y1: 0, y2: 0,
+    ...pointAt(0, 0, { content: LABEL, fontSize: FONT_SIZE }),
+    x1: 0, x2: 0, y1: 0, y2: 0,
     fill: 'transparent', width: 120, height: 36,
     iconStroke: null, stroke: null, linewidth: 2, strokeType: null,
     textColor: '#3A342C', opacity: 1, position: 1,

@@ -123,7 +123,7 @@ const readCircle = (page) =>
             : null
         return {
             id: g.elementData.id,
-            label: g.elementData.metadata?.label ?? null,
+            label: g.elementData.metadata?.properties?.label ?? null,
             // Ink is a COLUMN, not metadata — see circleLabelColorOf.
             textColor: g.elementData.textColor ?? null,
             fill: g.elementData.fill ?? null,
@@ -131,7 +131,7 @@ const readCircle = (page) =>
             paintedFill: g.children?.[0]?.fill ?? null,
             paintedStroke: g.children?.[0]?.stroke ?? null,
             paintedInk: first?.fill ?? null,
-            metadataTextFill: g.elementData.metadata?.textFill,
+            metadataTextFill: g.elementData.metadata?.properties?.textFill,
             width: g.elementData.width,
             height: g.elementData.height,
             paintedWidth: g.children?.[0]?.width ?? null,
@@ -179,7 +179,8 @@ test.describe('the map circle label', () => {
         await expect
             .poll(
                 async () =>
-                    (await getDraftComponents(page))?.[rec.id]?.metadata?.label,
+                    (await getDraftComponents(page))?.[rec.id]?.metadata
+                        ?.properties?.label,
                 { timeout: 10_000 }
             )
             .toBe('Warehouse')

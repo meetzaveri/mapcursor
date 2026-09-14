@@ -15,10 +15,11 @@ interface BaseViewport {
  * the localStorage draft persists, so round-trip fidelity is inherited.
  *
  * `formatVersion` is written but deliberately never read or validated on
- * import — that's what keeps files interchangeable in both directions, so a
- * 1.0 file from an old build still opens here and a 1.1 file still opens in
- * that old build (it simply ignores the base fields). Don't add a version
- * check: it would be the compatibility break, not the fix.
+ * import. 2.0 marks the geometry envelope — a 1.x file's records carry no
+ * `metadata.geometry`, so `parseImportedBase` drops them by their own shape and
+ * reports the count. Keep the version a MARKER, not a gate: a per-record check
+ * fails softly and tells the user how many rows it skipped, where a version
+ * check would reject a whole file that might be mostly importable.
  */
 export function exportBaseAsJson(
     componentStore: ComponentStore,
@@ -34,7 +35,7 @@ export function exportBaseAsJson(
     ) as ComponentStore
 
     const payload = {
-        formatVersion: '1.1',
+        formatVersion: '2.0',
         app: 'mapcursor',
         appVersion,
         exportedAt: Date.now(),

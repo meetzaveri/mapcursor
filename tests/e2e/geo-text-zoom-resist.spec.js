@@ -15,7 +15,7 @@
 // exactly the property a regression here would break.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 // Santa Clara County, at the default anchor zoom.
@@ -36,9 +36,13 @@ const geoTextRecord = (id, content, zoomResistant) => ({
     componentType: 'text',
     zoomResistant,
     children: null,
-    metadata: { content, fontSize: FONT_SIZE },
-    // Offset so the two labels never overlap and each keeps its own box.
-    x: 0, x1: 0, x2: 0, y: id === SCALING_ID ? 120 : 0, y1: 0, y2: 0,
+    ...pointAt(0, id === SCALING_ID ? 120 : 0, {
+        content,
+        fontSize: FONT_SIZE,
+    }),
+    // The y offset above keeps the two labels from overlapping so each keeps
+    // its own box.
+    x1: 0, x2: 0, y1: 0, y2: 0,
     fill: 'transparent', width: 120, height: 36,
     iconStroke: null, stroke: null, linewidth: 2, strokeType: null,
     textColor: '#3A342C', opacity: 1, position: 1,

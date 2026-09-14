@@ -7,6 +7,9 @@
 // The toolbar uses this to show a real value (or a "Mixed" indicator) when a
 // group is focused, instead of always falling back to defaults.
 
+import { readProperties } from './geometry'
+import type { ComponentMetadata } from '../types/base'
+
 export const MIXED = '__MIXED__'
 
 type ComponentType =
@@ -48,7 +51,7 @@ interface ChildEntry {
     linewidth?: number
     strokeType?: string | null
     textColor?: string
-    metadata?: ChildMetadata | unknown[] | null
+    metadata?: ComponentMetadata | null
     [key: string]: unknown
 }
 
@@ -129,10 +132,7 @@ const ACCEPTS: Record<InspectableProperty, Set<string>> = {
 
 function readChildValue(child: ChildEntry, key: InspectableProperty): unknown {
     if (!child) return undefined
-    const meta =
-        child.metadata && !Array.isArray(child.metadata)
-            ? (child.metadata as ChildMetadata)
-            : null
+    const meta = readProperties(child) as ChildMetadata
     switch (key) {
         case 'fill':
             return child.fill
@@ -146,7 +146,7 @@ function readChildValue(child: ChildEntry, key: InspectableProperty): unknown {
             // Opacity lives in the top-level `opacity` field (legacy rows fall
             // back to metadata.opacity; pencil never used metadata).
             if (typeof child.opacity === 'number') return child.opacity
-            return meta?.opacity ?? 1
+            return meta.opacity ?? 1
         case 'textColor':
             // A circle's label ink is a column too (see circleLabelColorOf) —
             // `metadata.textFill` is the shape-with-text spelling, which a
@@ -156,11 +156,11 @@ function readChildValue(child: ChildEntry, key: InspectableProperty): unknown {
                 child.componentType === 'circle'
             )
                 return child.textColor
-            return meta?.textFill
+            return meta.textFill
         case 'textSize':
-            return meta?.textFontSize
+            return meta.textFontSize
         case 'textFontFamily':
-            return meta?.textFontFamily
+            return meta.textFontFamily
         default:
             return undefined
     }
