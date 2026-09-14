@@ -63,6 +63,15 @@ async function openMapBase(page) {
 
 const CIRCLE = { startX: 300, startY: 250, endX: 460, endY: 410 }
 
+// A TIGHT radius — ~59 surface units across. Ordinary on a map, where a circle
+// is sized by the ground it covers rather than by the room its text needs, and
+// the case the shared wrap floor exists for.
+const SMALL_CIRCLE = { startX: 300, startY: 250, endX: 321, endY: 271 }
+
+// No spaces in the first two runs, so a wrapper with nowhere to break falls
+// through to charWrap — which is what turned this into a column of digits.
+const TIGHT_LABEL = '131212 212121 21'
+
 // Long enough to wrap at the shipped default. That circle comes out ~453
 // surface units wide, whose inscribed box affords ~292 of them — about 40
 // characters at the 14px the text defaults seed a new label with.
@@ -72,17 +81,17 @@ const LONG_LABEL =
 // A saturated shade from `essentialShades` — the palette the text picker offers.
 const INK = '#0065FF'
 
-/** Draw the standard circle and return the centre it was drawn about. */
-async function drawCircle(page) {
+/** Draw a circle and return the centre it was drawn about. */
+async function drawCircle(page, spec = CIRCLE) {
     const box = await getCanvasBox(page)
     await drawShape(page, 'circle', {
-        startX: box.x + CIRCLE.startX,
-        startY: box.y + CIRCLE.startY,
-        endX: box.x + CIRCLE.endX,
-        endY: box.y + CIRCLE.endY,
+        startX: box.x + spec.startX,
+        startY: box.y + spec.startY,
+        endX: box.x + spec.endX,
+        endY: box.y + spec.endY,
     })
     // Centre-out: the mousedown point IS the centre (see isRadialDraw).
-    return { x: box.x + CIRCLE.startX, y: box.y + CIRCLE.startY }
+    return { x: box.x + spec.startX, y: box.y + spec.startY }
 }
 
 /** Name the circle by double-clicking its centre and typing. */
@@ -226,6 +235,38 @@ test.describe('the map circle label', () => {
             await setZoom(page, scale)
             expect((await readCircle(page)).lines).toEqual(atIdentity)
         }
+    })
+
+    test('a tight circle wraps its name where the editor said it would', async ({
+        page,
+    }) => {
+        await openMapBase(page)
+        const centre = await drawCircle(page, SMALL_CIRCLE)
+
+        // What the overlay shows the user IS the promise being kept here, so
+        // the assertion is the editor's own wrap, read off its box, against
+        // what the committed label actually drew.
+        await page.mouse.dblclick(centre.x, centre.y)
+        const editor = page.locator('textarea.temp-input-area')
+        await editor.waitFor({ state: 'visible', timeout: 15_000 })
+        await editor.fill(TIGHT_LABEL)
+        const editorLines = await editor.evaluate((el) => {
+            const cs = getComputedStyle(el)
+            return Math.round(el.scrollHeight / parseFloat(cs.lineHeight))
+        })
+        await page.mouse.click(centre.x + 320, centre.y + 220)
+        await editor.waitFor({ state: 'detached', timeout: 10_000 })
+        await page.waitForTimeout(200)
+
+        const { lines, width } = await readCircle(page)
+        expect(width).toBeLessThan(80)
+        // The failure this guards: `usableTextWidth` subtracts a flat 28
+        // surface units of whiteboard padding, which is the entire inscribed
+        // box of a circle this size, so wrapText fell through to charWrap and
+        // stacked the name one glyph per line — a tower several times the
+        // height of the ring, from a preview that had looked perfect.
+        expect(lines).toEqual(['131212', '212121', '21'])
+        expect(lines.length).toBe(editorLines)
     })
 
     test('the label and the ring resist zoom independently', async ({

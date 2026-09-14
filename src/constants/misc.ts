@@ -145,6 +145,20 @@ export const TEXT_RESIST = 0.9
 export const TEXT_RESIST_CHANGED_EVENT = 'textResistChanged'
 
 /**
+ * "The webfonts have finished loading" — no payload; each listener re-reads its
+ * own family and size.
+ *
+ * Canvas labels are centred on their font's CAP BAND, which can only be
+ * measured from the face that is actually resolving (utils/fontMetrics.ts). Our
+ * faces are `font-display: swap`, so the first paint happens against a fallback
+ * — and a label placed then sits a couple of percent of its size off centre for
+ * the rest of the session unless something re-places it. That is this event's
+ * whole job. ElementRenderWrapper freezes props at mount, so, as with
+ * TEXT_RESIST_CHANGED_EVENT, the news cannot arrive through React.
+ */
+export const FONTS_LOADED_EVENT = 'fontsLoaded'
+
+/**
  * "Select this element" — `{ id }`. Answered by newCanvas, which owns selection.
  *
  * Paste is the caller: the clone has to take the selection off the element it

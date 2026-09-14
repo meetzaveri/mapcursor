@@ -6,7 +6,6 @@ import {
 } from '../../constants/misc'
 import { isPanMode } from '../../utils/drawModeUtils'
 import { lineHeightFor } from '../../utils/textLayout'
-import { usableTextWidth } from '../../utils/shapeTextFit'
 import { setProperties } from '../../utils/geometry'
 import {
     buildCircleLabel,
@@ -14,6 +13,7 @@ import {
     circleLabelFontFamilyOf,
     circleLabelFontSizeOf,
     circleLabelOf,
+    circleWrapWidth,
     getCircleLabelGroup,
 } from '../../factory/circleLabel'
 
@@ -98,16 +98,16 @@ export function openCircleLabelEditor({
 
     const cssFontSize = fontSize * effScale
     const cssLineH = lineHeightFor(fontSize) * effScale
-    // Wrap the editor where the rendered label will wrap. `usableTextWidth`
-    // is in surface units and the rendered label is measured there too (the
-    // wrap is taken at the scale-1 reference — see buildCircleLabel), so the
-    // editor's box is that same width brought onto the screen by the camera
-    // AND the label's counter-scale.
-    const cssWidth = Math.max(
-        usableTextWidth('circle', record.width ?? ellipse?.width ?? 100) *
-            effScale,
-        cssFontSize * 4
-    )
+    // Wrap the editor where the rendered label will wrap — the same
+    // `circleWrapWidth`, in surface units, brought onto the screen by the
+    // camera AND the label's counter-scale. (The rendered label is measured in
+    // surface units too: the wrap is taken at the scale-1 reference — see
+    // buildCircleLabel.) This used to apply the 4em floor here and nowhere
+    // else, so on a small circle the overlay wrapped one way and the committed
+    // label another.
+    const cssWidth =
+        circleWrapWidth(record.width ?? ellipse?.width ?? 100, fontSize) *
+        effScale
 
     // The rendered label steps aside so the glyphs aren't drawn twice at
     // slightly different metrics.

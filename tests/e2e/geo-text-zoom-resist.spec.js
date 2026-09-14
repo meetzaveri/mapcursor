@@ -83,29 +83,57 @@ async function openMapBase(page, components) {
 }
 
 /**
- * Drive the camera to a scale and report each label's on-screen height.
- * Setting scene.scale + dispatching `zoomChanged` is exactly what the canvas's
- * own zoom handlers do (five dispatch sites in newCanvas.tsx).
+ * Each label's on-screen size, in CSS px: its `font-size` attribute pushed
+ * through `getScreenCTM()` — the whole transform chain the app controls, the
+ * camera's scale times the element group's counter-scale. That product is the
+ * quantity this feature decides, and the one a regression moves.
+ *
+ * Deliberately NOT `getBoundingClientRect().height`, which this spec used to
+ * read. Blink lays SVG text out with the font re-scaled to its on-screen ppem
+ * and rounds that font's ascent and descent to whole pixels, so the ink height
+ * comes back quantized — an 18px label measures 21px at scale 1, then 10, 5, 3
+ * at 1/2, 1/4, 1/8 — and eventually stops shrinking altogether. On CI's Linux
+ * font stack a label six map zooms out measured a flat 3px where the camera
+ * called for 0.28, failing "it is not tracking the camera" against an app that
+ * was tracking it exactly. The quantization is per-platform and per-font, so no
+ * choice of threshold absorbs it; the ratios this spec asserts need a measure
+ * that stays linear all the way down.
+ *
+ * Safe to read immediately: both the `zoomChanged` and the resist-change
+ * handlers in text.tsx call `two.update()` synchronously, so the DOM is already
+ * current when the dispatch returns.
  */
-const heightsAt = (page, scale, labels) =>
-    page.evaluate(
-        ({ s, labels }) => {
-            const two = window.__mcTwo
-            two.scene.scale = s
-            window.dispatchEvent(
-                new CustomEvent('zoomChanged', { detail: { scale: s } })
-            )
-            two.update()
-            const nodes = Array.from(document.querySelectorAll('text'))
-            const out = {}
-            labels.forEach((label) => {
-                const el = nodes.find((n) => n.textContent === label)
-                out[label] = el ? el.getBoundingClientRect().height : null
-            })
-            return out
-        },
-        { s: scale, labels }
-    )
+const sizes = (page, labels) =>
+    page.evaluate((labels) => {
+        const nodes = Array.from(document.querySelectorAll('text'))
+        const out = {}
+        labels.forEach((label) => {
+            const el = nodes.find((n) => n.textContent === label)
+            const ctm = el && el.getScreenCTM()
+            out[label] = ctm
+                ? parseFloat(el.getAttribute('font-size')) *
+                  Math.hypot(ctm.a, ctm.b)
+                : null
+        })
+        return out
+    }, labels)
+
+/**
+ * Drive the camera to a scale, then measure. Setting scene.scale + dispatching
+ * `zoomChanged` is exactly what the canvas's own zoom handlers do (five
+ * dispatch sites in newCanvas.tsx).
+ */
+const sizesAt = async (page, scale, labels) => {
+    await page.evaluate((s) => {
+        const two = window.__mcTwo
+        two.scene.scale = s
+        window.dispatchEvent(
+            new CustomEvent('zoomChanged', { detail: { scale: s } })
+        )
+        two.update()
+    }, scale)
+    return sizes(page, labels)
+}
 
 test('opting out of zoom-resistance makes map text scale with the map', async ({
     page,
@@ -119,14 +147,13 @@ test('opting out of zoom-resistance makes map text scale with the map', async ({
 
     // At the anchor zoom (scale 1) the two models agree — resist only shows up
     // once the camera moves away from 1.
-    const atAnchor = await heightsAt(page, 1, [SCALING_LABEL])
+    const atAnchor = await sizesAt(page, 1, [SCALING_LABEL])
     const anchorPx = atAnchor[SCALING_LABEL]
     expect(anchorPx, 'label missing at the anchor zoom').not.toBeNull()
 
     // Six map zooms out: surface-space text should shrink by ~2^-6, taking it
-    // well under the legibility floor the resistant default holds above. Assert
-    // the ratio rather than a pixel value — glyph metrics vary by font.
-    const zoomedOut = await heightsAt(page, Math.pow(2, -6), [SCALING_LABEL])
+    // well under the legibility floor the resistant default holds above.
+    const zoomedOut = await sizesAt(page, Math.pow(2, -6), [SCALING_LABEL])
     const outPx = zoomedOut[SCALING_LABEL]
 
     expect(outPx).not.toBeNull()
@@ -157,14 +184,14 @@ test('zoom-resistance is per record: one label opts out, the other does not', as
     })
 
     const labels = [RESISTANT_LABEL, SCALING_LABEL]
-    const baseline = await heightsAt(page, 1, labels)
+    const baseline = await sizesAt(page, 1, labels)
 
     // Sweep the reachable range (MAX_MAP_ZOOM 19 down to MIN_MAP_ZOOM 1 against
     // a z16 anchor, per baseTypes/zoomLimits.ts). Both labels ride the same
     // `zoomChanged` broadcast, in the same frame, and must diverge.
     for (const mapZoom of [19, 16, 13, 10, 5, 1]) {
         const scale = Math.pow(2, mapZoom - ANCHOR.zoom)
-        const px = await heightsAt(page, scale, labels)
+        const px = await sizesAt(page, scale, labels)
 
         expect(
             px[RESISTANT_LABEL],
@@ -179,18 +206,15 @@ test('zoom-resistance is per record: one label opts out, the other does not', as
             `at map zoom ${mapZoom} the resistant label rendered at ${px[RESISTANT_LABEL]}px`
         ).toBeLessThan(MAX_REASONABLE_PX)
 
-        // The opted-out label tracks the camera: height ∝ zuiScale. Only
-        // assert the ratio where the result is actually measurable — by map
-        // zoom 5 the true height is ~0.01px and getBoundingClientRect reports
-        // a rounded 0, so a proportionality check there would be testing the
-        // browser's pixel rounding, not our counter-scale.
+        // The opted-out label tracks the camera: size ∝ zuiScale, at every
+        // stop. The measure is the transform chain rather than rasterized ink
+        // (see `sizes`), so this holds just as tightly at map zoom 1, where the
+        // label is drawn at ~0.01px, as it does at the anchor.
         const expected = baseline[SCALING_LABEL] * scale
-        if (expected > 1) {
-            expect(
-                px[SCALING_LABEL],
-                `at map zoom ${mapZoom} the opted-out label rendered at ${px[SCALING_LABEL]}px, expected ≈${expected}px`
-            ).toBeGreaterThan(expected * 0.5)
-        }
+        expect(
+            px[SCALING_LABEL] / expected,
+            `at map zoom ${mapZoom} the opted-out label rendered at ${px[SCALING_LABEL]}px, expected ≈${expected}px`
+        ).toBeCloseTo(1, 2)
 
         // The claim that holds at every stop, measurable or not: the two
         // labels diverge in the predicted direction, from the same broadcast,
@@ -228,7 +252,7 @@ test('toggling one label re-scales only that label, with no zoom', async ({
     // Park the camera well away from the anchor so counter-scaling is doing
     // visible work; then never move it again.
     const CAMERA = Math.pow(2, -5)
-    const before = await heightsAt(page, CAMERA, labels)
+    const before = await sizesAt(page, CAMERA, labels)
 
     // What applyProperty dispatches when the switch is turned off. Going
     // through the event (rather than clicking) is deliberate: this is the
@@ -242,15 +266,7 @@ test('toggling one label re-scales only that label, with no zoom', async ({
         )
     }, SCALING_ID)
 
-    const after = await page.evaluate((labels) => {
-        const nodes = Array.from(document.querySelectorAll('text'))
-        const out = {}
-        labels.forEach((label) => {
-            const el = nodes.find((n) => n.textContent === label)
-            out[label] = el ? el.getBoundingClientRect().height : null
-        })
-        return out
-    }, labels)
+    const after = await sizes(page, labels)
 
     // The toggled label collapsed to world scale immediately — no zoom gesture.
     expect(

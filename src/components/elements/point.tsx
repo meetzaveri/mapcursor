@@ -12,9 +12,11 @@ import PointFactory, {
 } from '../../factory/point'
 import getEditComponents from '../utils/editWrapper'
 import { computeCounterScale, resolveResist } from '../../utils/counterScale'
+import { capCenterOffset } from '../../utils/fontMetrics'
 import { setProperties } from '../../utils/geometry'
 import { isPanMode } from '../../utils/drawModeUtils'
 import {
+    FONTS_LOADED_EVENT,
     POINT_LABEL_COLOR,
     POINT_LABEL_GAP,
     POINT_RADIUS,
@@ -419,6 +421,28 @@ function Point(props: ElementProps): ReactElement {
             window.removeEventListener('zoomChanged', onZoom as EventListener)
         }
     }, [two, resist])
+
+    // The label is centred on its font's CAP BAND, and under `font-display: swap`
+    // the pin is drawn before the font that defines that band has arrived — so
+    // the offset used at build time was measured against the fallback face. Take
+    // it again once the real face lands. Re-placing, not rebuilding: the label's
+    // text and style are already right, only its y was measured too early.
+    useEffect(() => {
+        const onFontsLoaded = (): void => {
+            const group = groupRef.current
+            const labelNode = group ? getPointLabelNode(group) : null
+            if (!labelNode) return
+            labelNode.translation.y = capCenterOffset(
+                labelNode.family,
+                labelNode.size
+            )
+            two.update()
+        }
+        window.addEventListener(FONTS_LOADED_EVENT, onFontsLoaded)
+        return (): void => {
+            window.removeEventListener(FONTS_LOADED_EVENT, onFontsLoaded)
+        }
+    }, [two])
 
     useEffect(() => {
         const group = groupRef.current
