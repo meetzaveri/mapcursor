@@ -7,8 +7,11 @@ import getEditComponents from '../utils/editWrapper'
 import PencilFactory from '../../factory/pencil'
 import { readOpacity } from '../../utils/canvasUtils'
 import { scheduleRender } from '../../utils/renderScheduler'
-import { computeCounterScale, isStrokeScaled } from '../../utils/counterScale'
-import { DEFAULT_RESIST } from '../../constants/misc'
+import {
+    computeCounterScale,
+    isStrokeScaled,
+    resolveResist,
+} from '../../utils/counterScale'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ElementProps = any
@@ -26,9 +29,8 @@ function Pencil(props: ElementProps): ReactElement {
     // geography while remaining visible when the world zooms out. A board-base
     // scribble is untouched — see isStrokeScaled.
     const geoResist = isStrokeScaled(props)
-    // pencil's `metadata` is the vertex array, so `.resist` is undefined and
-    // falls through to the default (same expression route.tsx uses).
-    const resist = props.metadata?.resist ?? DEFAULT_RESIST
+    // `resolveResist` is the single reader — see the note in area.tsx.
+    const resist = resolveResist(props)
     const baseLinewidth = props.linewidth ?? 1
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pathRef = useRef<any>(null)

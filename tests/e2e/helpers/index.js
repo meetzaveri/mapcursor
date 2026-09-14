@@ -1,4 +1,31 @@
 import { COMPONENT_COLUMN_NAMES } from '../../../src/utils/componentColumns'
+import {
+    geometryFields,
+    lineGeometry,
+    pointGeometry,
+    polygonGeometry,
+} from '../../../src/utils/geometry'
+
+// Fixture builders for the geometry envelope.
+//
+// These call the PRODUCTION constructors rather than hand-writing
+// `{ geometry, properties }`, so a fixture cannot drift from what the app
+// actually writes — including the details that are easy to get wrong by hand
+// (a polygon's closing position, and x/y being derived from the geometry
+// rather than set independently). Each returns `{ metadata, x, y }`, ready to
+// spread into a component row.
+
+/** A Point record at `(x, y)`. */
+export const pointAt = (x, y, properties = {}) =>
+    geometryFields(pointGeometry(x, y), properties)
+
+/** A LineString record through `points` ([{x, y}, ...]). */
+export const lineThrough = (points, properties = {}) =>
+    geometryFields(lineGeometry(points), properties)
+
+/** A Polygon record over `points`, given OPEN — the ring is closed for you. */
+export const polygonOver = (points, properties = {}) =>
+    geometryFields(polygonGeometry(points), properties)
 
 // Mock responses keyed by GraphQL operation name.
 // Apollo writes each field it requested into its cache; returning {} causes a

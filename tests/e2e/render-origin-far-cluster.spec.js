@@ -16,7 +16,7 @@
 // itself being imprecise, or by an element's counter-scale resizing its box.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 // Anchored on Ahmedabad, with a pin placed across the continent in Leeds.
@@ -35,8 +35,8 @@ const pin = (id, x, y, label) => ({
     id,
     componentType: 'point',
     children: null,
-    metadata: { content: label, label },
-    x, x1: 0, x2: 0, y, y1: 0, y2: 0,
+    ...pointAt(x, y, { content: label, label }),
+    x1: 0, x2: 0, y1: 0, y2: 0,
     fill: '#e5484d', width: 10, height: 10,
     iconStroke: null, stroke: '#e5484d', linewidth: 2, strokeType: null,
     textColor: '#3A342C', opacity: 1, position: 1,

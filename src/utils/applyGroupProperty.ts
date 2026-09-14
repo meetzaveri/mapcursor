@@ -10,6 +10,13 @@ import { resolveHeightForTextStyleChange } from './shapeTextFit'
 import { TEXT_SIZES_ARRAY } from './constants'
 import { pointLabelSizeFor } from '../constants/misc'
 import {
+    pointGeometry,
+    readGeometry,
+    readProperties,
+    setGeometry,
+    setProperties,
+} from './geometry'
+import {
     buildCircleLabel,
     circleLabelFontFamilyOf,
     circleLabelFontSizeOf,
@@ -138,6 +145,18 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
         'diamond',
         'circle',
     ]),
+}
+
+/**
+ * Which record to read a group member's properties off.
+ *
+ * The live scene element is the truth when it has one; the group overlay's
+ * detached child copy is the fallback. Preferring the live record matters
+ * because a toolbar edit lands there first, and the overlay copy is only
+ * refreshed when the group is rebuilt.
+ */
+function metaSourceOf(sceneEl: ShapeLike, child: ShapeLike): ShapeLike {
+    return readGeometry(sceneEl?.elementData) ? sceneEl.elementData : child
 }
 
 function findSceneElement(two: TwoLike, id: string): ShapeLike | undefined {
@@ -409,14 +428,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     // line nodes live in a sub-group findTextNodesInside would
                     // reach but the metadata write below would not describe.
                     const width = sceneEl?.elementData?.width ?? child?.width
-                    const meta =
-                        sceneEl?.elementData?.metadata &&
-                        !Array.isArray(sceneEl.elementData.metadata)
-                            ? sceneEl.elementData.metadata
-                            : ((child?.metadata as Record<
-                                  string,
-                                  unknown
-                              > | null) ?? {})
+                    const meta = readProperties(metaSourceOf(sceneEl, child))
                     if (sceneEl?.elementData)
                         sceneEl.elementData.textColor = value
                     child.textColor = value
@@ -447,19 +459,16 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     }
                     sceneTexts.forEach((t) => (t.fill = value))
                     coreTexts.forEach((t) => (t.fill = value))
-                    const existingMeta =
-                        sceneEl?.elementData?.metadata &&
-                        !Array.isArray(sceneEl.elementData.metadata)
-                            ? sceneEl.elementData.metadata
-                            : (child?.metadata ?? {})
-                    const updatedMeta = { ...existingMeta, textFill: value }
-                    if (sceneEl?.elementData)
-                        sceneEl.elementData.metadata = updatedMeta
-                    child.metadata = updatedMeta
-                    recordChild(id, {
-                        metadata: updatedMeta,
-                        textColor: value,
-                    })
+                    const patch = setProperties(
+                        metaSourceOf(sceneEl, child),
+                        { textFill: value }
+                    )
+                    if (patch.metadata) {
+                        if (sceneEl?.elementData)
+                            sceneEl.elementData.metadata = patch.metadata
+                        child.metadata = patch.metadata
+                    }
+                    recordChild(id, { ...patch, textColor: value })
                 }
                 return
             }
@@ -496,18 +505,16 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                             textFontSize: pointLabelSizeFor(ladderLabel),
                         }
                     }
-                    const existingMeta =
-                        sceneEl?.elementData?.metadata &&
-                        !Array.isArray(sceneEl.elementData.metadata)
-                            ? sceneEl.elementData.metadata
-                            : ((child?.metadata as Record<
-                                  string,
-                                  unknown
-                              > | null) ?? {})
-                    const updatedMeta = { ...existingMeta, ...metaPatch }
-                    if (sceneEl?.elementData)
-                        sceneEl.elementData.metadata = updatedMeta
-                    child.metadata = updatedMeta
+                    const patch = setProperties(
+                        metaSourceOf(sceneEl, child),
+                        metaPatch
+                    )
+                    const updatedMeta = patch.metadata
+                    if (updatedMeta) {
+                        if (sceneEl?.elementData)
+                            sceneEl.elementData.metadata = updatedMeta
+                        child.metadata = updatedMeta
+                    }
                     const width = sceneEl?.elementData?.width ?? child?.width
                     const opts = {
                         text: circleLabelOf({ metadata: updatedMeta }),
@@ -524,7 +531,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     // long as the selection lasts.
                     if (sceneEl) buildCircleLabel(twoJSInstance, sceneEl, opts)
                     if (coreObj) buildCircleLabel(twoJSInstance, coreObj, opts)
-                    recordChild(id, { metadata: updatedMeta })
+                    recordChild(id, patch)
                     return
                 }
 
@@ -535,14 +542,16 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                         ? 'textFontSize'
                         : 'textFontFamily'
                 const twoKey = propertyKey === 'textSize' ? 'size' : 'family'
-                const existingMeta =
-                    sceneEl?.elementData?.metadata &&
-                    !Array.isArray(sceneEl.elementData.metadata)
-                        ? sceneEl.elementData.metadata
-                        : child?.metadata && !Array.isArray(child.metadata)
-                          ? child.metadata
-                          : {}
-                const updatedMeta = { ...existingMeta, [metaKey]: value }
+                // Two views of the same edit: `updatedProps` is the property
+                // bag the text renderers read, `textPatch` is the envelope the
+                // store write needs.
+                const metaSource = metaSourceOf(sceneEl, child)
+                const existingProps = readProperties(metaSource)
+                const updatedProps = { ...existingProps, [metaKey]: value }
+                const textPatch = setProperties(metaSource, {
+                    [metaKey]: value,
+                })
+                const updatedMeta = textPatch.metadata
 
                 if (type === 'text') {
                     // Standalone text has no container box to fit — just restyle
@@ -562,7 +571,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                                 ? lineSource
                                       .map((n) => n.value ?? '')
                                       .join('\n')
-                                : (updatedMeta.content ?? '')
+                                : ((updatedProps.content as string) ?? '')
                         if (sceneEl)
                             layoutStandaloneText(
                                 twoJSInstance,
@@ -578,10 +587,12 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                                 value
                             )
                     }
-                    if (sceneEl?.elementData)
-                        sceneEl.elementData.metadata = updatedMeta
-                    child.metadata = updatedMeta
-                    recordChild(id, { metadata: updatedMeta })
+                    if (updatedMeta) {
+                        if (sceneEl?.elementData)
+                            sceneEl.elementData.metadata = updatedMeta
+                        child.metadata = updatedMeta
+                    }
+                    recordChild(id, textPatch)
                     return
                 }
 
@@ -631,21 +642,21 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                         coreObj,
                         type,
                         width,
-                        updatedMeta
+                        updatedProps
                     )
 
-                const { font: nextFont } = shapeTextStyleFromMeta(updatedMeta)
-                const { font: prevFont } = shapeTextStyleFromMeta(existingMeta)
+                const { font: nextFont } = shapeTextStyleFromMeta(updatedProps)
+                const { font: prevFont } = shapeTextStyleFromMeta(existingProps)
                 const newH = resolveHeightForTextStyleChange({
                     kind: type,
                     width,
-                    rawText: updatedMeta.textContent ?? '',
+                    rawText: (updatedProps.textContent as string) ?? '',
                     prevFont,
                     nextFont,
                     currentHeight: currentH,
                 })
 
-                const bulkObj: Partial<ComponentRow> = { metadata: updatedMeta }
+                const bulkObj: Partial<ComponentRow> = { ...textPatch }
                 if (newH !== currentH) {
                     const sceneRect = sceneEl?.children?.[0]
                     const coreRect = coreObj?.children?.[0]
@@ -684,11 +695,28 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     if (typeof child.relativeY === 'number')
                         child.relativeY += dy
                     bulkObj.height = Math.round(newH)
-                    bulkObj.y = Math.round(newAbsY)
+                    // The top-edge anchor moved the origin, so the move goes
+                    // through the GEOMETRY — writing the `y` column alone would
+                    // leave it disagreeing with the coordinates the factory
+                    // rebuilds from.
+                    Object.assign(
+                        bulkObj,
+                        setGeometry(
+                            { metadata: updatedMeta },
+                            pointGeometry(
+                                Math.round(
+                                    sceneEl?.translation?.x ?? storeRow?.x ?? 0
+                                ),
+                                Math.round(newAbsY)
+                            )
+                        )
+                    )
                 }
-                if (sceneEl?.elementData)
-                    sceneEl.elementData.metadata = updatedMeta
-                child.metadata = updatedMeta
+                if (bulkObj.metadata) {
+                    if (sceneEl?.elementData)
+                        sceneEl.elementData.metadata = bulkObj.metadata
+                    child.metadata = bulkObj.metadata
+                }
                 recordChild(id, bulkObj)
                 return
             }

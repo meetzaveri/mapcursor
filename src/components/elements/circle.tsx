@@ -8,12 +8,13 @@ import { readOpacity } from '../../utils/canvasUtils'
 import { scheduleRender } from '../../utils/renderScheduler'
 import {
     componentTypes,
-    DEFAULT_RESIST,
+    FONTS_LOADED_EVENT,
     TEXT_RESIST_CHANGED_EVENT,
 } from '../../constants/misc'
 import {
     computeCounterScale,
     resolveLabelResist,
+    resolveResist,
 } from '../../utils/counterScale'
 import {
     buildCircleLabel,
@@ -55,9 +56,9 @@ function Circle(props: ElementProps): ReactElement {
 
     // A circle's STROKE counter-scales against the camera while its geometry
     // stays world-glued, so a 5km radius stays 5km (see isStrokeScaled).
-    // A circle's metadata is an object without `resist`, so this lands on the
-    // default — the same value area and route run at.
-    const resist = props.metadata?.resist ?? DEFAULT_RESIST
+    // Unless one was stored, this lands on the default — the same value area
+    // and route run at. `resolveResist` is the single reader.
+    const resist = resolveResist(props)
     // The LABEL counter-scales at its own rate, under the user's "Zoom
     // resistant" switch. Two resists on one element: reading the column for
     // the stroke as well would make that switch delete the ring at low zoom.
@@ -184,6 +185,23 @@ function Circle(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
+    // Read the style off elementData, not props: the toolbar edits it in place
+    // and props are frozen at mount (see CLAUDE.md).
+    const rebuildLabel = (): void => {
+        const groupInstance = groupRef.current
+        const shapeInstance = shapeRef.current
+        if (!groupInstance || !shapeInstance) return
+        const record = groupInstance.elementData ?? props
+        labelRef.current = buildCircleLabel(two, groupInstance, {
+            text: circleLabelOf(record),
+            fontFamily: circleLabelFontFamilyOf(record),
+            fontSize: circleLabelFontSizeOf(record),
+            color: circleLabelColorOf(record),
+            width: props.width || shapeInstance.width || 100,
+        })
+        scheduleRender(two)
+    }
+
     useEffect(() => {
         const groupInstance = groupRef.current
         const shapeInstance = shapeRef.current
@@ -195,18 +213,29 @@ function Circle(props: ElementProps): ReactElement {
         shapeInstance.height = props.height || shapeInstance.height
         shapeInstance.fill = props.fill || shapeInstance.fill
         // Width drives the wrap (the inscribed box is a function of it), so a
-        // radius change re-flows the name. Read the style off elementData, not
-        // props: the toolbar edits it in place and props are frozen at mount.
-        const record = groupInstance.elementData ?? props
-        labelRef.current = buildCircleLabel(two, groupInstance, {
-            text: circleLabelOf(record),
-            fontFamily: circleLabelFontFamilyOf(record),
-            fontSize: circleLabelFontSizeOf(record),
-            color: circleLabelColorOf(record),
-            width: props.width || shapeInstance.width || 100,
-        })
-        scheduleRender(two)
+        // radius change re-flows the name.
+        rebuildLabel()
     }, [props.x, props.y, props.fill, props.width, props.height, two])
+
+    // Both the wrap and the cap-band centring are measured off the FONT, and
+    // under `font-display: swap` the ring is drawn before the font arrives — so
+    // the first build ran against the fallback face. Rebuild once the real one
+    // lands. A full rebuild rather than a nudge, unlike a point's single-line
+    // label: the wrap width is a font measurement too, so the line breaks can
+    // move, not just the block's y.
+    //
+    // Through a ref so the listener is bound once and still runs the current
+    // rebuild — the same reason the Two.js handlers read refs (see CLAUDE.md).
+    const rebuildLabelRef = useRef<() => void>(rebuildLabel)
+    rebuildLabelRef.current = rebuildLabel
+
+    useEffect(() => {
+        const onFontsLoaded = (): void => rebuildLabelRef.current()
+        window.addEventListener(FONTS_LOADED_EVENT, onFontsLoaded)
+        return (): void => {
+            window.removeEventListener(FONTS_LOADED_EVENT, onFontsLoaded)
+        }
+    }, [])
 
     // Counter-scale the stroke width on every camera change so the ring stays a
     // readable couple of pixels across the map's whole zoom range, while the

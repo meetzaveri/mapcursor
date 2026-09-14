@@ -6,7 +6,7 @@
 // had a control that looked present and did nothing.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 test.use({
     viewport: { width: 390, height: 844 },
@@ -25,9 +25,7 @@ const geoTextRecord = () => ({
     componentType: 'text',
     zoomResistant: null,
     children: null,
-    metadata: { content: LABEL, fontSize: 24 },
-    x: 100,
-    y: 560,
+    ...pointAt(100, 560, { content: LABEL, fontSize: 24 }),
     x1: 0,
     x2: 0,
     y1: 0,

@@ -4,6 +4,9 @@
  * Slow drawing = thick lines, fast drawing = thin lines.
  */
 
+import { geometryPositions, readGeometry, readProperties } from './geometry'
+import type { GeometrySource } from './geometry'
+
 // Velocity thresholds (px/ms)
 const SLOW_VELOCITY = 0.1
 const FAST_VELOCITY = 1.5
@@ -12,6 +15,28 @@ export interface PencilPoint {
     x: number
     y: number
     lw?: number
+}
+
+/**
+ * Re-pair a pencil record's LineString coordinates with the per-point widths
+ * stored alongside them in `properties.widths`.
+ *
+ * The two live apart because a GeoJSON position's third element means altitude
+ * — a width there would be a lie, and it would put the stroke's pressure data
+ * somewhere a GeoJSON consumer would silently misread. Keeping them as parallel
+ * arrays is also what makes every geometry operation length-preserving, so they
+ * cannot desync: a translate maps coordinates and never touches widths.
+ */
+export function pencilPointsOf(
+    source: GeometrySource | null | undefined
+): PencilPoint[] {
+    const positions = geometryPositions(readGeometry(source))
+    const widths = readProperties(source).widths
+    const widthList = Array.isArray(widths) ? widths : []
+    return positions.map(([x, y], index) => {
+        const lw = widthList[index]
+        return typeof lw === 'number' ? { x, y, lw } : { x, y }
+    })
 }
 
 /**

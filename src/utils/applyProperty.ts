@@ -7,6 +7,7 @@ import { getShapeTextNodes } from './canvasUtils'
 import { getPointCircle, getPointLabelNode } from '../factory/point'
 import { POINT_LABEL_SIZES } from '../constants/misc'
 import { capCenterOffset } from '../utils/fontMetrics'
+import { setProperties } from './geometry'
 import {
     TEXT_RESIST,
     TEXT_RESIST_CHANGED_EVENT,
@@ -196,15 +197,19 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             const circle = getPointCircle(pointGroup)
             if (circle) circle.fill = value
             if (!opts?.preview) {
-                const { category: _legacy, ...metadata } =
-                    elementData.metadata ?? {}
-                elementData.metadata = metadata
+                // `category: undefined` drops the legacy marker: the properties
+                // bag is JSON, so an undefined value does not survive the trip
+                // to jsonb.
+                const patch = setProperties(elementData, {
+                    category: undefined,
+                })
+                if (patch.metadata) elementData.metadata = patch.metadata
                 elementData.fill = value
                 elementData.stroke = value
                 updateComponentBulkPropertiesInLocalStore(id, {
                     fill: value,
                     stroke: value,
-                    metadata,
+                    ...patch,
                 })
             }
             twoJSInstance?.update()
@@ -245,14 +250,14 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
                 )
             }
             if (!opts?.preview) {
-                const metadata = {
-                    ...(elementData.metadata ?? {}),
-                    ...(propertyKey === 'textSize'
+                const patch = setProperties(
+                    elementData,
+                    propertyKey === 'textSize'
                         ? { textFontSize: size }
-                        : { textFontFamily: value }),
-                }
-                elementData.metadata = metadata
-                updateComponentBulkPropertiesInLocalStore(id, { metadata })
+                        : { textFontFamily: value }
+                )
+                if (patch.metadata) elementData.metadata = patch.metadata
+                updateComponentBulkPropertiesInLocalStore(id, patch)
             }
             twoJSInstance?.update()
             return
@@ -304,15 +309,16 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
                     : undefined
             if (propertyKey === 'textSize' && !size) return
 
-            const metadata = {
-                ...(elementData.metadata ?? {}),
-                ...(propertyKey === 'textSize'
+            const patch = setProperties(
+                elementData,
+                propertyKey === 'textSize'
                     ? { textFontSize: size }
-                    : { textFontFamily: value }),
-            }
+                    : { textFontFamily: value }
+            )
+            const metadata = patch.metadata
             if (!opts?.preview) {
-                elementData.metadata = metadata
-                updateComponentBulkPropertiesInLocalStore(id, { metadata })
+                if (metadata) elementData.metadata = metadata
+                updateComponentBulkPropertiesInLocalStore(id, patch)
             }
             // Preview still repaints — it just doesn't persist — so the rebuild
             // reads the merged metadata either way.

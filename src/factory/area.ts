@@ -1,19 +1,15 @@
 import Main from './main'
 import Two from 'two.js'
 import { strokeTypeToDashes, strokeToAreaFill } from '../utils/misc'
-
-export interface GeoVertex {
-    x: number
-    y: number
-}
+import { geometryPositions, readGeometry } from '../utils/geometry'
+import type { ComponentMetadata } from '../types/base'
 
 export interface AreaProperties {
     stroke?: string
     linewidth?: number
     strokeType?: string | null
-    // Absolute vertex coords (same convention as pencil); the factory makes
-    // them relative to the group origin (x, y).
-    metadata: GeoVertex[]
+    /** `geometry` is a Polygon whose outer ring is in absolute surface coords. */
+    metadata?: ComponentMetadata | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,11 +23,16 @@ export default class AreaFactory extends Main<AreaProperties> {
         const two = this.two
         const prevX = this.x
         const prevY = this.y
-        const { stroke, linewidth, strokeType, metadata } = this.properties
+        const { stroke, linewidth, strokeType } = this.properties
 
-        const vertices = Array.isArray(metadata) ? metadata : []
-        const anchors = vertices.map(
-            (p) => new (Two as ShapeLike).Anchor(p.x - prevX, p.y - prevY)
+        // `geometryPositions` hands back the ring OPEN. The stored ring repeats
+        // its first position last, per RFC 7946, but the path below is built
+        // with `closed = true` and closes itself — a duplicate final vertex
+        // there draws a zero-length segment and stacks a grab handle on top of
+        // the first one.
+        const positions = geometryPositions(readGeometry(this.properties))
+        const anchors = positions.map(
+            ([x, y]) => new (Two as ShapeLike).Anchor(x - prevX, y - prevY)
         )
 
         // closed = true → filled polygon (area)

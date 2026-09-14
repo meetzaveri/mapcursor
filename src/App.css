@@ -43,6 +43,16 @@
     --color-border-panel: 228 230 236; /* #e4e6ec */
     --color-border-card: 216 219 227; /* #d8dbe3 */
 
+    /* Hint pills — the product speaking to the user (tool guidance, one-shot
+       tips). Deliberately NOT the tooltip's inverted ink (`bg-ink`): a tooltip
+       labels the thing under the cursor, a hint is the system talking, and the
+       two were indistinguishable. Indigo is the accent already used for
+       "the interface is telling you something" (active tools, focus rings).
+       accent-dark rather than accent, because white text needs 7.3:1 here —
+       these pills float over an arbitrary basemap. */
+    --color-hint: 75 71 184; /* #4b47b8 — = --color-accent-dark */
+    --color-hint-fg: 255 255 255;
+
     /* dot-grid dot color — overridden in dark so the grid stays visible */
     --color-dot-grid: 216 219 227; /* #d8dbe3 */
 }
@@ -68,6 +78,11 @@
     --color-ink-muted: 123 130 150; /* #7b8296 */
     --color-border-panel: 39 43 54; /* #272b36 */
     --color-border-card: 51 56 70; /* #333846 */
+
+    /* A saturated indigo fill does not survive a graphite ground, so the hint
+       drops to a tinted dark surface carrying the lighter accent (6.4:1). */
+    --color-hint: 42 39 64; /* #2a2740 */
+    --color-hint-fg: 168 165 240; /* #a8a5f0 — = --color-accent-dark */
 
     --color-dot-grid: 51 56 70; /* #333846 */
 }

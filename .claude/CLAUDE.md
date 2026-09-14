@@ -183,7 +183,9 @@ Reusable React UI components.
 
     **Element defaults vs. selected-shape edits:** `src/utils/applyProperty.ts` (`createApplyProperty`) is the single mutation path behind `elementProperties.tsx`. Every property change (1) updates the matching default via `useElementDefaults` setters, then (2) if a shape is selected, applies the same change to that shape. So editing a property with nothing selected just sets the default; editing with a shape selected sets both. Defaults store `null` for `strokeType: 'solid'` (matching what `primary.tsx` feeds new shapes); DB rows store the literal `'solid'`/`'dashed'`/`'dotted'`.
 
-    **A point's label is styled per record, off its own ladder.** The `GEO_POINT` set carries `fill` (the pin) plus `textSize` and `textFont` (the label; its colour is fixed by design). Both text keys live in `metadata.textFontSize`/`metadata.textFontFamily`, and `applyProperty` handles them in the point branch rather than the shared text path — a point's label is a bare `Two.Text` in the point's group, not a text layer, and `selectedComponent.shape.data` for a point is the _circle_, so the shared handlers would restyle nothing. Sizes resolve against `POINT_LABEL_SIZES` (14/18/24/32), not `TEXT_SIZES_ARRAY` (24–72) whose smallest step already exceeds the point default. **The style is inherited like any other text style**: both keys feed the usual `useElementDefaults` sync, and `handlePointElement` seeds a new point from them. What makes that work across two ladders is that `defaultTextSize` travels as a _label_ (`'S'…'XL'`), never a pixel count — so XL picked on a geoText (72px) makes the next point the point ladder's XL (32px), via `pointLabelSizeFor`. Resolve the label through the point ladder at every creation site; never copy a pixel size across. The label is **centred by hand, not by `baseline: 'middle'`** — SVG's middle baseline centres the x-height, which left the label floating ~0.1em above the pin (2px at S, 4px at XL, and a different amount per font). It is drawn on the alphabetic baseline and offset by `capCenterOffset` (`utils/fontMetrics.ts`, cap height measured per family via canvas and cached only once the webfont is loaded), so re-place it on any size _or_ family change — `applyProperty` does, and `buildPointVisual` does on every rebuild. Every read goes through `pointFontFamilyOf`/`pointFontSizeOf`, and `buildPointVisual` must be handed both — it rebuilds the pin from scratch, so anything not threaded through it (the undo rebuild in `useComponentHistory` included) silently reverts to the design default. That undo rebuild **replaces** `elementData.metadata` rather than merging it: styling an unstyled point adds a key, and reverting means removing it. Covered by `tests/e2e/point-label-text.spec.js`.
+    **A point's label is styled per record, off its own ladder.** The `GEO_POINT` set carries `fill` (the pin) plus `textSize` and `textFont` (the label; its colour is fixed by design). Both text keys live in `metadata.textFontSize`/`metadata.textFontFamily`, and `applyProperty` handles them in the point branch rather than the shared text path — a point's label is a bare `Two.Text` in the point's group, not a text layer, and `selectedComponent.shape.data` for a point is the _circle_, so the shared handlers would restyle nothing. Sizes resolve against `POINT_LABEL_SIZES` (14/18/24/32), not `TEXT_SIZES_ARRAY` (24–72) whose smallest step already exceeds the point default. **The style is inherited like any other text style**: both keys feed the usual `useElementDefaults` sync, and `handlePointElement` seeds a new point from them. What makes that work across two ladders is that `defaultTextSize` travels as a _label_ (`'S'…'XL'`), never a pixel count — so XL picked on a geoText (72px) makes the next point the point ladder's XL (32px), via `pointLabelSizeFor`. Resolve the label through the point ladder at every creation site; never copy a pixel size across. The label is **centred by hand, not by `baseline: 'middle'`** — SVG's middle baseline centres the x-height, which left the label floating ~0.1em above the pin (2px at S, 4px at XL, and a different amount per font). It is drawn on the alphabetic baseline and offset by `capCenterOffset` (`utils/fontMetrics.ts`, cap height measured per family via canvas), so re-place it on any size _or_ family change — `applyProperty` does, and `buildPointVisual` does on every rebuild. Every read goes through `pointFontFamilyOf`/`pointFontSizeOf`, and `buildPointVisual` must be handed both — it rebuilds the pin from scratch, so anything not threaded through it (the undo rebuild in `useComponentHistory` included) silently reverts to the design default. That undo rebuild **replaces** `elementData.metadata` rather than merging it: styling an unstyled point adds a key, and reverting means removing it. Covered by `tests/e2e/point-label-text.spec.js`.
+
+    **A cap height is only valid once its font has loaded, and `document.fonts.check()` will not tell you that.** Our faces are `font-display: swap`, so the first paint runs against a fallback whose cap ratio is a different number — 0.662 against Avenir's 0.708, leaving a label ~2% of its size off centre for the rest of the session. check() reports `true` for a face that is still downloading, so guarding the cache on it pinned the fallback's ratio permanently. `fontMetrics.ts` caches only while `document.fonts.status !== 'loading'` and, on `loadingdone`, clears the cache and fires `FONTS_LOADED_EVENT`; `point.tsx` re-places its label on it and `circle.tsx` rebuilds its own (a circle's wrap width is a font measurement too, so its line breaks can move, not just the block's y). Props are frozen at mount, so this cannot arrive through React. `loadingdone` rather than `document.fonts.ready`: ready is a one-shot promise for the batch in flight when it was read, so a face requested later — a family picked from the font menu — would never reach a listener hung off it. This only ever showed up on CI, where a cold cache makes the swap window wide enough to cover the first paint.
 
     **A map circle takes a NAME, not inner text.** craftbase's whole
     shape-with-text pipeline came across in the fork — `applyShapeText`,
@@ -214,12 +216,23 @@ Reusable React UI components.
       `resolveResist`. Extending `resolveResist` to read the column for circles
       would make the **Zoom resistant** switch delete the ring at z4.
     - **The wrap is taken at the scale-1 reference and never re-flows on zoom.**
-      `usableTextWidth('circle', width)` is in surface units; wrapping against
-      the live counter-scale instead would re-break the text every zoom frame.
-      The accepted cost is that at resist 0.9 a long label overflows the ring
-      when zoomed far out — exactly as a point's label overflows its pin.
-      Re-wrap only on text/family/size/`width` change (`_scaleMove` does it live
-      during a resize; nothing else would tell the frozen-prop component).
+      `circleWrapWidth(width, size)` (`factory/circleLabel.ts`) is in surface
+      units; wrapping against the live counter-scale instead would re-break the
+      text every zoom frame. The accepted cost is that at resist 0.9 a long
+      label overflows the ring when zoomed far out — exactly as a point's label
+      overflows its pin. Re-wrap only on text/family/size/`width` change
+      (`_scaleMove` does it live during a resize; nothing else would tell the
+      frozen-prop component). It is `usableTextWidth` under a **4em floor**, and
+      the floor is the load-bearing half on a map: that helper subtracts a flat
+      28 surface units of whiteboard padding, which is the entire inscribed box
+      of a tight radius (59 units wide affords 13), so `wrapText` fell through
+      to charWrap and stacked the name one glyph per line. Given that
+      overflowing the ring is already accepted, a name too big for its circle
+      overruns it sideways like any other label rather than disintegrating.
+      **The editor and the renderer must read the same width** — the floor lived
+      only in `circleLabelEditor` for a while, so the overlay wrapped one way
+      and the committed label another. Covered by `map-circle-label.spec.js`
+      ("a tight circle wraps its name where the editor said it would").
     - **Opacity moved off the group onto the ellipse.** A circle is created at
       50% so the basemap reads through it, and group opacity would multiply onto
       the name too — a half-transparent label over a basemap is unreadable.
@@ -655,8 +668,9 @@ a bare String. Adding a fourth type is one `INSERT`, not a constraint swap.
   textColor: text | null,
   opacity: float | null,
   position: integer,      // NOT NULL; Z-order (see reorder.md)
-  metadata: jsonb | null, // polymorphic: vertex array for pencil/route/area/
-                          // curvedLine; object for text/point; carries baseTypeScope
+  metadata: jsonb | null, // { geometry, properties } — a GeoJSON Feature minus
+                          // its `type` tag. Uniform across every componentType;
+                          // coordinates are SURFACE units. See utils/geometry.ts
   children: jsonb | null,
   isDummy: boolean | null,
   createdBy: text,        // NOT NULL
@@ -668,9 +682,10 @@ a bare String. Adding a fourth type is one `INSERT`, not a constraint swap.
 }
 ```
 
-Note `metadata` is a union type Postgres cannot constrain and Hasura types as
-opaque `jsonb`; the client branches on `Array.isArray(metadata)` in several
-places. Splitting the vertex array into its own column is a known follow-up.
+Hasura types `metadata` as opaque `jsonb`, so the envelope's shape is enforced
+client-side by `ComponentMetadata` in `src/types/base.ts` — making that type a
+closed interface is what turns any unconverted read or write into a compile
+error. Nothing branches on the record's shape any more.
 
 ## Zoom resistance
 
@@ -682,7 +697,7 @@ detached copy in a group overlay will disagree.
 
 Two inputs, and they are not interchangeable:
 
-- **`metadata.resist`** — the numeric strength, and the _only_ mechanism for
+- **`properties.resist`** — the numeric strength, and the _only_ mechanism for
   `point` / `area` / `route` / geo `pencil` / geo `circle`. Point and geoText
   counter-scale the whole group; area/route/geo-pencil/geo-circle counter-scale
   stroke width only (`GROUP_SCALED_TYPES` vs `isStrokeScaled` — don't unify
@@ -760,21 +775,39 @@ Rules that live in more than one file, each of which had drifted at least once.
   not once the bare wheel became the map's primary control. The step is clamped
   because macOS trackpads keep emitting inertial events after the fingers lift,
   and one of those can otherwise cross several zoom levels in a frame.
-- **The absolute-vertex-metadata family owns its geometry in `metadata`, not
-  in `x`/`y`.** pencil, area, route and curvedLine store ABSOLUTE vertex coords
-  and their factories rebuild the path as `metadata - (x, y)`, so `x`/`y` is
-  only the origin those vertices were made relative to. Two consequences, both
-  of which shipped as bugs: **moving one must shift the vertex array too** (in
-  the same store write, so one undo reverts both) — persisting the new origin
-  alone is worse than persisting nothing, because the factory then subtracts the
-  new origin from the old vertices and the shape lands back where the drag
-  started; and **anything asking "where is it?" must ask the vertices**, which
-  is why paste positions these types off `vertexMetadataCenter` rather than
-  `x`/`y` (that is wherever the first click happened to fall). `hasAbsoluteVertexMetadata`
-  / `shiftVertexMetadata` / `vertexMetadataCenter` (`utils/vertexMetadata.ts`)
-  are the shared readers — reach for the type list there, never a fresh
-  `componentType === 'area' || ...` chain, which is how curvedLine ended up with
-  a move fix its three siblings never got.
+- **`metadata.geometry` is the single source of truth for position; `x`/`y` are
+  a cache.** Every record carries `metadata: { geometry, properties }` — a
+  GeoJSON Feature minus its redundant `type` tag, uniform across every
+  componentType. `utils/geometry.ts` is the ONLY module that may construct or
+  destructure it, and the rule that makes the whole thing hold is that its
+  writers (`geometryFields` / `setGeometry` / `translateGeometry` /
+  `scaleGeometry`) emit `metadata`, `x` and `y` **together**, always deriving
+  the columns from the geometry. Never write `x`/`y` on their own, and never
+  read them back as truth — use `geometryOrigin(record)` (for where a shape is
+  drawn from) or `geometryCenter(record)` (for where it visually sits, which is
+  what paste needs; a route's origin is wherever the first click happened to
+  fall). This replaced a polymorphic column that was a bare vertex array for
+  route/area/pencil and a bag of named keys for point/text/circle. Three things
+  came with the collapse: a route can finally carry a named property at all
+  (`properties.resist` reaches `resolveResist` now — on an array `.resist` was
+  always `undefined`, so area/route/pencil silently ran on the default); the
+  four mutually disagreeing "which types have array metadata" lists are gone,
+  along with `utils/vertexMetadata.ts`; and the old failure mode — persist a new
+  origin, leave the coordinates, watch the shape snap back on the next load —
+  is now unreachable rather than merely fixed. Two details that are easy to get
+  wrong by hand, which is why fixtures build through the real constructors
+  (`pointAt` / `lineThrough` / `polygonOver` in `tests/e2e/helpers`): a polygon
+  is STORED closed per RFC 7946 but RENDERED open (`geometryPositions` opens it,
+  because `factory/area.ts` builds its path with `closed = true` and closes the
+  shape itself), and a pencil's per-point widths live in `properties.widths` as
+  a parallel array — never as a third coordinate element, which in GeoJSON means
+  altitude. Covered by `tests/e2e/geometry-envelope.spec.js`.
+- **Factories take their origin from the geometry, not from their `x`/`y`
+  arguments.** `factory/main.ts` resolves it through `geometryOrigin`, which is
+  also what retired the `x === 0 ? 500 : x` coercion that used to stand there.
+  On a map base that was a live bug, not a nicety: surface (0, 0) IS the
+  georeference anchor, so anything drawn exactly on it was teleported 500 units
+  east.
 - **Bare-canvas clicks clear the selection from the hit test, not from the DOM.**
   "Selected" is drawn by three owners — the controller's box, the element-owned
   chrome that answers `clearSelector` (geoText, point) and the React

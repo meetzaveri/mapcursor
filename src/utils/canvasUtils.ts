@@ -7,6 +7,14 @@ import { lineHeightFor, measureTextWidth, type FontSpec } from './textLayout'
 import { reflowTextForShape } from './shapeTextFit'
 import { isFontReady, runWhenFontReady } from './fontLoading'
 import { scheduleRender } from './renderScheduler'
+import type { ComponentMetadata } from '../types/base'
+import {
+    geometryCenter,
+    geometryFields,
+    pointGeometry,
+    readProperties,
+    translateGeometry,
+} from './geometry'
 
 // Two.js scene/shape objects in the codebase carry extra bookkeeping fields
 // (elementData, _renderer, etc.) that aren't part of the published types. Keep
@@ -63,20 +71,16 @@ export function setArrowEndpointsVisible(
 
 // Single source of truth for reading an element's opacity off a store row /
 // props / elementData. Opacity is persisted in the top-level `opacity` column
-// for every element type. The legacy `metadata.opacity` read is kept as a
-// fallback so bases saved before the migration still render dimmed (pencil
-// never used metadata.opacity — its metadata is the vertex array — so the
-// Array guard also covers it). Absent everywhere → fully opaque.
+// for every element type; the `properties.opacity` read below covers records
+// whose creation path still seeds it there. Absent from both → fully opaque.
 export function readOpacity(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     source: any
 ): number {
     if (!source) return 1
     if (typeof source.opacity === 'number') return source.opacity
-    const meta = source.metadata
-    if (meta && !Array.isArray(meta) && typeof meta.opacity === 'number') {
-        return meta.opacity
-    }
+    const stored = readProperties(source).opacity
+    if (typeof stored === 'number') return stored
     return 1
 }
 
@@ -153,6 +157,26 @@ interface ClonedElement extends ElementCloneSource {
     y: number
 }
 
+/**
+ * The clone's geometry fields, translated so its bounding-box centre lands on
+ * `(newX, newY)`.
+ *
+ * A source carrying no geometry is malformed rather than legacy, and clones as
+ * a bare point at the cursor — enough for the paste to land somewhere visible
+ * instead of throwing.
+ */
+function moveCloneToCursor(
+    src: ElementCloneSource,
+    newX: number,
+    newY: number
+): { metadata: ComponentMetadata; x: number; y: number } {
+    const center = geometryCenter(src)
+    const moved = center
+        ? translateGeometry(src, newX - center.x, newY - center.y)
+        : null
+    return moved ?? geometryFields(pointGeometry(newX, newY))
+}
+
 // Deep-clone a canvas element's data for copy/paste, assigning a new UUID
 // and positioning at (newX, newY).
 export function cloneElementData(
@@ -172,8 +196,6 @@ export function cloneElementData(
         ...(src.zoomResistant != null
             ? { zoomResistant: src.zoomResistant }
             : {}),
-        x: newX,
-        y: newY,
         x1: src.x1,
         y1: src.y1,
         x2: src.x2,
@@ -186,13 +208,14 @@ export function cloneElementData(
         linewidth: src.linewidth,
         textColor: src.textColor,
         opacity: readOpacity(src),
-        metadata: Array.isArray(src.metadata)
-            ? src.metadata.map((p: unknown) =>
-                  typeof p === 'object' && p !== null ? { ...p } : p
-              )
-            : src.metadata
-              ? { ...(src.metadata as Record<string, unknown>) }
-              : {},
+        // Land the clone's CENTRE under the cursor, moving the geometry and
+        // the x/y cache together. Offsetting from the source's ORIGIN instead
+        // would drop a route or a pencil stroke a corner's-worth from the
+        // pointer — for those the origin is just wherever the first click fell
+        // — and further the more the drawing wanders from that first point.
+        // For a point or a text label centre and origin coincide, so one path
+        // serves every type.
+        ...moveCloneToCursor(src, newX, newY),
         children: src.children
             ? typeof structuredClone === 'function'
                 ? structuredClone(src.children)

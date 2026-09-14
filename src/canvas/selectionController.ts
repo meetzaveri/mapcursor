@@ -13,6 +13,8 @@ import {
     type FontSpec,
 } from '../utils/textLayout'
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
+import type { ComponentMetadata } from '../types/base'
+import { pointGeometry, setGeometry } from '../utils/geometry'
 import { markSelectionChrome } from '../utils/svgExportShared'
 import {
     buildCircleLabel,
@@ -197,10 +199,11 @@ interface SelectionControllerOptions {
             height: number
             x: number
             y: number
-            // Font resize on text also carries updated metadata (fontSize +
-            // multiline content).
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            metadata?: Record<string, any>
+            // Always carries the metadata envelope: a resize can move the
+            // origin, and the geometry — not the x/y columns — is what the
+            // factory reads back. A font resize additionally folds the new
+            // size + multiline content into its properties.
+            metadata: ComponentMetadata
         }
     ) => void
     recordHistory?: () => void
@@ -1103,35 +1106,44 @@ export default class SelectionController {
             const { width, height } = this.currentAdapter.getLocalSize(
                 this.currentShape
             )
+            const elementData = this.currentGroup?.elementData
+            // Dragging a corner anchors the opposite one, so a resize can move
+            // the origin. That move goes through the GEOMETRY — the x/y columns
+            // are a cache derived from it, and the factory reads the geometry
+            // back. Every type this controller resizes is a Point geometry.
+            const geometryPatch = setGeometry(
+                elementData,
+                pointGeometry(
+                    parseInt(String(this.currentGroup.translation.x)),
+                    parseInt(String(this.currentGroup.translation.y))
+                )
+            )
             const patch: {
                 width: number
                 height: number
                 x: number
                 y: number
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                metadata?: Record<string, any>
+                metadata: ComponentMetadata
             } = {
                 width: parseInt(String(width)),
                 height: parseInt(String(height)),
-                x: parseInt(String(this.currentGroup.translation.x)),
-                y: parseInt(String(this.currentGroup.translation.y)),
+                ...geometryPatch,
             }
             // Font resize (text): persist the new size + the multiline content
             // so a reload restores the resized block.
             if (this.currentAdapter.resizeMode === 'font') {
                 const nodes = getShapeTextNodes(this.currentGroup)
                 const size = this.currentShape?.size
-                const meta = this.currentGroup?.elementData?.metadata || {}
-                const newMeta = {
-                    ...meta,
-                    fontSize: size,
-                    content: nodes.map((nd) => nd?.value ?? '').join('\n'),
-                }
-                patch.metadata = newMeta
-                if (this.currentGroup.elementData) {
-                    this.currentGroup.elementData.metadata = newMeta
+                patch.metadata = {
+                    geometry: geometryPatch.metadata.geometry,
+                    properties: {
+                        ...geometryPatch.metadata.properties,
+                        fontSize: size,
+                        content: nodes.map((nd) => nd?.value ?? '').join('\n'),
+                    },
                 }
             }
+            if (elementData) elementData.metadata = patch.metadata
             this.callbacks.commit(componentId, patch)
         }
 

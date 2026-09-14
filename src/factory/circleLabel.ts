@@ -7,6 +7,7 @@ import {
 import { capCenterOffset } from '../utils/fontMetrics'
 import { lineHeightFor, wrapText } from '../utils/textLayout'
 import { usableTextWidth } from '../utils/shapeTextFit'
+import { readProperties } from '../utils/geometry'
 
 // The map circle's name, drawn centred inside the ring.
 //
@@ -43,7 +44,7 @@ export const CIRCLE_LABEL_FLAG = '__mcCircleLabel'
 
 /** The circle's label text. Empty until typed. */
 export function circleLabelOf(record: ShapeLike): string {
-    const label = record?.metadata?.label
+    const label = readProperties(record).label
     return typeof label === 'string' ? label : ''
 }
 
@@ -70,7 +71,7 @@ export function circleLabelColorOf(record: ShapeLike): string {
  * existed — those read as DEFAULT_TEXT_FONT_FAMILY.
  */
 export function circleLabelFontFamilyOf(record: ShapeLike): string {
-    const family = record?.metadata?.textFontFamily
+    const family = readProperties(record).textFontFamily
     return typeof family === 'string' && family
         ? family
         : DEFAULT_TEXT_FONT_FAMILY
@@ -83,7 +84,7 @@ export function circleLabelFontFamilyOf(record: ShapeLike): string {
  * (24) already overshoots.
  */
 export function circleLabelFontSizeOf(record: ShapeLike): number {
-    const size = record?.metadata?.textFontSize
+    const size = readProperties(record).textFontSize
     return typeof size === 'number' && size > 0 ? size : POINT_LABEL_FONT_SIZE
 }
 
@@ -137,6 +138,36 @@ export interface CircleLabelOptions {
  * SVG node is nested inside another is how you land in the scene.subtractions
  * crash (see CLAUDE.md).
  */
+// Narrowest the name is allowed to wrap to, as a multiple of the font size.
+//
+// `usableTextWidth` alone is a whiteboard measure: it takes the circle's
+// inscribed box and subtracts a fixed 28 surface units of padding, which is
+// nothing against a 450-unit board circle and is the WHOLE box against a map
+// one. A map circle is sized by the ground it covers, so a tight radius is an
+// ordinary thing to draw — at 59 units wide the usable width came out at 13,
+// under two digits, and `wrapText` fell back to charWrap and stacked the name
+// one glyph per line, a tower several times the height of the ring.
+//
+// Overflowing the ring is already the accepted behaviour here (the wrap is
+// taken at the scale-1 reference and never re-flows, so a long name overruns
+// when zoomed out — exactly as a point's label overruns its pin). Given that,
+// a name that is too big for its circle should overrun it horizontally like
+// any other label, not disintegrate vertically.
+//
+// The editor has always applied this floor to its textarea; sharing it is what
+// makes what you type and what gets drawn the same shape. Without that, the
+// overlay wrapped at 4em while the committed label wrapped at 13 units, and
+// naming a small circle looked like it worked right up until you clicked away.
+const MIN_WRAP_EMS = 4
+
+/**
+ * Width, in surface units, that a circle's name wraps to. The single definition
+ * — `circleLabelEditor` sizes its overlay with this too, scaled onto the screen.
+ */
+export function circleWrapWidth(width: number, size: number): number {
+    return Math.max(usableTextWidth('circle', width), size * MIN_WRAP_EMS)
+}
+
 export function buildCircleLabel(
     two: ShapeLike,
     group: ShapeLike,
@@ -157,7 +188,7 @@ export function buildCircleLabel(
     const raw = opts.text ?? ''
 
     const lines = raw
-        ? wrapText(raw, usableTextWidth('circle', opts.width), {
+        ? wrapText(raw, circleWrapWidth(opts.width, size), {
               family,
               size,
               weight: 'normal',

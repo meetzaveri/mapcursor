@@ -140,6 +140,14 @@ module.exports = {
                     glow: 'var(--color-accent-glow)', // focus rings → (use in CSS, not as a utility)
                 },
 
+                // Hint pills — tool guidance / one-shot tips. Its own token
+                // so a hint never wears the tooltip's inverted ink; see the
+                // note beside --color-hint in App.css.
+                hint: {
+                    DEFAULT: 'rgb(var(--color-hint) / <alpha-value>)', // pill fill  → bg-hint
+                    fg: 'rgb(var(--color-hint-fg) / <alpha-value>)', // pill text  → text-hint-fg
+                },
+
                 // Text — all warm undertones, no cool grays
                 ink: {
                     DEFAULT: 'rgb(var(--color-ink) / <alpha-value>)', // primary text, near-black  → text-ink

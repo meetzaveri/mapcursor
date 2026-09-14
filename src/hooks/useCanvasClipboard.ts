@@ -7,10 +7,10 @@ import {
 } from '../constants/misc'
 import { generateUUID } from '../utils/misc'
 import {
-    hasAbsoluteVertexMetadata,
-    shiftVertexMetadata,
-    vertexMetadataCenter,
-} from '../utils/vertexMetadata'
+    readProperties,
+    setProperties,
+    translateGeometry,
+} from '../utils/geometry'
 import {
     cloneElementData,
     getShapeTextNodes,
@@ -238,14 +238,18 @@ export function useCanvasClipboard({
                         // to the node fill only for legacy items lacking a stored
                         // textColor.
                         item.textColor = item.textColor || firstNode.fill
-                        item.metadata = {
-                            ...item.metadata,
-                            content: textNodes.map((n) => n.value).join('\n'),
-                            fontSize: firstNode.size || item.metadata?.fontSize,
-                            textFontFamily:
-                                firstNode.family ||
-                                item.metadata?.textFontFamily,
-                        }
+                        const stored = readProperties(item)
+                        Object.assign(
+                            item,
+                            setProperties(item, {
+                                content: textNodes
+                                    .map((n) => n.value)
+                                    .join('\n'),
+                                fontSize: firstNode.size || stored.fontSize,
+                                textFontFamily:
+                                    firstNode.family || stored.textFontFamily,
+                            })
+                        )
                     }
                 }
                 payload = {
@@ -322,30 +326,9 @@ export function useCanvasClipboard({
                     // arrowLine-only.
                     arrowPorts = rebindClonedArrow(newItem, new Map())
                 }
-                if (
-                    hasAbsoluteVertexMetadata(src.componentType) &&
-                    Array.isArray(src.metadata)
-                ) {
-                    // Land the copy's MIDDLE under the cursor, and move `x`/`y`
-                    // with it.
-                    //
-                    // Both halves were wrong. The offset was measured from
-                    // `src.x`, which for these types is only the origin the
-                    // vertices were made relative to — usually the first point
-                    // the user clicked — so the paste appeared a corner's-worth
-                    // away from the pointer, and further the more the drawing
-                    // wandered from that first point. And `cloneElementData`
-                    // had already set the clone's `x`/`y` to the cursor while
-                    // the vertices were shifted by a different delta, leaving
-                    // origin and geometry disagreeing on the clone from birth —
-                    // the same disagreement that loses a drag on reload.
-                    const center = vertexMetadataCenter(src.metadata)
-                    const dx = px - (center?.x ?? src.x)
-                    const dy = py - (center?.y ?? src.y)
-                    newItem.metadata = shiftVertexMetadata(src.metadata, dx, dy)
-                    newItem.x = Math.round(src.x + dx)
-                    newItem.y = Math.round(src.y + dy)
-                }
+                // Centring the clone under the cursor — and keeping its origin
+                // in step with its coordinates — is `cloneElementData`'s job
+                // now, uniformly for every geometry type.
                 addToLocalComponentStore(
                     newItem.id,
                     newItem.componentType,
@@ -412,48 +395,19 @@ export function useCanvasClipboard({
                     const absX = px + (c.relativeX ?? 0)
                     const absY = py + (c.relativeY ?? 0)
 
-                    // pencil / geo area / route keep their geometry as an
-                    // absolute {x,y} vertex array in metadata — not in x/y. The
-                    // group child stored it in the group's relative space, so
-                    // rebase the whole array to the standalone's absolute origin
-                    // (mirrors groupobject's blur-materialize). Without this the
-                    // pasted stroke renders near the origin instead of under the
-                    // group — i.e. "the pencil strokes disappear".
-                    let memberMetadata = c.metadata
-                    if (
-                        (c.componentType === 'pencil' ||
-                            c.componentType === 'area' ||
-                            c.componentType === 'route' ||
-                            c.componentType === 'curvedLine') &&
-                        Array.isArray(c.metadata)
-                    ) {
-                        const meta = c.metadata as Array<{
-                            x: number
-                            y: number
-                            lw?: number
-                        }>
-                        memberMetadata = meta.map((vert) => {
-                            const lwProp =
-                                vert.lw !== undefined ? { lw: vert.lw } : {}
-                            // Group-relative child vertex → absolute at the
-                            // paste origin (the new group origin). Anchor each
-                            // vertex to its own group-relative coord, not the
-                            // stored member origin (relativeX), which drifts
-                            // from metadata[0] for a vertex-edited curvedLine
-                            // and would jump vertex 0.
-                            return {
-                                x: px + vert.x,
-                                y: py + vert.y,
-                                ...lwProp,
-                            }
-                        })
-                    }
-
+                    // The group child holds its geometry in the group's
+                    // RELATIVE space, so rebase it to the paste origin (mirrors
+                    // groupobject's blur-materialize). Without this the pasted
+                    // stroke renders near the surface origin instead of under
+                    // the group — i.e. "the pencil strokes disappear". Every
+                    // type takes this path: a member point's Point rebases the
+                    // same way a member route's LineString does.
+                    const rebased = translateGeometry(c, px, py)
                     const memberData = {
                         ...c,
                         x: absX,
                         y: absY,
-                        metadata: memberMetadata,
+                        ...(rebased ? { metadata: rebased.metadata } : {}),
                     }
                     memberIds.push(c.id)
                     addToLocalComponentStore(

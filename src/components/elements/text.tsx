@@ -23,6 +23,7 @@ import {
     TEXT_EDIT_START_EVENT,
 } from '../../constants/misc'
 import { computeCounterScale, resolveResist } from '../../utils/counterScale'
+import { readProperties, setProperties } from '../../utils/geometry'
 import { isPanMode } from '../../utils/drawModeUtils'
 
 // Text renders exactly like NewText — same TextFactory, same multiline
@@ -76,9 +77,11 @@ function Text(props: ElementProps): ReactElement {
     const [internalState, setInternalState] = useImmer<InternalState>({})
     const mobileTriggerRef = useRef<HTMLElement | null>(null)
     const [textValue, setTextValue] = useState<string>(
-        props?.metadata?.content || ''
+        (readProperties(props).content as string) || ''
     )
-    const [, setTextSize] = useState<number>(props?.metadata?.fontSize || 36)
+    const [, setTextSize] = useState<number>(
+        (readProperties(props).fontSize as number) || 36
+    )
     const textValueRef = useRef(textValue)
     const twoTextRef = useRef<ShapeLike>(null)
     const groupRef = useRef<ShapeLike>(null)
@@ -309,18 +312,17 @@ function Text(props: ElementProps): ReactElement {
             const newWidth = Math.round(bRect.width || 60)
             const newHeight = Math.round(bRect.height || twoText.size)
 
-            const resizeMetadata = {
-                ...props.metadata,
+            const resizePatch = setProperties(props, {
                 fontSize: finalSize,
                 content: textValueRef.current,
-            }
+            })
             updateComponentBulkPropertiesInLocalStore(props.id, {
                 width: newWidth,
                 height: newHeight,
-                metadata: resizeMetadata,
+                ...resizePatch,
             })
-            if (group.elementData) {
-                group.elementData.metadata = resizeMetadata
+            if (group.elementData && resizePatch.metadata) {
+                group.elementData.metadata = resizePatch.metadata
             }
         }
 
@@ -576,18 +578,17 @@ function Text(props: ElementProps): ReactElement {
                 selectorInstance.hide()
                 two.update()
 
-                const updatedMetadata = {
-                    ...props.metadata,
+                const commitPatch = setProperties(props, {
                     content: textValueRef.current,
-                }
+                })
                 updateComponentBulkPropertiesInLocalStore(props.id, {
                     width: newWidth,
                     height: newHeight,
-                    metadata: updatedMetadata,
+                    ...commitPatch,
                 })
 
-                if (group.elementData) {
-                    group.elementData.metadata = updatedMetadata
+                if (group.elementData && commitPatch.metadata) {
+                    group.elementData.metadata = commitPatch.metadata
                 }
 
                 input.remove()
@@ -744,19 +745,20 @@ function Text(props: ElementProps): ReactElement {
             if (props.textColor) {
                 twoText.fill = props.textColor
             }
-            if (props.metadata?.fontSize) {
-                twoText.size = props.metadata.fontSize
-                setTextSize(props.metadata.fontSize)
+            const liveProps = readProperties(props)
+            if (typeof liveProps.fontSize === 'number') {
+                twoText.size = liveProps.fontSize
+                setTextSize(liveProps.fontSize)
             }
-            if (props.metadata?.textFontFamily) {
-                twoText.family = props.metadata.textFontFamily
+            if (typeof liveProps.textFontFamily === 'string') {
+                twoText.family = liveProps.textFontFamily
             }
             if (
-                props.metadata?.content !== undefined &&
-                props.metadata.content !== textValueRef.current
+                typeof liveProps.content === 'string' &&
+                liveProps.content !== textValueRef.current
             ) {
-                textValueRef.current = props.metadata.content
-                setTextValue(props.metadata.content)
+                textValueRef.current = liveProps.content
+                setTextValue(liveProps.content)
             }
 
             // Propagate style/content changes across every line node and

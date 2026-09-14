@@ -13,8 +13,11 @@
  * needs the font's real cap height — hence measuring rather than guessing.
  */
 
+import { FONTS_LOADED_EVENT } from '../constants/misc'
+
 // Cap height as a fraction of the font size, per family. Ratios are
-// size-invariant, so one measurement covers every size.
+// size-invariant, so one measurement covers every size. Cleared when a webfont
+// lands, since anything measured before that was the fallback face.
 const capRatioCache = new Map<string, number>()
 
 // Used when there is no canvas to measure with, or the measurement comes back
@@ -25,18 +28,51 @@ const FALLBACK_CAP_RATIO = 0.68
 const MEASURE_SIZE = 100
 
 /**
+ * Watch for the webfonts landing: drop every measurement taken against the
+ * fallback face and tell the canvas to re-place what it has already drawn.
+ *
+ * Registered lazily from the first measurement so importing this module has no
+ * side effects (and so it is a no-op where there is no document).
+ */
+let watchingFontLoads = false
+
+function watchFontLoads(): void {
+    if (watchingFontLoads) return
+    const fonts = document.fonts
+    if (!fonts?.addEventListener) return
+    watchingFontLoads = true
+    // `loadingdone` rather than `document.fonts.ready`: ready is a one-shot
+    // promise for the batch in flight when it was read, and a face requested
+    // later — a family the user picks from the font menu — would never reach a
+    // listener hung off it.
+    fonts.addEventListener('loadingdone', () => {
+        capRatioCache.clear()
+        window.dispatchEvent(new CustomEvent(FONTS_LOADED_EVENT))
+    })
+}
+
+/**
  * Cap height of `family`, as a fraction of the font size.
  *
- * A webfont that hasn't finished loading measures as the fallback face, which
- * is why the result is only cached once the browser confirms the family is
- * loaded — otherwise the first point placed on a cold page would pin the wrong
- * ratio for the rest of the session.
+ * A webfont that hasn't finished loading measures as the FALLBACK face, so a
+ * measurement taken while anything is still in flight is provisional: it is
+ * returned (a placed label beats no label) but not cached, and `loadingdone`
+ * clears the cache and re-places the label for real.
+ *
+ * The settled test is `document.fonts.status`, deliberately not
+ * `document.fonts.check(...)`. check() reports **true** for a face that is
+ * still downloading under `font-display: swap` — measured here at 0.662 for
+ * Avenir against its real 0.708 — so guarding on it cached the fallback's ratio
+ * for the session and left every pin's label ~2% of its size high. That is the
+ * bug tests/e2e/point-label-text.spec.js caught on CI, where a cold cache made
+ * the swap window wide enough to cover the first paint.
  */
 export function capHeightRatio(family: string): number {
     const cached = capRatioCache.get(family)
     if (cached !== undefined) return cached
 
     if (typeof document === 'undefined') return FALLBACK_CAP_RATIO
+    watchFontLoads()
 
     let ratio = FALLBACK_CAP_RATIO
     try {
@@ -54,8 +90,7 @@ export function capHeightRatio(family: string): number {
         // Keep the fallback — a mis-centred label beats a canvas that throws.
     }
 
-    const loaded = document.fonts?.check?.(`${MEASURE_SIZE}px "${family}"`)
-    if (loaded !== false) capRatioCache.set(family, ratio)
+    if (document.fonts?.status !== 'loading') capRatioCache.set(family, ratio)
     return ratio
 }
 

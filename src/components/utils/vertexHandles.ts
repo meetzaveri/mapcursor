@@ -22,6 +22,14 @@ import {
 } from '../../utils/handleScale'
 import { scheduleRender } from '../../utils/renderScheduler'
 import {
+    geometryPositions,
+    lineGeometry,
+    polygonGeometry,
+    readGeometry,
+    setGeometry,
+} from '../../utils/geometry'
+import type { ComponentMetadata } from '../../types/base'
+import {
     selectionHandleRadiusPx,
     HANDLE_STROKE,
     SELECTION_HANDLE_FILL,
@@ -50,15 +58,11 @@ export const VERTEX_PATH_REVERTED_EVENT = 'vertexPathReverted'
  * with these handles. The revert dispatchers gate on this so a vertex undo
  * reaches every one of them.
  */
-export const VERTEX_PATH_TYPES: ReadonlySet<string> = new Set([
-    'curvedLine',
-    'route',
-    'area',
-])
+export const VERTEX_PATH_TYPES: ReadonlySet<string> = new Set(['route', 'area'])
 
 export interface VertexPathRevertedDetail {
     id: string
-    metadata: Array<{ x: number; y: number }>
+    metadata: ComponentMetadata
 }
 
 export interface VertexHandlesOptions {
@@ -230,18 +234,26 @@ export function attachVertexHandles({
                     const grp = groupRef.current
                     const pth = pathRef.current
                     if (!grp || !pth) return
-                    // Persist ABSOLUTE vertex coords (the stored convention).
-                    const newVerts = pth.vertices.map((vx: ShapeLike) => ({
+                    // Vertices are held relative to the group; the stored
+                    // coordinates are absolute, so add the translation back.
+                    const points = pth.vertices.map((vx: ShapeLike) => ({
                         x: Math.round(grp.translation.x + vx.x),
                         y: Math.round(grp.translation.y + vx.y),
                     }))
-                    grp.elementData = {
-                        ...grp.elementData,
-                        metadata: newVerts,
-                    }
+                    const geometry =
+                        readGeometry(grp.elementData)?.type === 'Polygon'
+                            ? polygonGeometry(points)
+                            : lineGeometry(points)
+                    // `setGeometry` emits x/y alongside the coordinates, so
+                    // dragging vertex 0 moves the stored origin with it. This
+                    // used to persist metadata ALONE, leaving the origin
+                    // pointing at where vertex 0 started and drifting a little
+                    // further from the geometry on every edit.
+                    const patch = setGeometry(grp.elementData, geometry)
+                    grp.elementData = { ...grp.elementData, ...patch }
                     // Records an UPDATE_BULK so the edit is undoable; the revert
                     // comes back through VERTEX_PATH_REVERTED_EVENT.
-                    persistRef.current?.(idRef.current, { metadata: newVerts })
+                    persistRef.current?.(idRef.current, patch)
                 }
 
                 window.addEventListener('mousemove', onMove)
@@ -295,14 +307,18 @@ export function applyRevertedVertices(
     group: ShapeLike,
     path: ShapeLike,
     handles: ShapeLike[],
-    verts: Array<{ x: number; y: number }>
+    metadata: ComponentMetadata | null | undefined
 ): void {
-    if (!group || !path || !Array.isArray(verts)) return
+    if (!group || !path) return
+    // A polygon's stored ring is closed; `geometryPositions` opens it, which is
+    // the form the path's own `closed = true` expects.
+    const positions = geometryPositions(readGeometry({ metadata }))
+    if (positions.length === 0) return
     path.vertices.forEach((vx: ShapeLike, i: number) => {
-        const v = verts[i]
+        const v = positions[i]
         if (!v) return
-        vx.x = v.x - group.translation.x
-        vx.y = v.y - group.translation.y
+        vx.x = v[0] - group.translation.x
+        vx.y = v[1] - group.translation.y
     })
     handles.forEach((handle: ShapeLike, i: number) => {
         const vx = path.vertices[i]

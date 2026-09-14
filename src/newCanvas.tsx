@@ -84,9 +84,17 @@ import SelectionController, {
 import { updateX1Y1Vertices, updateX2Y2Vertices } from './utils/updateVertices'
 import { generateUUID } from './utils/misc'
 import {
-    hasAbsoluteVertexMetadata,
-    shiftVertexMetadata,
-} from './utils/vertexMetadata'
+    geometryFields,
+    lineGeometry,
+    moveGeometryTo,
+    pointGeometry,
+    polygonGeometry,
+    readGeometry,
+    readProperties,
+    setGeometry,
+    setProperties,
+    translateGeometry,
+} from './utils/geometry'
 import {
     getDragScansEnabled,
     getRouteSnapEnabled,
@@ -1038,15 +1046,11 @@ function addZUI(
         domElement.removeEventListener('mousemove', mousemove, false)
     }
 
-    // Hide the curved-line "press Esc/Enter to finish" nudge (no-op for geo).
-    // Also signals React (base.tsx) to drop the mobile ✓/✗ draw controls — the
-    // nudge and those controls share the exact curved-line draw lifecycle.
+    // Signals React (base.tsx) to drop the mobile ✓/✗ draw controls. The DOM
+    // nudge this used to hide (#multi-click-draw-hint) is gone — desktop
+    // guidance for these tools is now the persistent #tool-hint, which is keyed
+    // on `currentElement` and clears itself when the draw resets to pointer.
     const hideMultiClickHint = () => {
-        const hint = document.getElementById('multi-click-draw-hint')
-        if (hint) {
-            hint.style.opacity = '0'
-            hint.style.zIndex = '-1'
-        }
         window.dispatchEvent(new CustomEvent('multiClickDrawEnd'))
     }
 
@@ -1080,9 +1084,11 @@ function addZUI(
         }
 
         const type = geoDrawType
-        const originX = Math.floor(verts[0]!.x)
-        const originY = Math.floor(verts[0]!.y)
         const finalId = generateUUID()
+        const rounded = verts.map((v) => ({
+            x: Math.round(v.x),
+            y: Math.round(v.y),
+        }))
         const finalShapeData = {
             ...(geoDrawProps || {}),
             id: finalId,
@@ -1096,8 +1102,15 @@ function addZUI(
                 SHAPE_DEFAULT_STROKE,
             linewidth: defaultLinewidthValue || geoDrawProps?.linewidth || 2,
             strokeType: defaultStrokeTypeValue,
-            x: originX,
-            y: originY,
+            // An area is a closed ring (`polygonGeometry` adds the closing
+            // position); a route is an open polyline. `geometryFields` derives
+            // x/y from the first coordinate, which is the origin the factory
+            // rebuilds the path relative to.
+            ...geometryFields(
+                type === 'area'
+                    ? polygonGeometry(rounded)
+                    : lineGeometry(rounded)
+            ),
             x1: 0,
             x2: 0,
             y1: 0,
@@ -1107,11 +1120,6 @@ function addZUI(
             isDummy: null,
             createdAt: null,
             children: {},
-            // Absolute vertex coords (same convention as pencil).
-            metadata: verts.map((v) => ({
-                x: Math.round(v.x),
-                y: Math.round(v.y),
-            })),
         }
 
         clearGeoPreviewArtifacts()
@@ -1406,13 +1414,16 @@ function addZUI(
             // shape as it auto-grows with the text.
             two.update()
 
-            const rawLiveMeta =
-                group.elementData?.metadata || currentMetadata || {}
+            const stored = readProperties(group.elementData)
+            const rawLiveMeta: Record<string, unknown> =
+                Object.keys(stored).length > 0
+                    ? stored
+                    : (currentMetadata ?? {})
             // A shape that's never had text has no `textFontSize` —
             // shapeTextStyleFromMeta would fall back to its hardcoded 24px
             // ("S"). Seed it from the user's current default text size (the
             // defaults toolbar) so new shape-text honors the last-set size.
-            const liveMeta = {
+            const liveMeta: Record<string, unknown> = {
                 ...rawLiveMeta,
                 textFontSize: rawLiveMeta.textFontSize ?? defaultTextSizeValue,
             }
@@ -1668,8 +1679,8 @@ function addZUI(
                     // Use the live elementData.metadata (updated by toolbar ops
                     // like font-size and text-color) rather than the stale
                     // snapshot captured at dblclick time.
-                    const latestMeta = group.elementData?.metadata || {}
-                    const updatedMetadata = {
+                    const latestMeta = readProperties(group.elementData)
+                    const updatedProps = {
                         ...latestMeta,
                         hasText: true,
                         textContent: newContent,
@@ -1690,21 +1701,35 @@ function addZUI(
                         group,
                         shapeKind,
                         rectChild?.width || screenRect.width,
-                        updatedMetadata
+                        updatedProps
                     )
                     two.update()
 
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const persistPayload: any = { metadata: updatedMetadata }
+                    const persistPayload: any = {
+                        ...setProperties(group.elementData, updatedProps),
+                    }
                     if (rectChild) {
                         persistPayload.width = Math.round(rectChild.width)
                         persistPayload.height = Math.round(rectChild.height)
                     }
                     // Keeping the top edge fixed moved the origin; without
                     // persisting it a reload would re-center the grown box on
-                    // the old origin and the shape would jump upward.
+                    // the old origin and the shape would jump upward. The move
+                    // goes through the GEOMETRY — writing the `y` column alone
+                    // would leave the two disagreeing, and geometry is what the
+                    // factory reads back.
                     if (group.translation.y !== startTranslationY) {
-                        persistPayload.y = Math.round(group.translation.y)
+                        Object.assign(
+                            persistPayload,
+                            setGeometry(
+                                { metadata: persistPayload.metadata },
+                                pointGeometry(
+                                    Math.round(group.translation.x),
+                                    Math.round(group.translation.y)
+                                )
+                            )
+                        )
                     }
                     updateComponentBulkPropertiesInLocalStore(
                         componentId,
@@ -1714,7 +1739,7 @@ function addZUI(
                     // that read from it (copy/paste, toolbar) see the latest
                     // text content without waiting for a re-render.
                     if (group.elementData) {
-                        group.elementData.metadata = updatedMetadata
+                        group.elementData.metadata = persistPayload.metadata
                         if (rectChild) {
                             group.elementData.width = persistPayload.width
                             group.elementData.height = persistPayload.height
@@ -3294,8 +3319,20 @@ function addZUI(
                 const finalShapeData = {
                     ...drawShapeProps,
                     id: finalId,
-                    x: finalCenterX,
-                    y: finalCenterY,
+                    // `drawShapeProps` was seeded by the toolbar with a
+                    // placeholder position, so the centre has to be written
+                    // into the GEOMETRY — setting the x/y columns alone left
+                    // the circle's own coordinates back at that placeholder and
+                    // it jumped there on the next load.
+                    ...(moveGeometryTo(
+                        drawShapeProps,
+                        finalCenterX,
+                        finalCenterY
+                    ) ?? {
+                        ...geometryFields(
+                            pointGeometry(finalCenterX, finalCenterY)
+                        ),
+                    }),
                     width: finalWidth,
                     height: finalHeight,
                 }
@@ -3390,21 +3427,24 @@ function addZUI(
                 )
 
                 let pencilId = generateUUID()
+                // A pencil stroke is a LineString whose per-point pressure
+                // widths ride alongside as `properties.widths`, a parallel
+                // array. They deliberately do NOT go in the coordinates: a
+                // GeoJSON position's third element means altitude, and keeping
+                // them out is also what makes every geometry operation here
+                // length-preserving, so the two arrays cannot desync.
                 let pencilComponentData = {
                     id: pencilId,
                     baseId: props.baseId,
                     componentType: 'pencil',
                     children: {},
-                    metadata: simplifiedPoints,
-                    x: 0,
-                    y: 0,
+                    ...geometryFields(lineGeometry(simplifiedPoints), {
+                        widths: simplifiedPoints.map((point) => point.lw),
+                    }),
                     linewidth: defaultLinewidthValue,
                     stroke: defaultStrokeColorValue,
                     strokeType: defaultStrokeTypeValue,
                 }
-
-                pencilComponentData.x = Math.floor(simplifiedPoints[0]?.x || 0)
-                pencilComponentData.y = Math.floor(simplifiedPoints[0]?.y || 0)
 
                 addToLocalComponentStore(
                     pencilComponentData.id,
@@ -3670,75 +3710,58 @@ function addZUI(
 
                             if (Object.keys(arrowDetach).length > 0) {
                                 // One UPDATE_BULK: position + binding clear.
+                                // The position goes through the geometry like
+                                // every other move — the x/y columns are a
+                                // cache of it.
+                                const nextX = parseInt(shape.translation.x)
+                                const nextY = parseInt(shape.translation.y)
                                 updateComponentBulkPropertiesInLocalStore(
                                     ed.id,
                                     {
-                                        x: parseInt(shape.translation.x),
-                                        y: parseInt(shape.translation.y),
+                                        ...(moveGeometryTo(ed, nextX, nextY) ?? {
+                                            x: nextX,
+                                            y: nextY,
+                                        }),
                                         ...arrowDetach,
                                     }
                                 )
-                            } else if (
-                                hasAbsoluteVertexMetadata(ed.componentType)
-                            ) {
-                                // The absolute-metadata family — curvedLine,
-                                // area, route and pencil — keeps its geometry as
-                                // ABSOLUTE coords in `metadata`, and the factory
-                                // rebuilds the path as `metadata - (x, y)`. A
-                                // body drag moves the group but leaves metadata
-                                // where it was, so persisting the new x/y ALONE
-                                // is worse than doing nothing: on reload the
-                                // factory subtracts the new origin from the old
-                                // vertices and the shape lands exactly back
-                                // where it started. The move has to be written
-                                // into the vertex array as well, in the SAME
-                                // update so one undo reverts both.
+                            } else if (readGeometry(ed)) {
+                                // A body drag moves the Two.js group but leaves
+                                // the stored geometry where it was, so the move
+                                // has to be written into the coordinates — in
+                                // the SAME update as the x/y cache, so one undo
+                                // reverts both. `translateGeometry` emits them
+                                // together, which is what makes the old failure
+                                // (persist the new origin, leave the vertices,
+                                // watch the shape snap back on reload)
+                                // unreachable.
                                 //
-                                // Rebasing the stored array by the drag delta
-                                // rather than reading the path's vertices back:
-                                // pencil's rendered vertices are Chaikin-
-                                // smoothed, so a read-back would persist the
-                                // smoothed curve and then smooth THAT again on
-                                // the next load, rounding the stroke off a
-                                // little more with every move. A delta also
-                                // preserves per-point extras (pencil's `lw`).
+                                // Rebasing by the drag DELTA rather than reading
+                                // the path's vertices back: pencil's rendered
+                                // vertices are Chaikin-smoothed, so a read-back
+                                // would persist the smoothed curve and then
+                                // smooth THAT again on the next load, rounding
+                                // the stroke off a little more with every move.
                                 //
                                 // Undo stays correct: applyBulkProps reverts the
                                 // group translation from the snapshotted
                                 // prevProps, and the relative vertices never
                                 // moved, so restoring the translation restores
-                                // the whole shape (array metadata is a no-op on
-                                // the Two.js side).
+                                // the whole shape.
                                 const dx =
                                     parseInt(shape.translation.x) - originX
                                 const dy =
                                     parseInt(shape.translation.y) - originY
-                                const movedVerts = shiftVertexMetadata(
-                                    ed.metadata,
-                                    dx,
-                                    dy
-                                )
-                                if (movedVerts) ed.metadata = movedVerts
-                                updateComponentBulkPropertiesInLocalStore(
-                                    ed.id,
-                                    {
-                                        x: parseInt(shape.translation.x),
-                                        y: parseInt(shape.translation.y),
-                                        ...(movedVerts
-                                            ? {
-                                                  // `metadata` is the
-                                                  // polymorphic column TS
-                                                  // cannot express (object for
-                                                  // text/point, vertex array
-                                                  // here) — the cast is the
-                                                  // same one every array-metadata
-                                                  // path in this file makes.
-                                                  metadata:
-                                                      movedVerts as unknown as ComponentRecord['metadata'],
-                                              }
-                                            : {}),
-                                    }
-                                )
+                                const moved = translateGeometry(ed, dx, dy)
+                                if (moved) {
+                                    ed.metadata = moved.metadata
+                                    ed.x = moved.x
+                                    ed.y = moved.y
+                                    updateComponentBulkPropertiesInLocalStore(
+                                        ed.id,
+                                        moved
+                                    )
+                                }
                             } else {
                                 oldShapeData = { ...shape.elementData }
 
@@ -5199,43 +5222,22 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                     let relativeX = item.x - xMid
                     let relativeY = item.y - yMid
 
-                    let newMetadata = item.metadata
-                    // pencil + geo area/route + curvedLine all store an absolute
-                    // {x,y} vertex array; remap it into the group's child
-                    // coordinate space (else the factory builds the path at a
-                    // wrong offset and the member renders off-screen / invisible).
-                    if (
-                        (item.componentType === 'pencil' ||
-                            item.componentType === 'area' ||
-                            item.componentType === 'route' ||
-                            item.componentType === 'curvedLine') &&
-                        Array.isArray(item.metadata)
-                    ) {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        const meta = item.metadata as any[]
-                        newMetadata = meta.map((vert) => {
-                            const lwProp =
-                                vert.lw !== undefined ? { lw: vert.lw } : {}
-                            // Group-relative vertex = ABSOLUTE vertex − the
-                            // group's integer midpoint. Anchor every vertex to
-                            // its own absolute coord, NOT the stored member
-                            // origin (item.x/y): a curvedLine's x/y is its first
-                            // vertex at *creation* and drifts after a vertex
-                            // edit, so the old item.x-keyed formula translated
-                            // the whole curve by that drift on group. The member
-                            // origin's integer part cancels against the factory's
-                            // prevX, so metadata alone sets position. Floats (no
-                            // trunc) keep pencil's Chaikin smoothing on its path.
-                            return {
-                                x: vert.x - xMid,
-                                y: vert.y - yMid,
-                                ...lwProp,
-                            }
-                        }) as unknown as typeof item.metadata
-                    }
+                    // Remap the member's geometry into the group's child
+                    // coordinate space, or the factory builds it at the wrong
+                    // offset and the member renders off-screen. Every type
+                    // takes the same path now: a point's Point and a route's
+                    // LineString both translate by the group midpoint, and
+                    // because `x` is the geometry's own origin the result
+                    // equals `relativeX` by construction. Unrounded — pencil's
+                    // Chaikin smoothing reads the fractional part.
+                    const remapped = translateGeometry(item, -xMid, -yMid, {
+                        round: false,
+                    })
                     let obj = {
                         ...item,
-                        metadata: newMetadata,
+                        ...(remapped
+                            ? { metadata: remapped.metadata }
+                            : {}),
                         id: item.id,
                         componentType: item.componentType,
                         x: relativeX,
@@ -5657,9 +5659,18 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             (newShapeData.data.x != newShapeData.prevX ||
                 newShapeData.data.y != newShapeData.prevY)
         ) {
+            const nextX = parseInt(newShapeData.data.x)
+            const nextY = parseInt(newShapeData.data.y)
+            // Move the GEOMETRY, not just the x/y columns. Those columns are a
+            // cache derived from the geometry, so writing them alone would
+            // leave the record claiming an origin its own coordinates disagree
+            // with — and the factory reads the geometry back. Translating by
+            // the delta works for every geometry type uniformly, so this one
+            // path serves a point, a text label and a route alike.
+            const record = stateRefForComponentStore.current?.[newShapeData.id]
+            const moved = moveGeometryTo(record, nextX, nextY)
             let updateObj = {
-                x: parseInt(newShapeData.data.x),
-                y: parseInt(newShapeData.data.y),
+                ...(moved ?? { x: nextX, y: nextY }),
                 updatedBy: userId,
             }
             updateComponentBulkPropertiesInLocalStore(

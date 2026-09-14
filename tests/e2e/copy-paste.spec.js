@@ -85,7 +85,11 @@ test.describe('copy/paste', () => {
         const points = await waitForRecords(page, 'point', 2)
         expect(new Set(points.map((p) => p.id)).size).toBe(2)
         // The label rides in metadata; a clone that drops it is a blank pin.
-        expect(points.every((p) => p.metadata?.label === 'The Old Peacock')).toBe(true)
+        expect(
+            points.every(
+                (p) => p.metadata?.properties?.label === 'The Old Peacock'
+            )
+        ).toBe(true)
     })
 
     for (const [type, draw] of Object.entries({
@@ -135,7 +139,7 @@ test.describe('copy/paste', () => {
             // These types own their geometry in `metadata`, so the clone's
             // vertices — not its x/y — are what must have moved.
             const verts = all.map((r) =>
-                Array.isArray(r.metadata) ? r.metadata : null
+                r.metadata?.geometry?.coordinates ?? null
             )
             expect(verts.every(Boolean)).toBe(true)
             expect(JSON.stringify(verts[0])).not.toEqual(JSON.stringify(verts[1]))

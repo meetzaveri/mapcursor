@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 
 import { useBaseContext } from '../views/Base/baseContext'
 import { useMediaQueryUtils } from '../constants/exportHooks'
-import { TEXT_ZOOM_HINT_DISMISSED_KEY } from '../constants/misc'
+import { HINT_SLOT_TOP, TEXT_ZOOM_HINT_DISMISSED_KEY } from '../constants/misc'
 
 // How long the tip stays up before fading, and how long the fade takes (must
 // match the duration-300 class below).
@@ -23,8 +23,8 @@ const DEBOUNCE_MS = 5000
  * so there is no "below the toolbar" slot to occupy — mobile users still get
  * the switch itself in the properties panel's text tab.
  *
- * Shares the `top: 55px` slot with #multi-click-draw-hint (the toolbar's
- * computed bottom edge), so it stands down while a multi-click draw is armed.
+ * Shares the hint slot with #tool-hint (the toolbar's computed bottom
+ * edge), so it stands down while one of those tools is armed.
  */
 const TextZoomHint = (): ReactElement | null => {
     const { componentStore, currentElement } = useBaseContext()
@@ -51,9 +51,10 @@ const TextZoomHint = (): ReactElement | null => {
         Object.values(componentStore ?? {}).some(
             (c) => c?.componentType === 'text'
         ) &&
-        // Don't fight #multi-click-draw-hint for the same slot.
+        // Don't fight #tool-hint for the same slot.
         currentElement !== 'area' &&
         currentElement !== 'route' &&
+        currentElement !== 'circle' &&
         currentElement !== 'curvedLine'
 
     useEffect(() => {
@@ -120,10 +121,10 @@ const TextZoomHint = (): ReactElement | null => {
                 transition-opacity ease-out duration-300 ${
                     visible ? 'opacity-100' : 'opacity-0'
                 }`}
-            style={{ top: '55px', zIndex: 20 }}
+            style={{ top: HINT_SLOT_TOP, zIndex: 20 }}
         >
-            <div className="w-auto bg-ink text-card-bg px-4 py-2 rounded-md shadow-md">
-                <div className="text-sm text-center">
+            <div className="max-w-xl bg-hint text-hint-fg px-3 py-2 rounded-card shadow-panel">
+                <div className="text-xs leading-snug text-center">
                     Map text keeps its size as you zoom — toggle{' '}
                     <span className="font-semibold">"Zoom resistant"</span>{' '}
                     option in the property toolbar to let it scale with the map.

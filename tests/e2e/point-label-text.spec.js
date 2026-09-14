@@ -11,7 +11,7 @@
 // pin must not follow the selection onto the next.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 // Santa Clara County, at the default anchor zoom (mirrors the other map specs).
@@ -36,12 +36,14 @@ const pointRecord = (id, label, metadata) => ({
     componentType: 'point',
     zoomResistant: null,
     children: null,
-    metadata: { label, ...metadata },
-    // Offset so the two pins never overlap and each keeps its own hit area.
-    x: 0,
+    // Placed well inside the viewport, and offset from each other so the two
+    // pins never overlap and each keeps its own hit area. They used to sit at
+    // surface (0, 0) and reach the screen only because the factory teleported
+    // anything at the origin to (500, 200) — a coercion that was a live bug on
+    // a map base, where (0, 0) IS the georeference anchor.
+    ...pointAt(200, id === PLAIN_ID ? 360 : 200, { label, ...metadata }),
     x1: 0,
     x2: 0,
-    y: id === PLAIN_ID ? 160 : 0,
     y1: 0,
     y2: 0,
     fill: '#FF5630',
@@ -70,11 +72,9 @@ const geoTextRecord = (id, content) => ({
     componentType: 'text',
     zoomResistant: null,
     children: null,
-    metadata: { content, fontSize: 24 },
-    x: 0,
+    ...pointAt(200, 120, { content, fontSize: 24 }),
     x1: 0,
     x2: 0,
-    y: -200,
     y1: 0,
     y2: 0,
     fill: 'transparent',
@@ -124,7 +124,7 @@ async function openMapBase(page, components) {
     })
     await page.goto(`/map/${BASE_ID}`)
     for (const label of components.map(
-        (c) => c.metadata.label || c.metadata.content
+        (c) => c.metadata.properties.label || c.metadata.properties.content
     )) {
         await page.locator(`text=${label}`).first().waitFor({ timeout: 15_000 })
     }
@@ -145,6 +145,15 @@ async function openMapBase(page, components) {
  * 0.06px), which is why the naive box-centre comparison this replaced passed
  * for years; Avenir is not (76/24 against a cap of 70.8, a 3px disagreement at
  * 32px). Measuring the box was always measuring the wrong thing.
+ *
+ * The baseline likewise comes from `getStartPositionOfChar`, not from
+ * `rect.top + fontBoundingBoxAscent`. Those are two different fonts' opinions of
+ * the same ascent — Blink lays SVG text out with the face re-scaled to its
+ * on-screen ppem and rounds THAT face's ascent to whole pixels, while canvas
+ * reports the unrounded metric — so reconstructing the baseline from the box
+ * mixed in a rounding error that varied by platform and font (0.19px here,
+ * enough to carry a 0.74px placement bug past a 1px tolerance on macOS while CI
+ * failed it at 1.10px). getStartPositionOfChar returns the text origin itself.
  */
 const centerOffset = (page, label) =>
     page.evaluate((label) => {
@@ -154,7 +163,6 @@ const centerOffset = (page, label) =>
         if (!text) return null
         const group = text.closest('g[data-component-id]')
         const circle = group.querySelector('circle, ellipse, path')
-        const tb = text.getBoundingClientRect()
         const cb = circle.getBoundingClientRect()
 
         const size = Number(text.getAttribute('font-size'))
@@ -164,8 +172,15 @@ const centerOffset = (page, label) =>
         // 'H': no overshoot, no descender, so its ink ascent IS the cap height
         // — the same measurement utils/fontMetrics.ts places the label by.
         const m = ctx.measureText('H')
-        const baseline = tb.y + m.fontBoundingBoxAscent
-        const capCenter = baseline - m.actualBoundingBoxAscent / 2
+
+        // Both the baseline and the cap height are in the text's own user
+        // units; the CTM carries them to the screen the circle was measured in
+        // (a pin counter-scales its group, so the two are not the same space).
+        const ctm = text.getScreenCTM()
+        const scale = Math.hypot(ctm.a, ctm.b)
+        const start = text.getStartPositionOfChar(0)
+        const baseline = new DOMPoint(start.x, start.y).matrixTransform(ctm).y
+        const capCenter = baseline - (m.actualBoundingBoxAscent * scale) / 2
         return capCenter - (cb.y + cb.height / 2)
     }, label)
 

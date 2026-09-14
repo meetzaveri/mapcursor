@@ -11,10 +11,12 @@ import PointFactory, {
     POINT_CHROME_FLAG,
 } from '../../factory/point'
 import getEditComponents from '../utils/editWrapper'
-import { computeCounterScale } from '../../utils/counterScale'
+import { computeCounterScale, resolveResist } from '../../utils/counterScale'
+import { capCenterOffset } from '../../utils/fontMetrics'
+import { setProperties } from '../../utils/geometry'
 import { isPanMode } from '../../utils/drawModeUtils'
 import {
-    DEFAULT_RESIST,
+    FONTS_LOADED_EVENT,
     POINT_LABEL_COLOR,
     POINT_LABEL_GAP,
     POINT_RADIUS,
@@ -63,7 +65,7 @@ function Point(props: ElementProps): ReactElement {
     const labelRef = useRef<string>(pointLabelOf(props))
 
     const two = props.twoJSInstance
-    const resist = props.metadata?.resist ?? DEFAULT_RESIST
+    const resist = resolveResist(props)
 
     useEffect(() => {
         const prevX = props.x
@@ -213,7 +215,8 @@ function Point(props: ElementProps): ReactElement {
             const labelNode = getPointLabelNode(group)
             const circleNode = group.children?.[0]
             const circleElem = circleNode?._renderer?.elem as
-                SVGGraphicsElement | undefined
+                | SVGGraphicsElement
+                | undefined
             if (!labelNode || !circleElem) return
             // Already editing — don't stack a second input.
             if (document.getElementById(`point-label-input-${props.id}`)) return
@@ -264,7 +267,7 @@ function Point(props: ElementProps): ReactElement {
             input.style.lineHeight = `${lineH}px`
             input.style.height = `${lineH}px`
             input.style.left = `${circleRect.right + POINT_LABEL_GAP * effScale}px`
-            input.style.top = `${circleRect.top + circleRect.height / 2 - lineH / 2}px`
+            input.style.top = `${circleRect.top + 2 + circleRect.height / 2 - lineH / 2}px`
 
             document.getElementById('main-two-root')?.append(input)
 
@@ -344,19 +347,19 @@ function Point(props: ElementProps): ReactElement {
                 }
                 restoreSelectorAfterEditRef.current = false
 
-                const updatedMetadata = {
-                    ...(group.elementData?.metadata ?? props.metadata ?? {}),
+                const labelPatch = setProperties(group.elementData ?? props, {
                     label: value,
-                }
+                })
                 // Frozen props mean React won't re-render this element, so the
                 // scene node above and elementData here are the live copies —
                 // keep both in step with the store write.
-                if (group.elementData) {
-                    group.elementData.metadata = updatedMetadata
+                if (group.elementData && labelPatch.metadata) {
+                    group.elementData.metadata = labelPatch.metadata
                 }
-                updateComponentBulkPropertiesInLocalStore?.(props.id, {
-                    metadata: updatedMetadata,
-                })
+                updateComponentBulkPropertiesInLocalStore?.(
+                    props.id,
+                    labelPatch
+                )
             }
 
             input.addEventListener('blur', commit)
@@ -418,6 +421,28 @@ function Point(props: ElementProps): ReactElement {
             window.removeEventListener('zoomChanged', onZoom as EventListener)
         }
     }, [two, resist])
+
+    // The label is centred on its font's CAP BAND, and under `font-display: swap`
+    // the pin is drawn before the font that defines that band has arrived — so
+    // the offset used at build time was measured against the fallback face. Take
+    // it again once the real face lands. Re-placing, not rebuilding: the label's
+    // text and style are already right, only its y was measured too early.
+    useEffect(() => {
+        const onFontsLoaded = (): void => {
+            const group = groupRef.current
+            const labelNode = group ? getPointLabelNode(group) : null
+            if (!labelNode) return
+            labelNode.translation.y = capCenterOffset(
+                labelNode.family,
+                labelNode.size
+            )
+            two.update()
+        }
+        window.addEventListener(FONTS_LOADED_EVENT, onFontsLoaded)
+        return (): void => {
+            window.removeEventListener(FONTS_LOADED_EVENT, onFontsLoaded)
+        }
+    }, [two])
 
     useEffect(() => {
         const group = groupRef.current

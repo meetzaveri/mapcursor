@@ -3,8 +3,7 @@ import type { ReactElement } from 'react'
 import { useBaseContext } from '../../views/Base/baseContext'
 
 import AreaFactory from '../../factory/area'
-import { computeCounterScale } from '../../utils/counterScale'
-import { DEFAULT_RESIST } from '../../constants/misc'
+import { computeCounterScale, resolveResist } from '../../utils/counterScale'
 import {
     attachVertexHandles,
     setVertexHandlesVisible,
@@ -52,9 +51,12 @@ function Area(props: ElementProps): ReactElement {
     }, [props.id])
 
     const two = props.twoJSInstance
-    // metadata for area is the vertex array, so `.resist` is undefined and we
-    // fall back to the default — same expression point.tsx uses.
-    const resist = props.metadata?.resist ?? DEFAULT_RESIST
+    // `resolveResist` is the single reader — reaching for the field directly
+    // is how a live element and its detached group-overlay copy end up
+    // disagreeing. It is also only now that an area can carry a stored resist
+    // at all: under the old vertex-array metadata `.resist` was always
+    // undefined here, so the default was the only reachable value.
+    const resist = resolveResist(props)
     // Logical (unscaled) stroke width. We counter-scale this on zoom rather
     // than the whole group, so the polygon geometry stays glued to the world.
     const baseLinewidth = props.linewidth ?? 2
@@ -93,9 +95,9 @@ function Area(props: ElementProps): ReactElement {
 
             two.update()
 
-            // Per-vertex handles + the fat hit band, shared with the curved
-            // line — all three are absolute-metadata multi-point paths, so
-            // they get the same editing model.
+            // Per-vertex handles + the fat hit band. Route and area share the
+            // editing model: both are multi-point geometries whose coordinates
+            // are the mark.
             vertexHandles = attachVertexHandles({
                 two,
                 group,

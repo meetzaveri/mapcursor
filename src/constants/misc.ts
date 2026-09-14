@@ -11,7 +11,7 @@ export const GROUP_COMPONENT = 'groupobject'
 // so exports don't fall back. The picker offers this and 'Frutiger' and
 // nothing else; 'Caveat Brush' is
 // still loaded from Google Fonts because records authored before the swap
-// carry it in `metadata.textFontFamily` and nothing migrates that field.
+// carry it in `properties.textFontFamily` and nothing migrates that field.
 export const DEFAULT_TEXT_FONT_FAMILY = 'Avenir'
 
 // The ring colour of every grab handle in the app — route and area vertex dots,
@@ -126,14 +126,14 @@ export const DEFAULT_RESIST = 0.9
 //
 // This is the knob to turn when tuning legibility: 1 pins text to a constant
 // screen size (true map-label behaviour), 0 restores the old scales-with-the-
-// geography model. Per-record `metadata.resist` overrides it.
+// geography model. Per-record `properties.resist` overrides it.
 export const TEXT_RESIST = 0.9
 
 // The user-facing on/off switch for the above is the `zoomResistant` column,
 // not metadata: `false` means resist 0, absent/true means TEXT_RESIST. It is
 // read by the LABEL readers only — `resolveLabelResist` in utils/counterScale.ts
 // (a circle's label) and `resolveResist`'s text arm (a text's whole group).
-// Point, area, route and geo pencil keep the numeric metadata.resist and ignore
+// Point, area, route, pencil and circle keep the numeric properties.resist and ignore
 // the column, and so does a circle's STROKE: a circle resists at two different
 // rates, and reading the column for its ring would make the switch delete the
 // ring at low zoom.
@@ -143,6 +143,20 @@ export const TEXT_RESIST = 0.9
 // props at mount, so a column write never reaches the component through React —
 // this is the same escape hatch `standaloneTextReverted` uses.
 export const TEXT_RESIST_CHANGED_EVENT = 'textResistChanged'
+
+/**
+ * "The webfonts have finished loading" — no payload; each listener re-reads its
+ * own family and size.
+ *
+ * Canvas labels are centred on their font's CAP BAND, which can only be
+ * measured from the face that is actually resolving (utils/fontMetrics.ts). Our
+ * faces are `font-display: swap`, so the first paint happens against a fallback
+ * — and a label placed then sits a couple of percent of its size off centre for
+ * the rest of the session unless something re-places it. That is this event's
+ * whole job. ElementRenderWrapper freezes props at mount, so, as with
+ * TEXT_RESIST_CHANGED_EVENT, the news cannot arrive through React.
+ */
+export const FONTS_LOADED_EVENT = 'fontsLoaded'
 
 /**
  * "Select this element" — `{ id }`. Answered by newCanvas, which owns selection.
@@ -185,7 +199,7 @@ export const TEXT_EDIT_CANCEL_EVENT = 'cancelTextEdit'
 // Points only ever render over the map base, and the basemap has no dark
 // variant, so black stays readable in either theme. Ship a dark basemap and
 // this needs to become theme-derived ink instead.
-export const POINT_RADIUS = 10
+export const POINT_RADIUS = 8
 export const POINT_LABEL_GAP = 5
 export const POINT_COLOR = '#FF5630'
 export const POINT_LABEL_COLOR = '#000'
@@ -285,6 +299,31 @@ export const DRAFT_STORAGE_KEY = 'mapcursor_local_draft'
 export const DRAFT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
 export const BACKGROUND_BASE_STORAGE_KEY = 'mapcursor_background_base_id'
 export const STORAGE_QUOTA_ERROR_NAME = 'QuotaExceededError'
+
+// Top offset of the hint slot under the primary toolbar, shared by #tool-hint
+// and #geo-text-zoom-hint — only ever one of them is up at a time, and they
+// must land in the same place. The toolbar's bottom edge computes to 54px, so
+// this leaves ~5px of air under it rather than butting against the shadow.
+export const HINT_SLOT_TOP = '60px'
+
+// On mobile the toolbar is pinned bottom-left, so there is no "below the
+// toolbar" slot — the hint goes to the empty strip along the TOP instead,
+// between the menu button and the share button. Both of those are 46px tall
+// and sit at top: 8px, so the hint shares that line and grows downward.
+//
+// The insets clear each neighbour by 8px: the menu is 40px wide at left 10px,
+// and the share button is 46px wide at a 15px right inset. If either of those
+// buttons is ever resized, these move with them.
+// In the canvas-chrome band (10-20), under the toast and well under a modal.
+// Note this cannot be tuned to sit below the menu drawer: that drawer's inner
+// z-20 is trapped in the stacking context its own wrapper creates at z-10, so
+// the hint is above it at any value in this band. The mobile copy is kept to
+// two lines instead, which keeps the pill clear of the drawer entirely.
+export const HINT_SLOT_Z = 20
+
+export const HINT_SLOT_MOBILE_TOP = '8px'
+export const HINT_SLOT_MOBILE_LEFT = '58px'
+export const HINT_SLOT_MOBILE_RIGHT = '69px'
 
 // One-shot tip pointing at the "Zoom resistant" switch, shown under the primary
 // toolbar the first time a user zooms a map base that has text on it. Same

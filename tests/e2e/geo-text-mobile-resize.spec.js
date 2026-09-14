@@ -15,7 +15,7 @@
 // pixel-perfect synthetic tap would paper over.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES } from './helpers/index.js'
+import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 test.use({
     viewport: { width: 390, height: 844 },
@@ -38,8 +38,8 @@ const geoTextRecord = (id) => ({
     id,
     componentType: 'text',
     children: null,
-    metadata: { content: LABEL, fontSize: 18 },
-    x: 0, x1: 0, x2: 0, y: 0, y1: 0, y2: 0,
+    ...pointAt(0, 0, { content: LABEL, fontSize: 18 }),
+    x1: 0, x2: 0, y1: 0, y2: 0,
     fill: 'transparent', width: 120, height: 36,
     iconStroke: null, stroke: null, linewidth: 2, strokeType: null,
     textColor: '#3A342C', opacity: 1, position: 1,
