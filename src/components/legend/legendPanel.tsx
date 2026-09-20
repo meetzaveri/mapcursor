@@ -64,7 +64,7 @@ export function LegendList({
                     className="w-full h-8 text-xs rounded-md bg-accent text-white
                         hover:shadow-lg transition-shadow duration-150"
                 >
-                    Create a Legend
+                    Create a Legend Preset
                 </button>
             </div>
         )
@@ -170,7 +170,7 @@ export function LegendList({
                 className="w-full h-8 text-xs text-center text-accent-dark border-t
                     border-border-panel hover:bg-sidebar transition-colors duration-150"
             >
-                + New preset
+                + New Legend Preset
             </button>
         </div>
     )
