@@ -91,8 +91,10 @@ export default function PresetPreview({
             )
             break
         case 'circle':
-            // A radius map: a filled ring at the 50% opacity it is created
+            // A radius map: a BORDERLESS disc at the 50% opacity it is created
             // with, so the swatch reads the way the mark does over a basemap.
+            // `common` is deliberately not spread here — an outline in the
+            // swatch would promise a ring the canvas never draws.
             mark = (
                 <circle
                     cx={20}
@@ -100,7 +102,7 @@ export default function PresetPreview({
                     r={13}
                     fill={fill ?? 'none'}
                     fillOpacity={0.5}
-                    {...common}
+                    stroke="none"
                 />
             )
             break

@@ -60,10 +60,10 @@ export interface LegendPresetStyle {
  * these.
  *
  * `area` and `route` are stroked marks, so they take `stroke`. `point` and
- * `circle` are FILLED marks whose ring is their fill (see the one-way mirror in
- * applyProperty.ts), so they take `fill` and derive the stroke from it —
- * listing `stroke` here too would let a wizard offer two colours for one mark.
- * A point has no stroke controls at all, matching `SETS.POINT`.
+ * `circle` are FILLED marks with no outline of their own, so they take `fill`
+ * and nothing else — listing `stroke` here too would let a wizard offer two
+ * colours for one mark, and a border a radius map does not draw. This matches
+ * `SETS.POINT` / `SETS.CIRCLE`, neither of which carries a stroke control.
  */
 export const PRESET_STYLE_KEYS: Record<
     LegendPresetType,
@@ -72,7 +72,7 @@ export const PRESET_STYLE_KEYS: Record<
     point: ['fill'],
     area: ['stroke', 'linewidth', 'strokeType'],
     route: ['stroke', 'linewidth', 'strokeType'],
-    circle: ['fill', 'linewidth', 'strokeType'],
+    circle: ['fill'],
 }
 
 /**
@@ -108,8 +108,11 @@ export interface LegendPreset {
  *
  * The `fill → stroke` mirror lives here rather than at the call sites because
  * it is a property of the MARK, not of the gesture: a radius map and a point
- * both read as one mark, so their ring takes their fill. `applyProperty` does
- * the same thing for a hand-edit; this keeps a preset honest against it.
+ * both read as one mark, so the stroke column is kept in step with the fill
+ * rather than stranded on an older colour. Neither type paints an outline — a
+ * radius map is drawn borderless — so this is about the record staying one
+ * colour, not about a ring. `applyProperty` does the same thing for a
+ * hand-edit; this keeps a preset honest against it.
  *
  * Returns only keys the preset actually carries, so a partially-filled preset
  * (mid-wizard) never blanks a column it has no opinion about.
@@ -124,8 +127,9 @@ export function presetStylePatch(
         if (value === undefined) return
         patch[key] = value
     })
-    // A filled mark's ring is its fill. One-way, exactly as in applyProperty:
-    // the preset never carries a separate `stroke` for these types.
+    // A filled mark's stroke column follows its fill. One-way, exactly as in
+    // applyProperty: the preset never carries a separate `stroke` for these
+    // types.
     if (patch.fill !== undefined) patch.stroke = patch.fill
     return patch
 }

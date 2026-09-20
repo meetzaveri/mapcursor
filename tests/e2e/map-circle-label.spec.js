@@ -9,8 +9,9 @@
 // parked in the circle's group, stored in `metadata`, which never touches the
 // geometry. What these tests protect, in order of how badly each has gone
 // wrong before: the radius is untouched by naming, the wrap is stable across
-// the whole zoom range, the label and the ring resist zoom independently, and
-// undo puts the name back on screen and not just in the store.
+// the whole zoom range, the label is the only part of a circle that resists
+// zoom (the disc is borderless), and undo puts the name back on screen and not
+// just in the store.
 
 import { test, expect } from './helpers/test.js'
 import {
@@ -264,12 +265,12 @@ test.describe('the map circle label', () => {
         // surface units of whiteboard padding, which is the entire inscribed
         // box of a circle this size, so wrapText fell through to charWrap and
         // stacked the name one glyph per line — a tower several times the
-        // height of the ring, from a preview that had looked perfect.
+        // height of the disc, from a preview that had looked perfect.
         expect(lines).toEqual(['131212', '212121', '21'])
         expect(lines.length).toBe(editorLines)
     })
 
-    test('the label and the ring resist zoom independently', async ({
+    test('the label resists zoom; the borderless disc has nothing to', async ({
         page,
     }) => {
         await openMapBase(page)
@@ -281,19 +282,19 @@ test.describe('the map circle label', () => {
         await setZoom(page, 0.25)
         const zoomedOut = await readCircle(page)
 
-        // Both counter-scale by 1/scale^resist at resist 0.9 while the switch
-        // is on. Checked loosely: the point is that each is counter-scaled at
-        // all, not the exact exponent.
+        // The label counter-scales by 1/scale^resist at resist 0.9 while the
+        // switch is on. Checked loosely: the point is that it is counter-scaled
+        // at all, not the exact exponent.
         const expected = 1 / Math.pow(0.25, 0.9)
         expect(zoomedOut.labelScale / at1.labelScale).toBeCloseTo(expected, 1)
-        expect(zoomedOut.ringLinewidth / at1.ringLinewidth).toBeCloseTo(
-            expected,
-            1
-        )
+        // The disc is the only other thing in the group, and it is borderless —
+        // its geometry marks the ground, so nothing about it scales.
+        expect(at1.ringLinewidth).toBe(0)
+        expect(zoomedOut.ringLinewidth).toBe(0)
 
-        // Turning the switch off must drop the LABEL to resist 0 and leave the
-        // RING counter-scaling. Two resists on one element: reading the column
-        // for the ring as well would make this switch delete it at low zoom.
+        // Turning the switch off drops the LABEL to resist 0. It is the only
+        // reader of the column on a circle, so there is nothing else for it to
+        // reach.
         await page.evaluate((id) => {
             window.dispatchEvent(
                 new CustomEvent('textResistChanged', {
@@ -304,10 +305,7 @@ test.describe('the map circle label', () => {
         await setZoom(page, 0.25)
         const offAtQuarter = await readCircle(page)
         expect(offAtQuarter.labelScale).toBeCloseTo(1, 2)
-        expect(offAtQuarter.ringLinewidth / at1.ringLinewidth).toBeCloseTo(
-            expected,
-            1
-        )
+        expect(offAtQuarter.ringLinewidth).toBe(0)
     })
 
     test('the Radius Map panel restyles the label off the point ladder', async ({
@@ -419,12 +417,10 @@ test.describe('the map circle label', () => {
         const off = await readCircle(page)
         // Label now scales with the geography…
         expect(off.labelScale).toBeCloseTo(1, 2)
-        // …while the ring keeps counter-scaling. Reading the column for the
-        // stroke too would have made this switch delete the ring at low zoom.
-        expect(off.ringLinewidth / at1.ringLinewidth).toBeCloseTo(
-            1 / Math.pow(0.25, 0.9),
-            1
-        )
+        // …and the disc is untouched: it is borderless, so the switch has
+        // nothing else on this element to reach.
+        expect(at1.ringLinewidth).toBe(0)
+        expect(off.ringLinewidth).toBe(0)
     })
 
     test('undo puts the name back on screen, not just in the store', async ({

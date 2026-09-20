@@ -277,9 +277,15 @@ export const ELEMENT_DEFAULTS: Record<
 // default is the whiteboard's pale shape fill, which at 50% over a basemap is
 // invisible. Stroke is not listed because a new map circle takes its fill as
 // its stroke, so the two read as one mark until the user separates them.
+//
+// `linewidth: 0` is the border: a radius map is BORDERLESS. It answers "what is
+// within this distance", and a hard ring reads as an edge the data does not
+// have — the translucent disc alone is the mark. Nothing offers a width for it
+// (see SETS.CIRCLE and PRESET_STYLE_KEYS.circle), so the value is not a default
+// the user can move off; it is the shape of the mark.
 export const CIRCLE_DEFAULTS = {
     fill: '#A32D2D',
-    linewidth: 2,
+    linewidth: 0,
     opacity: 0.5,
 } as const
 

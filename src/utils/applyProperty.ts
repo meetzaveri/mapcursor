@@ -166,8 +166,9 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         // and the whiteboard's. Skipped entirely in preview mode.
         //
         // A circle's fill opts out too, for the same per-element reason: it is
-        // that circle's identity on the basemap, not a shape preference. Only
-        // fill, not stroke/width/type: those keep syncing, like area and route.
+        // that circle's identity on the basemap, not a shape preference. It is
+        // the only colour a circle has — SETS.CIRCLE offers no stroke controls,
+        // so the stroke/width/type syncs below are reached by area and route.
         if (!opts?.preview) {
             if (propertyKey === 'fill') {
                 if (!isCircle) setDefaultFill(value)
@@ -441,16 +442,17 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         if (propertyKey === 'fill') {
             if (shapeData) shapeData.fill = value
             if (elementData) elementData.fill = value
-            // A radius map reads as ONE mark: its ring is its fill. A new
-            // circle is created that way (see the circle branch in
-            // primary.tsx), and recolouring it has to keep that promise —
-            // otherwise the first fill edit silently strands the ring on the
-            // old colour. The mirror is deliberately one-way: `stroke` below
-            // does not touch `fill`, so a user who wants the two apart can
-            // still separate them, and picking a fill afterwards re-joins them.
+            // A radius map reads as ONE mark, and it is borderless: its
+            // stroke column follows its fill rather than standing for a ring
+            // of its own. A new circle is created that way (see the circle
+            // branch in primary.tsx) at zero width, and recolouring keeps the
+            // record one colour instead of stranding `stroke` on the old one.
+            // There is no stroke control for a circle to separate them with —
+            // SETS.CIRCLE carries none.
             //
-            // Neither colour syncs to the defaults (see the guard in step 1) —
-            // this is that circle's identity on the basemap, not a preference.
+            // The fill does not sync to the defaults (see the guard in step 1)
+            // — this is that circle's identity on the basemap, not a
+            // preference.
             if (isCircle) {
                 if (shapeData) shapeData.stroke = value
                 if (elementData) elementData.stroke = value

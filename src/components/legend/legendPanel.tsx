@@ -75,11 +75,17 @@ export function LegendList({
             <ul className="max-h-72 overflow-y-auto">
                 {presets.map((preset) => {
                     const count = counts[preset.id] ?? 0
+                    // Same row as the wizard's review card — swatch, then a
+                    // min-w-0 text block — so a preset reads the same way in
+                    // the list it lands in as it did on the page it was made
+                    // on. `text-left` is not decoration: the panel is a child
+                    // of `.App`, which sets `text-align: center`, and the
+                    // wizard only escapes that by portalling to the body.
                     return (
                         <li
                             key={preset.id}
                             data-preset-id={preset.id}
-                            className="group flex items-center gap-2 px-2 py-2
+                            className="group flex items-center gap-3 px-2 py-2 text-left
                                 border-b border-border-panel last:border-b-0"
                         >
                             <PresetPreview
@@ -87,16 +93,17 @@ export function LegendList({
                                 preset={preset}
                                 size={28}
                             />
+                            {/* flex-1 is the whole justification story: it
+                                pushes the actions to the far edge, where the
+                                wizard's card simply has nothing. */}
                             <div className="min-w-0 flex-1">
                                 <div className="text-xs text-ink truncate">
                                     {preset.name}
                                 </div>
                                 <div className="text-[11px] text-ink-muted">
                                     {LEGEND_TYPE_LABELS[preset.elementType]}
-                                    {' · '}
-                                    {count === 0
-                                        ? 'Unused'
-                                        : `${count} on map`}
+
+                                    {/* {count === 0 ? 'Unused' : `${count} on map`} */}
                                 </div>
                             </div>
                             {/* Always in the DOM, revealed on hover/focus —
@@ -129,10 +136,7 @@ export function LegendList({
                                         </svg>
                                     </button>
                                 </Tooltip>
-                                <Tooltip
-                                    label="Delete preset"
-                                    placement="left"
-                                >
+                                <Tooltip label="Delete preset" placement="left">
                                     <button
                                         type="button"
                                         aria-label={`Delete ${preset.name}`}
@@ -163,7 +167,7 @@ export function LegendList({
             <button
                 type="button"
                 onClick={onCreate}
-                className="w-full h-8 text-xs text-accent-dark border-t
+                className="w-full h-8 text-xs text-center text-accent-dark border-t
                     border-border-panel hover:bg-sidebar transition-colors duration-150"
             >
                 + New preset

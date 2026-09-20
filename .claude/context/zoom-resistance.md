@@ -15,15 +15,19 @@ Two disjoint sets, and they must not be unified:
 - **`GROUP_SCALED_TYPES` = `point`, `text`** — the whole group counter-scales.
   A pin is chrome; a caption is content, so `text` carries its own constant
   (`TEXT_RESIST`) rather than sharing the default.
-- **`isStrokeScaled()` = `area`, `route`, `pencil`, `circle`** — the geometry
-  stays world-scaled and only the STROKE is held near-constant. A circle marks a
-  real-world radius, so shrinking its geometry would destroy the meaning of the
-  mark; the same reasoning covers a freehand stroke.
+- **`isStrokeScaled()` = `area`, `route`, `pencil`** — the geometry stays
+  world-scaled and only the STROKE is held near-constant. Each marks real ground
+  with its path, so shrinking the geometry would destroy the meaning of the mark.
+- **`circle` is in neither set.** A radius map is borderless (`CIRCLE_DEFAULTS`
+  seeds `linewidth: 0`, and nothing offers a width for it), so there is no stroke
+  to hold steady, and its disc marks a real-world radius so its geometry stays
+  world-glued. Only its LABEL counter-scales. `applyCounterScaleToCopy` still
+  lets a circle through for exactly that reason, and skips the ellipse.
 
 ## Two inputs, not interchangeable
 
 - **`properties.resist`** (inside `metadata`) — the numeric strength, and the
-  sole mechanism for `point` / `area` / `route` / `pencil` / `circle`. It is
+  sole mechanism for `point` / `area` / `route` / `pencil`. It is
   reachable on all of them since the GeoJSON-envelope refactor; under the old
   polymorphic metadata a route's was a bare vertex array, so `.resist` was always
   `undefined` and area/route/pencil silently ran on the default.
@@ -31,11 +35,10 @@ Two disjoint sets, and they must not be unified:
   the `TEXT` and `CIRCLE` property sets. `false` forces resist 0 (scales with the
   map); `null` / absent / `true` means `TEXT_RESIST`.
 
-**A circle resists at two rates and therefore has two readers.** Its ring reads
-`resolveResist`; its label reads `resolveLabelResist`, which is the only place
-the column is read for a circle. Extending `resolveResist` to read the column for
-circles would make the switch delete the ring at z4. For `text` the body and the
-label are the same thing, so `resolveResist` does read the column there.
+**A circle resists only through its label**, which reads `resolveLabelResist` —
+the only place the column is read for a circle. The disc itself never scales:
+it is borderless, and its geometry is the data. For `text` the body and the label
+are the same thing, so `resolveResist` does read the column there.
 
 ## It is per record, never a default
 

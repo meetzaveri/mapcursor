@@ -106,7 +106,7 @@ async function awaitModalGone(page) {
     })
 }
 
-/** Walk the wizard: name → type → colour → stroke → save. */
+/** Walk the wizard: name → type → colour → (stroke) → save. */
 async function createPreset(page, { name, type = 'Area', colour = RED } = {}) {
     // The panel's create button; the empty state and the populated state use
     // different labels, so accept either.
@@ -126,7 +126,8 @@ async function createPreset(page, { name, type = 'Area', colour = RED } = {}) {
     await w.locator(`[title="${colour}"]`).first().click()
     await w.getByRole('button', { name: 'Next' }).click()
 
-    // Stroke page (present for area/route/circle, absent for point).
+    // Stroke page (present for area/route, absent for point and for the
+    // borderless radius map).
     const next = w.getByRole('button', { name: 'Next' })
     if (await next.isVisible().catch(() => false)) await next.click()
 
@@ -154,9 +155,14 @@ test.describe('legend presets', () => {
 
     test('a filled mark takes its fill as its stroke; a stroked one does not', () => {
         // A point and a radius map read as ONE mark, so the preset's single
-        // colour has to reach both the body and the ring. An area is stroked,
-        // and its fill is derived on the canvas — so a preset must never write
-        // one, or it would overwrite the derivation.
+        // colour reaches the fill and the stroke column together. An area is
+        // stroked, and its fill is derived on the canvas — so a preset must
+        // never write one, or it would overwrite the derivation.
+        //
+        // The width keys in this style are deliberate: a radius map is
+        // borderless, so even a preset that carries them (hand-edited, or
+        // saved before the border was dropped) must not write a width onto the
+        // mark.
         const circle = presetStylePatch({
             id: 'p',
             baseId: null,
@@ -167,6 +173,8 @@ test.describe('legend presets', () => {
         })
         expect(circle.fill).toBe(RED)
         expect(circle.stroke).toBe(RED)
+        expect(circle.linewidth).toBeUndefined()
+        expect(circle.strokeType).toBeUndefined()
 
         const area = presetStylePatch({
             id: 'p',

@@ -498,8 +498,11 @@ const PrimarySidebar = (): ReactElement => {
                 }
 
                 // A circle is half-transparent so the basemap reads through
-                // it, and its outline starts as its fill so it lands as one
-                // mark.
+                // it, and it is BORDERLESS — the stroke column follows the
+                // fill so the record stays one colour, but nothing is painted
+                // at zero width. The live `defaultLinewidth` is deliberately
+                // not consulted: a width picked on a route is not a radius
+                // map's, and there is no control here to correct it with.
                 //
                 // opacity goes on the top-level column, not metadata.opacity:
                 // readOpacity prefers the column, and the column is what the
@@ -510,8 +513,7 @@ const PrimarySidebar = (): ReactElement => {
                         ...(shapeData as ComponentRecord),
                         fill: geoFill,
                         stroke: geoFill,
-                        linewidth:
-                            defaultLinewidth ?? CIRCLE_DEFAULTS.linewidth,
+                        linewidth: CIRCLE_DEFAULTS.linewidth,
                         opacity: CIRCLE_DEFAULTS.opacity,
                         // The label's ink, seeded here rather than left to
                         // whatever `textColor` the component-type catalog

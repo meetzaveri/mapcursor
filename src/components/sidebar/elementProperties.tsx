@@ -96,21 +96,17 @@ const SETS = {
     // basemap reads through it, and that is the behaviour, not a knob. Omitting
     // the section IS how the control is hidden, same as for point/area/route.
     //
+    // It drops every STROKE control too, because a radius map is borderless:
+    // the mark is the translucent disc, so an outline colour, a width and a
+    // dash pattern would all be knobs on something that is never drawn (see
+    // CIRCLE_DEFAULTS and circle.tsx, which paint a zero-width ring).
+    //
     // Its label takes colour, size and font (the latter two off the POINT
     // ladder — see circleLabelFontSizeOf) plus the zoom-resistance switch.
     // Colour is a real control here, unlike a point's fixed ink: a point's
     // name hangs OUTSIDE a 10px pin, while a circle's sits inside a filled
-    // ring the user colours, so black is not always readable.
-    CIRCLE: [
-        'fill',
-        'stroke',
-        'strokeWidth',
-        'strokeType',
-        'textColor',
-        'textSize',
-        'textFont',
-        'zoomResist',
-    ],
+    // disc the user colours, so black is not always readable.
+    CIRCLE: ['fill', 'textColor', 'textSize', 'textFont', 'zoomResist'],
     // GROUP: union of every property — toolbar shows them all when a group is
     // focused. applyGroupProperty silently skips children whose element type
     // doesn't accept a given property.

@@ -42,7 +42,9 @@ const SEED_STYLE: Record<LegendPresetType, LegendPresetStyle> = {
     point: { fill: '#FF5630' },
     area: { stroke: '#A32D2D', linewidth: 2, strokeType: null },
     route: { stroke: '#3B82F6', linewidth: 3, strokeType: null },
-    circle: { fill: '#A32D2D', linewidth: 2, strokeType: null },
+    // A radius map is borderless, so its preset is a colour and nothing else —
+    // it skips the stroke page entirely (see PRESET_STYLE_KEYS).
+    circle: { fill: '#A32D2D' },
 }
 
 /**
@@ -138,7 +140,8 @@ export default function LegendPresetWizard({
     const handleTypeChange = (next: LegendPresetType): void => {
         setElementType(next)
         // Carry nothing across: the seed for the new type is what that mark is
-        // normally drawn with, and a route's 3px width is not a circle's.
+        // normally drawn with, and a route's 3px width is not an area's —
+        // switching to a radius map drops the width keys altogether.
         setStyle(SEED_STYLE[next])
     }
 
