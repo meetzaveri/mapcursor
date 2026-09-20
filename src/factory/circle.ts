@@ -1,14 +1,18 @@
 import Main from './main'
-import { strokeTypeToDashes } from '../utils/misc'
 
+// The radius map's ellipse.
+//
+// It is BORDERLESS by design (see CIRCLE_DEFAULTS): the mark is the translucent
+// disc, so no width and no dash pattern are accepted here — there is no ring to
+// paint them on. `stroke` is still taken, because the column follows the fill
+// and a zero-width stroke keeps the node's colour honest for anything that
+// reads it (SVG export, a grouped copy).
 export interface CircleProperties {
     fill?: string
     width?: number
     height?: number
     radius?: number
     stroke?: string
-    linewidth?: number
-    strokeType?: string | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,17 +26,15 @@ export default class CircleFactory extends Main<CircleProperties> {
         const two = this.two
         const prevX = this.x
         const prevY = this.y
-        const { fill, width, height, stroke, linewidth, strokeType } =
-            this.properties
+        const { fill, width, height, stroke } = this.properties
 
         const circle = two.makeEllipse(0, 0, 0, 0)
         circle.width = width || 100
         circle.height = height || 100
         circle.fill = fill ? fill : '#fff'
 
-        circle.stroke = stroke ? stroke : '#3A342C'
-        circle.linewidth = linewidth ? linewidth : 1
-        circle.dashes = strokeTypeToDashes(strokeType)
+        circle.stroke = stroke ? stroke : (fill ?? '#3A342C')
+        circle.linewidth = 0
 
         this.circle = circle
 

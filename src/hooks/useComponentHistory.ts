@@ -1,7 +1,16 @@
 import { useState, useRef } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import Two from 'two.js'
-import { strokeTypeToDashes, clearDashesOnTwoJSShape } from '../utils/misc'
+import {
+    strokeTypeToDashes,
+    clearDashesOnTwoJSShape,
+    strokeToAreaFill,
+} from '../utils/misc'
+import {
+    computeCounterScale,
+    isStrokeScaled,
+    resolveResist,
+} from '../utils/counterScale'
 import { updateX1Y1Vertices, updateX2Y2Vertices } from '../utils/updateVertices'
 import {
     getShapeTextNodes,
@@ -162,11 +171,50 @@ function applyPropertyToTwoJSGroup(
     // undo is a silent no-op on screen while the store rolls back.
     const isCircle = group.elementData?.componentType === 'circle'
 
+    // Reverting has to reach `elementData` too, not just the painted node.
+    //
+    // `elementData` is the frozen mount snapshot, and it is what the properties
+    // toolbar, the group overlay and the legend chip row all READ. applyProperty
+    // writes both on the way in; undo only ever wrote the Two.js node, so a
+    // reverted element looked right while every control still reported the
+    // value that had just been undone. Most visible with the legend binding,
+    // which is pure bookkeeping and has no painted form at all — without the
+    // case below, undoing a preset left the chip row still showing it selected.
+    const meta = group.elementData
+
     switch (name) {
+        case 'legendPresetId':
+            if (meta) meta.legendPresetId = value
+            break
         case 'fill':
+            shape.fill = value
+            if (meta) meta.fill = value
+            break
         case 'stroke':
+            shape.stroke = value
+            if (meta) meta.stroke = value
+            // An area's fill is a light shade of its stroke and is never
+            // persisted, so reverting the stroke has to re-derive it — without
+            // this the outline snaps back but the wash stays the old colour.
+            if (group.elementData?.componentType === 'area') {
+                shape.fill = strokeToAreaFill(value as string)
+            }
+            break
         case 'linewidth':
-            shape[name] = value
+            // Geo strokes are counter-scaled: what route/area/geo-pencil paint
+            // is `linewidth * computeCounterScale(...)`, re-applied on every
+            // `zoomChanged`. Writing the logical width raw leaves the mark
+            // hairline-thin below the anchor until the next zoom nudges it
+            // back. Same rule applyProperty follows on the way in; the record
+            // keeps the logical width, only what is painted is scaled.
+            shape.linewidth = isStrokeScaled(group.elementData)
+                ? (value as number) *
+                  computeCounterScale(
+                      group.parent?.scale ?? 1,
+                      resolveResist(group.elementData)
+                  )
+                : value
+            if (meta) meta.linewidth = value
             break
         case 'width':
         case 'height':
@@ -201,6 +249,7 @@ function applyPropertyToTwoJSGroup(
             if (!value || value === 'solid') {
                 clearDashesOnTwoJSShape(shape)
             }
+            if (meta) meta.strokeType = value
             break
         case 'zoomResistant': {
             // The label counter-scale switch, for map text and the map

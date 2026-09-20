@@ -2,7 +2,7 @@
 
 In 2d space, we need to adjust how elements behave on z-axis. For that we need to reorder children of two group to achieve such expectations.
 
-In craftbase, we have four options
+In mapcursor, we have four options
 
 - Bring to front (Brings it to the foremost top of the order, at [N])
 - Bring forward (Brings 1 order up , at[current+1])

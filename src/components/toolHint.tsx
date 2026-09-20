@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { useBaseContext } from '../views/Base/baseContext'
 import { useMediaQueryUtils } from '../constants/exportHooks'
 import {
-    HINT_SLOT_TOP,
+    HINT_SLOT_BOTTOM,
     HINT_SLOT_Z,
     HINT_SLOT_MOBILE_TOP,
     HINT_SLOT_MOBILE_LEFT,
@@ -71,8 +71,8 @@ const TOOL_HINTS: Record<string, { desktop: ReactNode; mobile: ReactNode }> = {
  * in `setPointerElement('pointer')` (newCanvas.tsx), and switching tools
  * re-renders with a different key.
  *
- * Two slots, because the toolbar moves. On desktop it sits under the primary
- * toolbar (HINT_SLOT_TOP). On mobile the toolbar is pinned bottom-left, so
+ * Two slots, because the toolbar moves. On desktop it sits at the bottom of the
+ * page (HINT_SLOT_BOTTOM). On mobile the toolbar is pinned bottom-left, so
  * there is no "below the toolbar" slot at all — the hint takes the empty strip
  * across the TOP, between the menu and share buttons. That strip is only ~193px
  * wide on a 320px phone, which is why the mobile copy above is written short
@@ -103,7 +103,7 @@ const ToolHint = (): ReactElement | null => {
     if (!hint) return null
 
     // Mobile pins both edges so the pill fills the gap between its neighbours
-    // and wraps inside it; desktop is a full-width centring row.
+    // and wraps inside it; desktop is a full-width centring row at the bottom.
     const slot = isMobile
         ? {
               top: HINT_SLOT_MOBILE_TOP,
@@ -111,7 +111,7 @@ const ToolHint = (): ReactElement | null => {
               right: HINT_SLOT_MOBILE_RIGHT,
               zIndex: HINT_SLOT_Z,
           }
-        : { top: HINT_SLOT_TOP, zIndex: HINT_SLOT_Z }
+        : { bottom: HINT_SLOT_BOTTOM, zIndex: HINT_SLOT_Z }
 
     return (
         <div

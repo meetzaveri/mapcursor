@@ -1,19 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
-import { SHARE_BUTTON_ID } from './shapesToolbarId'
+import { useTopRightOffset } from '../../hooks/useTopRightOffset'
 import { usePlaceSearch } from '../../hooks/usePlaceSearch'
 import type { PlaceResult } from '../../utils/placeSearch'
 
 /** Desktop width. */
 const DESKTOP_WIDTH = 260
-/** Gap kept between this field and the share button it measures against. */
-const SHARE_GAP = 8
-/** Frames to keep re-measuring the share button while it settles. */
-const MEASURE_RETRIES = 10
-/** Right margin when nothing needs avoiding in that corner. */
-const RIGHT_MARGIN = 10
 
 /**
  * Place search for the map base — the standing "take me somewhere else" control.
@@ -40,41 +34,9 @@ const PlaceSearch = (): ReactElement | null => {
     const [open, setOpen] = useState(false)
     const rootRef = useRef<HTMLDivElement | null>(null)
 
-    /**
-     * Keep clear of the share button, which shares this corner.
-     *
-     * Measured, not a constant: the share control's width is not this
-     * component's to know, and a hard-coded
-     * guess silently overlaps the moment its padding changes. Falls back to the
-     * bare right margin when there is no share button to avoid.
-     */
-    const [rightOffset, setRightOffset] = useState<number>(RIGHT_MARGIN)
-    useLayoutEffect(() => {
-        if (!isActive) {
-            setRightOffset(RIGHT_MARGIN)
-            return
-        }
-        let frame = 0
-        let cancelled = false
-        const measure = (): void => {
-            if (cancelled) return
-            const rect = document
-                .getElementById(SHARE_BUTTON_ID)
-                ?.getBoundingClientRect()
-            setRightOffset(
-                rect && rect.width > 0
-                    ? window.innerWidth - rect.left + SHARE_GAP
-                    : RIGHT_MARGIN
-            )
-            if (frame++ < MEASURE_RETRIES) requestAnimationFrame(measure)
-        }
-        measure()
-        window.addEventListener('resize', measure)
-        return (): void => {
-            cancelled = true
-            window.removeEventListener('resize', measure)
-        }
-    }, [isActive])
+    // Shared with the legend panel, which stacks under this field and has to
+    // start at the same right edge. See useTopRightOffset.
+    const rightOffset = useTopRightOffset(isActive)
 
     useEffect(() => {
         if (!open) return

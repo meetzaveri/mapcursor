@@ -1,4 +1,5 @@
 import type { ComponentStore } from '../types/base'
+import type { LegendPreset } from '../types/legend'
 import type { MapBackdropConfig } from '../baseTypes/types'
 import { GROUP_COMPONENT } from '../constants/misc'
 import { version as appVersion } from '../../package.json'
@@ -24,7 +25,8 @@ interface BaseViewport {
 export function exportBaseAsJson(
     componentStore: ComponentStore,
     viewport: BaseViewport,
-    base?: MapBackdropConfig
+    base?: MapBackdropConfig,
+    legendPresets: LegendPreset[] = []
 ): void {
     // Same save-side filter as useLocalDraftPersistence.ts — drop transient
     // groups so they never leave the app.
@@ -41,6 +43,12 @@ export function exportBaseAsJson(
         exportedAt: Date.now(),
         viewport,
         mapAnchor: base?.mapAnchor ?? null,
+        // The legend travels with the canvas. Without it a file round-trips
+        // every mark and loses the only record of what they mean — which is
+        // the same as losing them, a few weeks later. Records keep their
+        // `legendPresetId`, so a whole-file import restores the bindings
+        // intact; a merge re-keys both sides together (see mergeImportedBase).
+        legendPresets,
         components,
     }
     downloadJson(JSON.stringify(payload, null, 2))

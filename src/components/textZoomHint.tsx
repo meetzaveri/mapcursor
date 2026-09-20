@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 
 import { useBaseContext } from '../views/Base/baseContext'
 import { useMediaQueryUtils } from '../constants/exportHooks'
-import { HINT_SLOT_TOP, TEXT_ZOOM_HINT_DISMISSED_KEY } from '../constants/misc'
+import { HINT_SLOT_BOTTOM, TEXT_ZOOM_HINT_DISMISSED_KEY } from '../constants/misc'
 
 // How long the tip stays up before fading, and how long the fade takes (must
 // match the duration-300 class below).
@@ -121,7 +121,7 @@ const TextZoomHint = (): ReactElement | null => {
                 transition-opacity ease-out duration-300 ${
                     visible ? 'opacity-100' : 'opacity-0'
                 }`}
-            style={{ top: HINT_SLOT_TOP, zIndex: 20 }}
+            style={{ bottom: HINT_SLOT_BOTTOM, zIndex: 20 }}
         >
             <div className="max-w-xl bg-hint text-hint-fg px-3 py-2 rounded-card shadow-panel">
                 <div className="text-xs leading-snug text-center">

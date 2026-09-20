@@ -33,6 +33,7 @@ const COMPONENT_COLUMNS: Record<ComponentColumn, true> = {
     fill: true,
     height: true,
     id: true,
+    legendPresetId: true,
     linewidth: true,
     metadata: true,
     opacity: true,

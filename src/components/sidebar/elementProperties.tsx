@@ -4,6 +4,12 @@ import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import ColorPicker from '../utils/colorPicker'
 import OpacitySlider from '../utils/opacitySlider'
+import {
+    SectionLabel,
+    StrokeTypeRow,
+    StrokeWidthRow,
+} from '../utils/strokeRows'
+import { PresetChipRow } from '../legend/presetChips'
 import Tooltip from '../common/tooltip'
 import ToggleSwitch from '../common/toggleSwitch'
 import {
@@ -46,12 +52,6 @@ const REORDER_BUTTONS: {
     { op: 'back', label: 'Send to Back', Icon: SendToBackIcon },
 ]
 
-const STROKE_TYPES = [
-    { label: '—', value: 'solid' },
-    { label: '- -', value: 'dashed' },
-    { label: '...', value: 'dotted' },
-]
-
 // Mobile-only: the property groups are collapsed into a 4-way segmented control
 // (one group visible at a time) so the panel never overflows a small screen.
 // Each tab is a whole section, colour included — the stroke tab carries the
@@ -76,18 +76,6 @@ const MOBILE_TABS: {
     { key: 'extras', label: 'Opacity & order', Icon: SunsetIcon },
 ]
 
-// `inner` is the diameter (px) of the inner circle that visually nudges
-// the actual stroke width inside a constant outer ring. `0` renders the
-// "no stroke" state (a diagonal slash) instead of an inner circle.
-const STROKE_WIDTHS = [
-    { label: '0', value: 0, inner: 0 },
-    { label: '1', value: 1, inner: 4 },
-    { label: '2', value: 2, inner: 6 },
-    { label: '4', value: 4, inner: 9 },
-    { label: '6', value: 6, inner: 12 },
-    { label: '8', value: 8, inner: 15 },
-]
-
 // What sections each "set" should render, in display order.
 const SETS = {
     PENCIL: ['stroke', 'strokeWidth', 'strokeType', 'opacity'],
@@ -108,21 +96,17 @@ const SETS = {
     // basemap reads through it, and that is the behaviour, not a knob. Omitting
     // the section IS how the control is hidden, same as for point/area/route.
     //
+    // It drops every STROKE control too, because a radius map is borderless:
+    // the mark is the translucent disc, so an outline colour, a width and a
+    // dash pattern would all be knobs on something that is never drawn (see
+    // CIRCLE_DEFAULTS and circle.tsx, which paint a zero-width ring).
+    //
     // Its label takes colour, size and font (the latter two off the POINT
     // ladder — see circleLabelFontSizeOf) plus the zoom-resistance switch.
     // Colour is a real control here, unlike a point's fixed ink: a point's
     // name hangs OUTSIDE a 10px pin, while a circle's sits inside a filled
-    // ring the user colours, so black is not always readable.
-    CIRCLE: [
-        'fill',
-        'stroke',
-        'strokeWidth',
-        'strokeType',
-        'textColor',
-        'textSize',
-        'textFont',
-        'zoomResist',
-    ],
+    // disc the user colours, so black is not always readable.
+    CIRCLE: ['fill', 'textColor', 'textSize', 'textFont', 'zoomResist'],
     // GROUP: union of every property — toolbar shows them all when a group is
     // focused. applyGroupProperty silently skips children whose element type
     // doesn't accept a given property.
@@ -323,12 +307,6 @@ function readEffectiveValues({
     }
 }
 
-const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-    <div className="w-full text-ink-muted font-normal text-xs pl-0 mb-2">
-        {children}
-    </div>
-)
-
 const ReorderRow = ({ onReorder }: { onReorder: (op: ReorderOp) => void }) => (
     <div
         data-section="reorder"
@@ -353,112 +331,6 @@ const ReorderRow = ({ onReorder }: { onReorder: (op: ReorderOp) => void }) => (
                     </button>
                 </Tooltip>
             ))}
-        </div>
-    </div>
-)
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const StrokeWidthRow = ({
-    value,
-    onChange,
-}: {
-    value: any
-    onChange: (v: number) => void
-}) => (
-    <div id="stroke-width-section" className="pt-2 px-2">
-        <SectionLabel>Stroke Width</SectionLabel>
-        <div className="flex justify-between">
-            {STROKE_WIDTHS.map(({ value: w, inner }) => {
-                const isSelected = value === w
-                const accent = isSelected ? 'rgb(var(--color-accent-dark))' : 'rgb(var(--color-ink-muted))'
-                return (
-                    <button
-                        key={w}
-                        onClick={() => onChange(w)}
-                        title={`${w}px`}
-                        className={`w-7 h-7 shrink-0 flex items-center justify-center rounded-full cursor-pointer border-2 transition-all ease-in-out duration-200 ${
-                            isSelected
-                                ? 'border-accent-dark'
-                                : 'border-transparent hover:border-accent-dark/40'
-                        }`}
-                    >
-                        {/* outer ring (constant) */}
-                        <div
-                            className="relative flex items-center justify-center rounded-full"
-                            style={{
-                                width: '20px',
-                                height: '20px',
-                                border: `1.5px solid ${accent}`,
-                            }}
-                        >
-                            {w === 0 ? (
-                                /* "no stroke" — diagonal slash across the ring */
-                                <div
-                                    className="absolute rotate-45 rounded-full"
-                                    style={{
-                                        width: '18px',
-                                        height: '1.5px',
-                                        background: accent,
-                                    }}
-                                />
-                            ) : (
-                                /* inner circle nudges the actual stroke width */
-                                <div
-                                    className="rounded-full"
-                                    style={{
-                                        width: `${inner}px`,
-                                        height: `${inner}px`,
-                                        backgroundColor: accent,
-                                    }}
-                                />
-                            )}
-                        </div>
-                    </button>
-                )
-            })}
-        </div>
-    </div>
-)
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const StrokeTypeRow = ({
-    value,
-    onChange,
-}: {
-    value: any
-    onChange: (v: string) => void
-}) => (
-    <div id="stroke-type-section" className="pt-3 px-2">
-        <SectionLabel>Stroke Type</SectionLabel>
-        <div className="flex gap-2">
-            {STROKE_TYPES.map(({ label, value: v }) => {
-                const isSelected = (value ?? 'solid') === v
-                return (
-                    <button
-                        key={v}
-                        onClick={() => onChange(v)}
-                        className={`flex-1 w-4 h-6 flex items-center justify-center rounded cursor-pointer transition-all ease-in-out duration-200 ${
-                            isSelected ? 'bg-accent/10' : 'hover:bg-sidebar'
-                        }`}
-                        style={{
-                            border: isSelected
-                                ? '2px solid rgb(var(--color-accent-dark))'
-                                : '1px solid rgb(var(--color-border-card))',
-                        }}
-                    >
-                        <span
-                            className="text-base font-bold tracking-widest"
-                            style={{
-                                color: isSelected ? 'rgb(var(--color-accent-dark))' : 'rgb(var(--color-ink-muted))',
-                                paddingBottom:
-                                    v === 'dotted' ? '0.4rem' : '0px',
-                            }}
-                        >
-                            {label}
-                        </span>
-                    </button>
-                )
-            })}
         </div>
     </div>
 )
@@ -963,6 +835,21 @@ const ElementPropertiesToolbar = () => {
             <div className="w-full px-2 font-semibold text-xs pt-1 pb-1 border-b border-border-panel text-ink-muted shrink-0">
                 Styling: {SET_LABELS[setKey as keyof typeof SET_LABELS]}
             </div>
+
+            {/* Mobile only: the legend-preset picker, which on desktop is its
+                own strip under the primary toolbar. A phone's bottom band
+                already carries the toolbar, the undo/redo row and the draw
+                controls, so it goes here instead — next to the style controls
+                a preset overrides, which is arguably where it belongs anyway.
+                Renders nothing when the selection takes no preset. */}
+            {isMobile && (
+                <div
+                    data-section="legendPreset"
+                    className="px-2 py-2 border-b border-border-panel shrink-0"
+                >
+                    <PresetChipRow />
+                </div>
+            )}
 
             {isMobile ? (
                 <>
