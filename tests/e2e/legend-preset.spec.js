@@ -111,7 +111,7 @@ async function createPreset(page, { name, type = 'Area', colour = RED } = {}) {
     // The panel's create button; the empty state and the populated state use
     // different labels, so accept either.
     const create = page.getByRole('button', {
-        name: /Create a preset|\+ New preset/,
+        name: /Create a Legend|\+ New preset/,
     })
     await create.click()
 

@@ -294,12 +294,20 @@ function Text(props: ElementProps): ReactElement {
         two.update()
 
         // Resize via corner handles (proportional font-size scaling).
-        const cornerCircles: ShapeLike[] = [
-            selectorInstance.circle1,
-            selectorInstance.circle2,
-            selectorInstance.circle3,
-            selectorInstance.circle4,
-        ].filter(Boolean)
+        //
+        // The press goes on the selector's transparent stand-in, NOT on the
+        // visible dot. The stand-ins are siblings drawn on top of the dots, so
+        // a listener on the dot never sees the event — it is hit-tested away,
+        // and nothing bubbles between siblings. `elementFromPoint` in
+        // newCanvas's touch pipeline resolves the stand-in for the same
+        // reason. Falls back to the dot so a selector built without stand-ins
+        // still resizes (see utils/selectionTheme, objectSelector).
+        const cornerCircles: { dot: ShapeLike; hit: ShapeLike }[] = [
+            { dot: selectorInstance.circle1, hit: selectorInstance.hitCircle1 },
+            { dot: selectorInstance.circle2, hit: selectorInstance.hitCircle2 },
+            { dot: selectorInstance.circle3, hit: selectorInstance.hitCircle3 },
+            { dot: selectorInstance.circle4, hit: selectorInstance.hitCircle4 },
+        ].filter(({ dot }) => Boolean(dot))
 
         const resizeCursors = [
             'nwse-resize', // circle1 = TL
@@ -368,8 +376,9 @@ function Text(props: ElementProps): ReactElement {
             }
         }
 
-        cornerCircles.forEach((circle, index) => {
-            const circleElem = circle._renderer?.elem as HTMLElement | undefined
+        cornerCircles.forEach(({ dot, hit }, index) => {
+            const target = hit ?? dot
+            const circleElem = target._renderer?.elem as HTMLElement | undefined
             if (!circleElem) return
 
             circleElem.style.cursor = resizeCursors[index] ?? 'pointer'
