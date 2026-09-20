@@ -102,12 +102,36 @@ export type Bases_Base = {
   landingLat?: Maybe<Scalars['float8']['output']>;
   landingLng?: Maybe<Scalars['float8']['output']>;
   landingZoom?: Maybe<Scalars['float8']['output']>;
+  /** An array relationship */
+  legendPresets: Array<Legends_Preset>;
+  /** An aggregate relationship */
+  legendPresets_aggregate: Legends_Preset_Aggregate;
   mapAnchorLat?: Maybe<Scalars['float8']['output']>;
   mapAnchorLng?: Maybe<Scalars['float8']['output']>;
   mapAnchorZoom?: Maybe<Scalars['float8']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['bigint']['output'];
   updatedBy?: Maybe<Scalars['String']['output']>;
+};
+
+
+/** columns and relationships of "bases.base" */
+export type Bases_BaseLegendPresetsArgs = {
+  distinct_on?: InputMaybe<Array<Legends_Preset_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Legends_Preset_Order_By>>;
+  where?: InputMaybe<Legends_Preset_Bool_Exp>;
+};
+
+
+/** columns and relationships of "bases.base" */
+export type Bases_BaseLegendPresets_AggregateArgs = {
+  distinct_on?: InputMaybe<Array<Legends_Preset_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Legends_Preset_Order_By>>;
+  where?: InputMaybe<Legends_Preset_Bool_Exp>;
 };
 
 /** aggregated selection of "bases.base" */
@@ -165,6 +189,8 @@ export type Bases_Base_Bool_Exp = {
   landingLat?: InputMaybe<Float8_Comparison_Exp>;
   landingLng?: InputMaybe<Float8_Comparison_Exp>;
   landingZoom?: InputMaybe<Float8_Comparison_Exp>;
+  legendPresets?: InputMaybe<Legends_Preset_Bool_Exp>;
+  legendPresets_aggregate?: InputMaybe<Legends_Preset_Aggregate_Bool_Exp>;
   mapAnchorLat?: InputMaybe<Float8_Comparison_Exp>;
   mapAnchorLng?: InputMaybe<Float8_Comparison_Exp>;
   mapAnchorZoom?: InputMaybe<Float8_Comparison_Exp>;
@@ -199,6 +225,7 @@ export type Bases_Base_Insert_Input = {
   landingLat?: InputMaybe<Scalars['float8']['input']>;
   landingLng?: InputMaybe<Scalars['float8']['input']>;
   landingZoom?: InputMaybe<Scalars['float8']['input']>;
+  legendPresets?: InputMaybe<Legends_Preset_Arr_Rel_Insert_Input>;
   mapAnchorLat?: InputMaybe<Scalars['float8']['input']>;
   mapAnchorLng?: InputMaybe<Scalars['float8']['input']>;
   mapAnchorZoom?: InputMaybe<Scalars['float8']['input']>;
@@ -273,6 +300,7 @@ export type Bases_Base_Order_By = {
   landingLat?: InputMaybe<Order_By>;
   landingLng?: InputMaybe<Order_By>;
   landingZoom?: InputMaybe<Order_By>;
+  legendPresets_aggregate?: InputMaybe<Legends_Preset_Aggregate_Order_By>;
   mapAnchorLat?: InputMaybe<Order_By>;
   mapAnchorLng?: InputMaybe<Order_By>;
   mapAnchorZoom?: InputMaybe<Order_By>;
@@ -513,6 +541,7 @@ export type Components_Component = {
   fill: Scalars['String']['output'];
   height: Scalars['float8']['output'];
   id: Scalars['uuid']['output'];
+  legendPresetId?: Maybe<Scalars['uuid']['output']>;
   linewidth?: Maybe<Scalars['float8']['output']>;
   metadata?: Maybe<Scalars['jsonb']['output']>;
   opacity?: Maybe<Scalars['Float']['output']>;
@@ -938,6 +967,7 @@ export type Components_Component_Bool_Exp = {
   fill?: InputMaybe<String_Comparison_Exp>;
   height?: InputMaybe<Float8_Comparison_Exp>;
   id?: InputMaybe<Uuid_Comparison_Exp>;
+  legendPresetId?: InputMaybe<Uuid_Comparison_Exp>;
   linewidth?: InputMaybe<Float8_Comparison_Exp>;
   metadata?: InputMaybe<Jsonb_Comparison_Exp>;
   opacity?: InputMaybe<Float_Comparison_Exp>;
@@ -1009,6 +1039,7 @@ export type Components_Component_Insert_Input = {
   fill?: InputMaybe<Scalars['String']['input']>;
   height?: InputMaybe<Scalars['float8']['input']>;
   id?: InputMaybe<Scalars['uuid']['input']>;
+  legendPresetId?: InputMaybe<Scalars['uuid']['input']>;
   linewidth?: InputMaybe<Scalars['float8']['input']>;
   metadata?: InputMaybe<Scalars['jsonb']['input']>;
   opacity?: InputMaybe<Scalars['Float']['input']>;
@@ -1039,6 +1070,7 @@ export type Components_Component_Max_Fields = {
   fill?: Maybe<Scalars['String']['output']>;
   height?: Maybe<Scalars['float8']['output']>;
   id?: Maybe<Scalars['uuid']['output']>;
+  legendPresetId?: Maybe<Scalars['uuid']['output']>;
   linewidth?: Maybe<Scalars['float8']['output']>;
   opacity?: Maybe<Scalars['Float']['output']>;
   position?: Maybe<Scalars['Int']['output']>;
@@ -1066,6 +1098,7 @@ export type Components_Component_Min_Fields = {
   fill?: Maybe<Scalars['String']['output']>;
   height?: Maybe<Scalars['float8']['output']>;
   id?: Maybe<Scalars['uuid']['output']>;
+  legendPresetId?: Maybe<Scalars['uuid']['output']>;
   linewidth?: Maybe<Scalars['float8']['output']>;
   opacity?: Maybe<Scalars['Float']['output']>;
   position?: Maybe<Scalars['Int']['output']>;
@@ -1110,6 +1143,7 @@ export type Components_Component_Order_By = {
   fill?: InputMaybe<Order_By>;
   height?: InputMaybe<Order_By>;
   id?: InputMaybe<Order_By>;
+  legendPresetId?: InputMaybe<Order_By>;
   linewidth?: InputMaybe<Order_By>;
   metadata?: InputMaybe<Order_By>;
   opacity?: InputMaybe<Order_By>;
@@ -1160,6 +1194,8 @@ export type Components_Component_Select_Column =
   /** column name */
   | 'id'
   /** column name */
+  | 'legendPresetId'
+  /** column name */
   | 'linewidth'
   /** column name */
   | 'metadata'
@@ -1203,6 +1239,7 @@ export type Components_Component_Set_Input = {
   fill?: InputMaybe<Scalars['String']['input']>;
   height?: InputMaybe<Scalars['float8']['input']>;
   id?: InputMaybe<Scalars['uuid']['input']>;
+  legendPresetId?: InputMaybe<Scalars['uuid']['input']>;
   linewidth?: InputMaybe<Scalars['float8']['input']>;
   metadata?: InputMaybe<Scalars['jsonb']['input']>;
   opacity?: InputMaybe<Scalars['Float']['input']>;
@@ -1292,6 +1329,7 @@ export type Components_Component_Stream_Cursor_Value_Input = {
   fill?: InputMaybe<Scalars['String']['input']>;
   height?: InputMaybe<Scalars['float8']['input']>;
   id?: InputMaybe<Scalars['uuid']['input']>;
+  legendPresetId?: InputMaybe<Scalars['uuid']['input']>;
   linewidth?: InputMaybe<Scalars['float8']['input']>;
   metadata?: InputMaybe<Scalars['jsonb']['input']>;
   opacity?: InputMaybe<Scalars['Float']['input']>;
@@ -1348,6 +1386,8 @@ export type Components_Component_Update_Column =
   | 'height'
   /** column name */
   | 'id'
+  /** column name */
+  | 'legendPresetId'
   /** column name */
   | 'linewidth'
   /** column name */
@@ -1499,6 +1539,473 @@ export type Jsonb_Comparison_Exp = {
   _nin?: InputMaybe<Array<Scalars['jsonb']['input']>>;
 };
 
+/** columns and relationships of "legends.preset" */
+export type Legends_Preset = {
+  __typename?: 'legends_preset';
+  /** An object relationship */
+  base: Bases_Base;
+  baseId: Scalars['uuid']['output'];
+  createdAt: Scalars['bigint']['output'];
+  createdBy: Scalars['String']['output'];
+  elementType: Scalars['String']['output'];
+  id: Scalars['uuid']['output'];
+  name: Scalars['String']['output'];
+  position: Scalars['Int']['output'];
+  style: Scalars['jsonb']['output'];
+  updatedAt: Scalars['bigint']['output'];
+  updatedBy?: Maybe<Scalars['String']['output']>;
+};
+
+
+/** columns and relationships of "legends.preset" */
+export type Legends_PresetStyleArgs = {
+  path?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** aggregated selection of "legends.preset" */
+export type Legends_Preset_Aggregate = {
+  __typename?: 'legends_preset_aggregate';
+  aggregate?: Maybe<Legends_Preset_Aggregate_Fields>;
+  nodes: Array<Legends_Preset>;
+};
+
+export type Legends_Preset_Aggregate_Bool_Exp = {
+  count?: InputMaybe<Legends_Preset_Aggregate_Bool_Exp_Count>;
+};
+
+export type Legends_Preset_Aggregate_Bool_Exp_Count = {
+  arguments?: InputMaybe<Array<Legends_Preset_Select_Column>>;
+  distinct?: InputMaybe<Scalars['Boolean']['input']>;
+  filter?: InputMaybe<Legends_Preset_Bool_Exp>;
+  predicate: Int_Comparison_Exp;
+};
+
+/** aggregate fields of "legends.preset" */
+export type Legends_Preset_Aggregate_Fields = {
+  __typename?: 'legends_preset_aggregate_fields';
+  avg?: Maybe<Legends_Preset_Avg_Fields>;
+  count: Scalars['Int']['output'];
+  max?: Maybe<Legends_Preset_Max_Fields>;
+  min?: Maybe<Legends_Preset_Min_Fields>;
+  stddev?: Maybe<Legends_Preset_Stddev_Fields>;
+  stddev_pop?: Maybe<Legends_Preset_Stddev_Pop_Fields>;
+  stddev_samp?: Maybe<Legends_Preset_Stddev_Samp_Fields>;
+  sum?: Maybe<Legends_Preset_Sum_Fields>;
+  var_pop?: Maybe<Legends_Preset_Var_Pop_Fields>;
+  var_samp?: Maybe<Legends_Preset_Var_Samp_Fields>;
+  variance?: Maybe<Legends_Preset_Variance_Fields>;
+};
+
+
+/** aggregate fields of "legends.preset" */
+export type Legends_Preset_Aggregate_FieldsCountArgs = {
+  columns?: InputMaybe<Array<Legends_Preset_Select_Column>>;
+  distinct?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+/** order by aggregate values of table "legends.preset" */
+export type Legends_Preset_Aggregate_Order_By = {
+  avg?: InputMaybe<Legends_Preset_Avg_Order_By>;
+  count?: InputMaybe<Order_By>;
+  max?: InputMaybe<Legends_Preset_Max_Order_By>;
+  min?: InputMaybe<Legends_Preset_Min_Order_By>;
+  stddev?: InputMaybe<Legends_Preset_Stddev_Order_By>;
+  stddev_pop?: InputMaybe<Legends_Preset_Stddev_Pop_Order_By>;
+  stddev_samp?: InputMaybe<Legends_Preset_Stddev_Samp_Order_By>;
+  sum?: InputMaybe<Legends_Preset_Sum_Order_By>;
+  var_pop?: InputMaybe<Legends_Preset_Var_Pop_Order_By>;
+  var_samp?: InputMaybe<Legends_Preset_Var_Samp_Order_By>;
+  variance?: InputMaybe<Legends_Preset_Variance_Order_By>;
+};
+
+/** append existing jsonb value of filtered columns with new jsonb value */
+export type Legends_Preset_Append_Input = {
+  style?: InputMaybe<Scalars['jsonb']['input']>;
+};
+
+/** input type for inserting array relation for remote table "legends.preset" */
+export type Legends_Preset_Arr_Rel_Insert_Input = {
+  data: Array<Legends_Preset_Insert_Input>;
+  /** upsert condition */
+  on_conflict?: InputMaybe<Legends_Preset_On_Conflict>;
+};
+
+/** aggregate avg on columns */
+export type Legends_Preset_Avg_Fields = {
+  __typename?: 'legends_preset_avg_fields';
+  createdAt?: Maybe<Scalars['Float']['output']>;
+  position?: Maybe<Scalars['Float']['output']>;
+  updatedAt?: Maybe<Scalars['Float']['output']>;
+};
+
+/** order by avg() on columns of table "legends.preset" */
+export type Legends_Preset_Avg_Order_By = {
+  createdAt?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+};
+
+/** Boolean expression to filter rows from the table "legends.preset". All fields are combined with a logical 'AND'. */
+export type Legends_Preset_Bool_Exp = {
+  _and?: InputMaybe<Array<Legends_Preset_Bool_Exp>>;
+  _not?: InputMaybe<Legends_Preset_Bool_Exp>;
+  _or?: InputMaybe<Array<Legends_Preset_Bool_Exp>>;
+  base?: InputMaybe<Bases_Base_Bool_Exp>;
+  baseId?: InputMaybe<Uuid_Comparison_Exp>;
+  createdAt?: InputMaybe<Bigint_Comparison_Exp>;
+  createdBy?: InputMaybe<String_Comparison_Exp>;
+  elementType?: InputMaybe<String_Comparison_Exp>;
+  id?: InputMaybe<Uuid_Comparison_Exp>;
+  name?: InputMaybe<String_Comparison_Exp>;
+  position?: InputMaybe<Int_Comparison_Exp>;
+  style?: InputMaybe<Jsonb_Comparison_Exp>;
+  updatedAt?: InputMaybe<Bigint_Comparison_Exp>;
+  updatedBy?: InputMaybe<String_Comparison_Exp>;
+};
+
+/** unique or primary key constraints on table "legends.preset" */
+export type Legends_Preset_Constraint =
+  /** unique or primary key constraint on columns "id" */
+  | 'preset_pkey';
+
+/** delete the field or element with specified path (for JSON arrays, negative integers count from the end) */
+export type Legends_Preset_Delete_At_Path_Input = {
+  style?: InputMaybe<Array<Scalars['String']['input']>>;
+};
+
+/** delete the array element with specified index (negative integers count from the end). throws an error if top level container is not an array */
+export type Legends_Preset_Delete_Elem_Input = {
+  style?: InputMaybe<Scalars['Int']['input']>;
+};
+
+/** delete key/value pair or string element. key/value pairs are matched based on their key value */
+export type Legends_Preset_Delete_Key_Input = {
+  style?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** input type for incrementing numeric columns in table "legends.preset" */
+export type Legends_Preset_Inc_Input = {
+  createdAt?: InputMaybe<Scalars['bigint']['input']>;
+  position?: InputMaybe<Scalars['Int']['input']>;
+  updatedAt?: InputMaybe<Scalars['bigint']['input']>;
+};
+
+/** input type for inserting data into table "legends.preset" */
+export type Legends_Preset_Insert_Input = {
+  base?: InputMaybe<Bases_Base_Obj_Rel_Insert_Input>;
+  baseId?: InputMaybe<Scalars['uuid']['input']>;
+  createdAt?: InputMaybe<Scalars['bigint']['input']>;
+  createdBy?: InputMaybe<Scalars['String']['input']>;
+  elementType?: InputMaybe<Scalars['String']['input']>;
+  id?: InputMaybe<Scalars['uuid']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  position?: InputMaybe<Scalars['Int']['input']>;
+  style?: InputMaybe<Scalars['jsonb']['input']>;
+  updatedAt?: InputMaybe<Scalars['bigint']['input']>;
+  updatedBy?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** aggregate max on columns */
+export type Legends_Preset_Max_Fields = {
+  __typename?: 'legends_preset_max_fields';
+  baseId?: Maybe<Scalars['uuid']['output']>;
+  createdAt?: Maybe<Scalars['bigint']['output']>;
+  createdBy?: Maybe<Scalars['String']['output']>;
+  elementType?: Maybe<Scalars['String']['output']>;
+  id?: Maybe<Scalars['uuid']['output']>;
+  name?: Maybe<Scalars['String']['output']>;
+  position?: Maybe<Scalars['Int']['output']>;
+  updatedAt?: Maybe<Scalars['bigint']['output']>;
+  updatedBy?: Maybe<Scalars['String']['output']>;
+};
+
+/** order by max() on columns of table "legends.preset" */
+export type Legends_Preset_Max_Order_By = {
+  baseId?: InputMaybe<Order_By>;
+  createdAt?: InputMaybe<Order_By>;
+  createdBy?: InputMaybe<Order_By>;
+  elementType?: InputMaybe<Order_By>;
+  id?: InputMaybe<Order_By>;
+  name?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+  updatedBy?: InputMaybe<Order_By>;
+};
+
+/** aggregate min on columns */
+export type Legends_Preset_Min_Fields = {
+  __typename?: 'legends_preset_min_fields';
+  baseId?: Maybe<Scalars['uuid']['output']>;
+  createdAt?: Maybe<Scalars['bigint']['output']>;
+  createdBy?: Maybe<Scalars['String']['output']>;
+  elementType?: Maybe<Scalars['String']['output']>;
+  id?: Maybe<Scalars['uuid']['output']>;
+  name?: Maybe<Scalars['String']['output']>;
+  position?: Maybe<Scalars['Int']['output']>;
+  updatedAt?: Maybe<Scalars['bigint']['output']>;
+  updatedBy?: Maybe<Scalars['String']['output']>;
+};
+
+/** order by min() on columns of table "legends.preset" */
+export type Legends_Preset_Min_Order_By = {
+  baseId?: InputMaybe<Order_By>;
+  createdAt?: InputMaybe<Order_By>;
+  createdBy?: InputMaybe<Order_By>;
+  elementType?: InputMaybe<Order_By>;
+  id?: InputMaybe<Order_By>;
+  name?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+  updatedBy?: InputMaybe<Order_By>;
+};
+
+/** response of any mutation on the table "legends.preset" */
+export type Legends_Preset_Mutation_Response = {
+  __typename?: 'legends_preset_mutation_response';
+  /** number of rows affected by the mutation */
+  affected_rows: Scalars['Int']['output'];
+  /** data from the rows affected by the mutation */
+  returning: Array<Legends_Preset>;
+};
+
+/** on_conflict condition type for table "legends.preset" */
+export type Legends_Preset_On_Conflict = {
+  constraint: Legends_Preset_Constraint;
+  update_columns?: Array<Legends_Preset_Update_Column>;
+  where?: InputMaybe<Legends_Preset_Bool_Exp>;
+};
+
+/** Ordering options when selecting data from "legends.preset". */
+export type Legends_Preset_Order_By = {
+  base?: InputMaybe<Bases_Base_Order_By>;
+  baseId?: InputMaybe<Order_By>;
+  createdAt?: InputMaybe<Order_By>;
+  createdBy?: InputMaybe<Order_By>;
+  elementType?: InputMaybe<Order_By>;
+  id?: InputMaybe<Order_By>;
+  name?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  style?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+  updatedBy?: InputMaybe<Order_By>;
+};
+
+/** primary key columns input for table: legends.preset */
+export type Legends_Preset_Pk_Columns_Input = {
+  id: Scalars['uuid']['input'];
+};
+
+/** prepend existing jsonb value of filtered columns with new jsonb value */
+export type Legends_Preset_Prepend_Input = {
+  style?: InputMaybe<Scalars['jsonb']['input']>;
+};
+
+/** select columns of table "legends.preset" */
+export type Legends_Preset_Select_Column =
+  /** column name */
+  | 'baseId'
+  /** column name */
+  | 'createdAt'
+  /** column name */
+  | 'createdBy'
+  /** column name */
+  | 'elementType'
+  /** column name */
+  | 'id'
+  /** column name */
+  | 'name'
+  /** column name */
+  | 'position'
+  /** column name */
+  | 'style'
+  /** column name */
+  | 'updatedAt'
+  /** column name */
+  | 'updatedBy';
+
+/** input type for updating data in table "legends.preset" */
+export type Legends_Preset_Set_Input = {
+  baseId?: InputMaybe<Scalars['uuid']['input']>;
+  createdAt?: InputMaybe<Scalars['bigint']['input']>;
+  createdBy?: InputMaybe<Scalars['String']['input']>;
+  elementType?: InputMaybe<Scalars['String']['input']>;
+  id?: InputMaybe<Scalars['uuid']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  position?: InputMaybe<Scalars['Int']['input']>;
+  style?: InputMaybe<Scalars['jsonb']['input']>;
+  updatedAt?: InputMaybe<Scalars['bigint']['input']>;
+  updatedBy?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** aggregate stddev on columns */
+export type Legends_Preset_Stddev_Fields = {
+  __typename?: 'legends_preset_stddev_fields';
+  createdAt?: Maybe<Scalars['Float']['output']>;
+  position?: Maybe<Scalars['Float']['output']>;
+  updatedAt?: Maybe<Scalars['Float']['output']>;
+};
+
+/** order by stddev() on columns of table "legends.preset" */
+export type Legends_Preset_Stddev_Order_By = {
+  createdAt?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+};
+
+/** aggregate stddev_pop on columns */
+export type Legends_Preset_Stddev_Pop_Fields = {
+  __typename?: 'legends_preset_stddev_pop_fields';
+  createdAt?: Maybe<Scalars['Float']['output']>;
+  position?: Maybe<Scalars['Float']['output']>;
+  updatedAt?: Maybe<Scalars['Float']['output']>;
+};
+
+/** order by stddev_pop() on columns of table "legends.preset" */
+export type Legends_Preset_Stddev_Pop_Order_By = {
+  createdAt?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+};
+
+/** aggregate stddev_samp on columns */
+export type Legends_Preset_Stddev_Samp_Fields = {
+  __typename?: 'legends_preset_stddev_samp_fields';
+  createdAt?: Maybe<Scalars['Float']['output']>;
+  position?: Maybe<Scalars['Float']['output']>;
+  updatedAt?: Maybe<Scalars['Float']['output']>;
+};
+
+/** order by stddev_samp() on columns of table "legends.preset" */
+export type Legends_Preset_Stddev_Samp_Order_By = {
+  createdAt?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+};
+
+/** Streaming cursor of the table "legends_preset" */
+export type Legends_Preset_Stream_Cursor_Input = {
+  /** Stream column input with initial value */
+  initial_value: Legends_Preset_Stream_Cursor_Value_Input;
+  /** cursor ordering */
+  ordering?: InputMaybe<Cursor_Ordering>;
+};
+
+/** Initial value of the column from where the streaming should start */
+export type Legends_Preset_Stream_Cursor_Value_Input = {
+  baseId?: InputMaybe<Scalars['uuid']['input']>;
+  createdAt?: InputMaybe<Scalars['bigint']['input']>;
+  createdBy?: InputMaybe<Scalars['String']['input']>;
+  elementType?: InputMaybe<Scalars['String']['input']>;
+  id?: InputMaybe<Scalars['uuid']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  position?: InputMaybe<Scalars['Int']['input']>;
+  style?: InputMaybe<Scalars['jsonb']['input']>;
+  updatedAt?: InputMaybe<Scalars['bigint']['input']>;
+  updatedBy?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** aggregate sum on columns */
+export type Legends_Preset_Sum_Fields = {
+  __typename?: 'legends_preset_sum_fields';
+  createdAt?: Maybe<Scalars['bigint']['output']>;
+  position?: Maybe<Scalars['Int']['output']>;
+  updatedAt?: Maybe<Scalars['bigint']['output']>;
+};
+
+/** order by sum() on columns of table "legends.preset" */
+export type Legends_Preset_Sum_Order_By = {
+  createdAt?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+};
+
+/** update columns of table "legends.preset" */
+export type Legends_Preset_Update_Column =
+  /** column name */
+  | 'baseId'
+  /** column name */
+  | 'createdAt'
+  /** column name */
+  | 'createdBy'
+  /** column name */
+  | 'elementType'
+  /** column name */
+  | 'id'
+  /** column name */
+  | 'name'
+  /** column name */
+  | 'position'
+  /** column name */
+  | 'style'
+  /** column name */
+  | 'updatedAt'
+  /** column name */
+  | 'updatedBy';
+
+export type Legends_Preset_Updates = {
+  /** append existing jsonb value of filtered columns with new jsonb value */
+  _append?: InputMaybe<Legends_Preset_Append_Input>;
+  /** delete the field or element with specified path (for JSON arrays, negative integers count from the end) */
+  _delete_at_path?: InputMaybe<Legends_Preset_Delete_At_Path_Input>;
+  /** delete the array element with specified index (negative integers count from the end). throws an error if top level container is not an array */
+  _delete_elem?: InputMaybe<Legends_Preset_Delete_Elem_Input>;
+  /** delete key/value pair or string element. key/value pairs are matched based on their key value */
+  _delete_key?: InputMaybe<Legends_Preset_Delete_Key_Input>;
+  /** increments the numeric columns with given value of the filtered values */
+  _inc?: InputMaybe<Legends_Preset_Inc_Input>;
+  /** prepend existing jsonb value of filtered columns with new jsonb value */
+  _prepend?: InputMaybe<Legends_Preset_Prepend_Input>;
+  /** sets the columns of the filtered rows to the given values */
+  _set?: InputMaybe<Legends_Preset_Set_Input>;
+  /** filter the rows which have to be updated */
+  where: Legends_Preset_Bool_Exp;
+};
+
+/** aggregate var_pop on columns */
+export type Legends_Preset_Var_Pop_Fields = {
+  __typename?: 'legends_preset_var_pop_fields';
+  createdAt?: Maybe<Scalars['Float']['output']>;
+  position?: Maybe<Scalars['Float']['output']>;
+  updatedAt?: Maybe<Scalars['Float']['output']>;
+};
+
+/** order by var_pop() on columns of table "legends.preset" */
+export type Legends_Preset_Var_Pop_Order_By = {
+  createdAt?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+};
+
+/** aggregate var_samp on columns */
+export type Legends_Preset_Var_Samp_Fields = {
+  __typename?: 'legends_preset_var_samp_fields';
+  createdAt?: Maybe<Scalars['Float']['output']>;
+  position?: Maybe<Scalars['Float']['output']>;
+  updatedAt?: Maybe<Scalars['Float']['output']>;
+};
+
+/** order by var_samp() on columns of table "legends.preset" */
+export type Legends_Preset_Var_Samp_Order_By = {
+  createdAt?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+};
+
+/** aggregate variance on columns */
+export type Legends_Preset_Variance_Fields = {
+  __typename?: 'legends_preset_variance_fields';
+  createdAt?: Maybe<Scalars['Float']['output']>;
+  position?: Maybe<Scalars['Float']['output']>;
+  updatedAt?: Maybe<Scalars['Float']['output']>;
+};
+
+/** order by variance() on columns of table "legends.preset" */
+export type Legends_Preset_Variance_Order_By = {
+  createdAt?: InputMaybe<Order_By>;
+  position?: InputMaybe<Order_By>;
+  updatedAt?: InputMaybe<Order_By>;
+};
+
 /** mutation root */
 export type Mutation_Root = {
   __typename?: 'mutation_root';
@@ -1514,6 +2021,10 @@ export type Mutation_Root = {
   delete_components_componentType_by_pk?: Maybe<Components_ComponentType>;
   /** delete single row from the table: "components.component" */
   delete_components_component_by_pk?: Maybe<Components_Component>;
+  /** delete data from the table: "legends.preset" */
+  delete_legends_preset?: Maybe<Legends_Preset_Mutation_Response>;
+  /** delete single row from the table: "legends.preset" */
+  delete_legends_preset_by_pk?: Maybe<Legends_Preset>;
   /** delete data from the table: "test" */
   delete_test?: Maybe<Test_Mutation_Response>;
   /** delete single row from the table: "test" */
@@ -1538,6 +2049,10 @@ export type Mutation_Root = {
   insert_components_componentType_one?: Maybe<Components_ComponentType>;
   /** insert a single row into the table: "components.component" */
   insert_components_component_one?: Maybe<Components_Component>;
+  /** insert data into the table: "legends.preset" */
+  insert_legends_preset?: Maybe<Legends_Preset_Mutation_Response>;
+  /** insert a single row into the table: "legends.preset" */
+  insert_legends_preset_one?: Maybe<Legends_Preset>;
   /** insert data into the table: "test" */
   insert_test?: Maybe<Test_Mutation_Response>;
   /** insert a single row into the table: "test" */
@@ -1568,6 +2083,12 @@ export type Mutation_Root = {
   update_components_component_by_pk?: Maybe<Components_Component>;
   /** update multiples rows of table: "components.component" */
   update_components_component_many?: Maybe<Array<Maybe<Components_Component_Mutation_Response>>>;
+  /** update data of the table: "legends.preset" */
+  update_legends_preset?: Maybe<Legends_Preset_Mutation_Response>;
+  /** update single row of the table: "legends.preset" */
+  update_legends_preset_by_pk?: Maybe<Legends_Preset>;
+  /** update multiples rows of table: "legends.preset" */
+  update_legends_preset_many?: Maybe<Array<Maybe<Legends_Preset_Mutation_Response>>>;
   /** update data of the table: "test" */
   update_test?: Maybe<Test_Mutation_Response>;
   /** update single row of the table: "test" */
@@ -1621,6 +2142,18 @@ export type Mutation_RootDelete_Components_ComponentType_By_PkArgs = {
 
 /** mutation root */
 export type Mutation_RootDelete_Components_Component_By_PkArgs = {
+  id: Scalars['uuid']['input'];
+};
+
+
+/** mutation root */
+export type Mutation_RootDelete_Legends_PresetArgs = {
+  where: Legends_Preset_Bool_Exp;
+};
+
+
+/** mutation root */
+export type Mutation_RootDelete_Legends_Preset_By_PkArgs = {
   id: Scalars['uuid']['input'];
 };
 
@@ -1700,6 +2233,20 @@ export type Mutation_RootInsert_Components_ComponentType_OneArgs = {
 export type Mutation_RootInsert_Components_Component_OneArgs = {
   object: Components_Component_Insert_Input;
   on_conflict?: InputMaybe<Components_Component_On_Conflict>;
+};
+
+
+/** mutation root */
+export type Mutation_RootInsert_Legends_PresetArgs = {
+  objects: Array<Legends_Preset_Insert_Input>;
+  on_conflict?: InputMaybe<Legends_Preset_On_Conflict>;
+};
+
+
+/** mutation root */
+export type Mutation_RootInsert_Legends_Preset_OneArgs = {
+  object: Legends_Preset_Insert_Input;
+  on_conflict?: InputMaybe<Legends_Preset_On_Conflict>;
 };
 
 
@@ -1832,6 +2379,38 @@ export type Mutation_RootUpdate_Components_Component_ManyArgs = {
 
 
 /** mutation root */
+export type Mutation_RootUpdate_Legends_PresetArgs = {
+  _append?: InputMaybe<Legends_Preset_Append_Input>;
+  _delete_at_path?: InputMaybe<Legends_Preset_Delete_At_Path_Input>;
+  _delete_elem?: InputMaybe<Legends_Preset_Delete_Elem_Input>;
+  _delete_key?: InputMaybe<Legends_Preset_Delete_Key_Input>;
+  _inc?: InputMaybe<Legends_Preset_Inc_Input>;
+  _prepend?: InputMaybe<Legends_Preset_Prepend_Input>;
+  _set?: InputMaybe<Legends_Preset_Set_Input>;
+  where: Legends_Preset_Bool_Exp;
+};
+
+
+/** mutation root */
+export type Mutation_RootUpdate_Legends_Preset_By_PkArgs = {
+  _append?: InputMaybe<Legends_Preset_Append_Input>;
+  _delete_at_path?: InputMaybe<Legends_Preset_Delete_At_Path_Input>;
+  _delete_elem?: InputMaybe<Legends_Preset_Delete_Elem_Input>;
+  _delete_key?: InputMaybe<Legends_Preset_Delete_Key_Input>;
+  _inc?: InputMaybe<Legends_Preset_Inc_Input>;
+  _prepend?: InputMaybe<Legends_Preset_Prepend_Input>;
+  _set?: InputMaybe<Legends_Preset_Set_Input>;
+  pk_columns: Legends_Preset_Pk_Columns_Input;
+};
+
+
+/** mutation root */
+export type Mutation_RootUpdate_Legends_Preset_ManyArgs = {
+  updates: Array<Legends_Preset_Updates>;
+};
+
+
+/** mutation root */
 export type Mutation_RootUpdate_TestArgs = {
   _inc?: InputMaybe<Test_Inc_Input>;
   _set?: InputMaybe<Test_Set_Input>;
@@ -1929,6 +2508,12 @@ export type Query_Root = {
   components_component_aggregate: Components_Component_Aggregate;
   /** fetch data from the table: "components.component" using primary key columns */
   components_component_by_pk?: Maybe<Components_Component>;
+  /** fetch data from the table: "legends.preset" */
+  legends_preset: Array<Legends_Preset>;
+  /** fetch aggregated fields from the table: "legends.preset" */
+  legends_preset_aggregate: Legends_Preset_Aggregate;
+  /** fetch data from the table: "legends.preset" using primary key columns */
+  legends_preset_by_pk?: Maybe<Legends_Preset>;
   /** fetch data from the table: "test" */
   test: Array<Test>;
   /** fetch aggregated fields from the table: "test" */
@@ -2015,6 +2600,29 @@ export type Query_RootComponents_Component_AggregateArgs = {
 
 
 export type Query_RootComponents_Component_By_PkArgs = {
+  id: Scalars['uuid']['input'];
+};
+
+
+export type Query_RootLegends_PresetArgs = {
+  distinct_on?: InputMaybe<Array<Legends_Preset_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Legends_Preset_Order_By>>;
+  where?: InputMaybe<Legends_Preset_Bool_Exp>;
+};
+
+
+export type Query_RootLegends_Preset_AggregateArgs = {
+  distinct_on?: InputMaybe<Array<Legends_Preset_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Legends_Preset_Order_By>>;
+  where?: InputMaybe<Legends_Preset_Bool_Exp>;
+};
+
+
+export type Query_RootLegends_Preset_By_PkArgs = {
   id: Scalars['uuid']['input'];
 };
 
@@ -2113,6 +2721,14 @@ export type Subscription_Root = {
   components_component_by_pk?: Maybe<Components_Component>;
   /** fetch data from the table in a streaming manner: "components.component" */
   components_component_stream: Array<Components_Component>;
+  /** fetch data from the table: "legends.preset" */
+  legends_preset: Array<Legends_Preset>;
+  /** fetch aggregated fields from the table: "legends.preset" */
+  legends_preset_aggregate: Legends_Preset_Aggregate;
+  /** fetch data from the table: "legends.preset" using primary key columns */
+  legends_preset_by_pk?: Maybe<Legends_Preset>;
+  /** fetch data from the table in a streaming manner: "legends.preset" */
+  legends_preset_stream: Array<Legends_Preset>;
   /** fetch data from the table: "test" */
   test: Array<Test>;
   /** fetch aggregated fields from the table: "test" */
@@ -2227,6 +2843,36 @@ export type Subscription_RootComponents_Component_StreamArgs = {
   batch_size: Scalars['Int']['input'];
   cursor: Array<InputMaybe<Components_Component_Stream_Cursor_Input>>;
   where?: InputMaybe<Components_Component_Bool_Exp>;
+};
+
+
+export type Subscription_RootLegends_PresetArgs = {
+  distinct_on?: InputMaybe<Array<Legends_Preset_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Legends_Preset_Order_By>>;
+  where?: InputMaybe<Legends_Preset_Bool_Exp>;
+};
+
+
+export type Subscription_RootLegends_Preset_AggregateArgs = {
+  distinct_on?: InputMaybe<Array<Legends_Preset_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Legends_Preset_Order_By>>;
+  where?: InputMaybe<Legends_Preset_Bool_Exp>;
+};
+
+
+export type Subscription_RootLegends_Preset_By_PkArgs = {
+  id: Scalars['uuid']['input'];
+};
+
+
+export type Subscription_RootLegends_Preset_StreamArgs = {
+  batch_size: Scalars['Int']['input'];
+  cursor: Array<InputMaybe<Legends_Preset_Stream_Cursor_Input>>;
+  where?: InputMaybe<Legends_Preset_Bool_Exp>;
 };
 
 
@@ -3021,6 +3667,43 @@ export type UpdateUserRevisitCountMutationVariables = Exact<{
 
 export type UpdateUserRevisitCountMutation = { __typename?: 'mutation_root', update_users_user_revisits_by_pk?: { __typename?: 'users_user_revisits', count: number, user_id: string, last_visit: string } | null };
 
+export type InsertLegendPresetMutationVariables = Exact<{
+  object?: InputMaybe<Legends_Preset_Insert_Input>;
+}>;
+
+
+export type InsertLegendPresetMutation = { __typename?: 'mutation_root', preset?: { __typename?: 'legends_preset', id: string, baseId: string, name: string, elementType: string, style: unknown, position: number, createdBy: string } | null };
+
+export type InsertBulkLegendPresetsMutationVariables = Exact<{
+  objects?: InputMaybe<Array<Legends_Preset_Insert_Input> | Legends_Preset_Insert_Input>;
+}>;
+
+
+export type InsertBulkLegendPresetsMutation = { __typename?: 'mutation_root', presets?: { __typename?: 'legends_preset_mutation_response', returning: Array<{ __typename?: 'legends_preset', id: string, baseId: string, name: string, elementType: string, style: unknown, position: number, createdBy: string }> } | null };
+
+export type UpdateLegendPresetMutationVariables = Exact<{
+  id: Scalars['uuid']['input'];
+  updateObj?: InputMaybe<Legends_Preset_Set_Input>;
+}>;
+
+
+export type UpdateLegendPresetMutation = { __typename?: 'mutation_root', update_legends_preset_by_pk?: { __typename?: 'legends_preset', id: string } | null };
+
+export type DeleteLegendPresetMutationVariables = Exact<{
+  id: Scalars['uuid']['input'];
+}>;
+
+
+export type DeleteLegendPresetMutation = { __typename?: 'mutation_root', delete_legends_preset_by_pk?: { __typename?: 'legends_preset', id: string } | null };
+
+export type RestyleComponentsByPresetMutationVariables = Exact<{
+  presetId: Scalars['uuid']['input'];
+  updateObj?: InputMaybe<Components_Component_Set_Input>;
+}>;
+
+
+export type RestyleComponentsByPresetMutation = { __typename?: 'mutation_root', update_components_component?: { __typename?: 'components_component_mutation_response', affected_rows: number } | null };
+
 export type GetComponentTypesQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -3031,7 +3714,7 @@ export type GetComponentsForBaseQueryVariables = Exact<{
 }>;
 
 
-export type GetComponentsForBaseQuery = { __typename?: 'query_root', base?: { __typename?: 'bases_base', id: string, isPublic: boolean, mapAnchorLng?: any | null, mapAnchorLat?: any | null, mapAnchorZoom?: any | null, landingLng?: any | null, landingLat?: any | null, landingZoom?: any | null } | null, components: Array<{ __typename?: 'components_component', id: string, componentType: string, zoomResistant?: boolean | null, children?: unknown | null, metadata?: unknown | null, x: any, x1: any, x2: any, y: any, y1: any, y2: any, fill: string, width: any, height: any, stroke?: string | null, linewidth?: any | null, strokeType?: string | null, textColor?: string | null, opacity?: number | null, position: number }> };
+export type GetComponentsForBaseQuery = { __typename?: 'query_root', base?: { __typename?: 'bases_base', id: string, isPublic: boolean, mapAnchorLng?: any | null, mapAnchorLat?: any | null, mapAnchorZoom?: any | null, landingLng?: any | null, landingLat?: any | null, landingZoom?: any | null } | null, legendPresets: Array<{ __typename?: 'legends_preset', id: string, baseId: string, name: string, elementType: string, style: unknown, position: number, createdBy: string }>, components: Array<{ __typename?: 'components_component', id: string, componentType: string, legendPresetId?: string | null, zoomResistant?: boolean | null, children?: unknown | null, metadata?: unknown | null, x: any, x1: any, x2: any, y: any, y1: any, y2: any, fill: string, width: any, height: any, stroke?: string | null, linewidth?: any | null, strokeType?: string | null, textColor?: string | null, opacity?: number | null, position: number }> };
 
 export type GetBaseComponentCountQueryVariables = Exact<{
   baseId?: Scalars['uuid']['input'];
@@ -3051,6 +3734,11 @@ export const DeleteComponentsDocument = {"kind":"Document","definitions":[{"kind
 export const UpdateBaseVisibilityDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"updateBaseVisibility"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"uuid"}},"defaultValue":{"kind":"StringValue","value":"","block":false}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"update_bases_base_by_pk"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pk_columns"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}]}},{"kind":"Argument","name":{"kind":"Name","value":"_set"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"isPublic"},"value":{"kind":"BooleanValue","value":true}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"isPublic"}}]}}]}}]} as unknown as DocumentNode<UpdateBaseVisibilityMutation, UpdateBaseVisibilityMutationVariables>;
 export const SharePersistedBaseDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"sharePersistedBase"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"uuid"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"landingLng"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"float8"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"landingLat"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"float8"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"landingZoom"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"float8"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","alias":{"kind":"Name","value":"base"},"name":{"kind":"Name","value":"update_bases_base_by_pk"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pk_columns"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}]}},{"kind":"Argument","name":{"kind":"Name","value":"_set"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"isPublic"},"value":{"kind":"BooleanValue","value":true}},{"kind":"ObjectField","name":{"kind":"Name","value":"landingLng"},"value":{"kind":"Variable","name":{"kind":"Name","value":"landingLng"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"landingLat"},"value":{"kind":"Variable","name":{"kind":"Name","value":"landingLat"}}},{"kind":"ObjectField","name":{"kind":"Name","value":"landingZoom"},"value":{"kind":"Variable","name":{"kind":"Name","value":"landingZoom"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"isPublic"}}]}}]}}]} as unknown as DocumentNode<SharePersistedBaseMutation, SharePersistedBaseMutationVariables>;
 export const UpdateUserRevisitCountDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"updateUserRevisitCount"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"userId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"lastVisit"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"timestamptz"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"update_users_user_revisits_by_pk"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pk_columns"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"user_id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"userId"}}}]}},{"kind":"Argument","name":{"kind":"Name","value":"_inc"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"count"},"value":{"kind":"StringValue","value":"1","block":false}}]}},{"kind":"Argument","name":{"kind":"Name","value":"_set"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"last_visit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"lastVisit"}}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"count"}},{"kind":"Field","name":{"kind":"Name","value":"user_id"}},{"kind":"Field","name":{"kind":"Name","value":"last_visit"}}]}}]}}]} as unknown as DocumentNode<UpdateUserRevisitCountMutation, UpdateUserRevisitCountMutationVariables>;
+export const InsertLegendPresetDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"insertLegendPreset"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"object"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"legends_preset_insert_input"}},"defaultValue":{"kind":"ObjectValue","fields":[]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","alias":{"kind":"Name","value":"preset"},"name":{"kind":"Name","value":"insert_legends_preset_one"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"object"},"value":{"kind":"Variable","name":{"kind":"Name","value":"object"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"baseId"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"elementType"}},{"kind":"Field","name":{"kind":"Name","value":"style"}},{"kind":"Field","name":{"kind":"Name","value":"position"}},{"kind":"Field","name":{"kind":"Name","value":"createdBy"}}]}}]}}]} as unknown as DocumentNode<InsertLegendPresetMutation, InsertLegendPresetMutationVariables>;
+export const InsertBulkLegendPresetsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"insertBulkLegendPresets"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"objects"}},"type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"legends_preset_insert_input"}}}},"defaultValue":{"kind":"ObjectValue","fields":[]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","alias":{"kind":"Name","value":"presets"},"name":{"kind":"Name","value":"insert_legends_preset"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"objects"},"value":{"kind":"Variable","name":{"kind":"Name","value":"objects"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"returning"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"baseId"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"elementType"}},{"kind":"Field","name":{"kind":"Name","value":"style"}},{"kind":"Field","name":{"kind":"Name","value":"position"}},{"kind":"Field","name":{"kind":"Name","value":"createdBy"}}]}}]}}]}}]} as unknown as DocumentNode<InsertBulkLegendPresetsMutation, InsertBulkLegendPresetsMutationVariables>;
+export const UpdateLegendPresetDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"updateLegendPreset"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"uuid"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"updateObj"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"legends_preset_set_input"}},"defaultValue":{"kind":"ObjectValue","fields":[]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"update_legends_preset_by_pk"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pk_columns"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}]}},{"kind":"Argument","name":{"kind":"Name","value":"_set"},"value":{"kind":"Variable","name":{"kind":"Name","value":"updateObj"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}}]}}]}}]} as unknown as DocumentNode<UpdateLegendPresetMutation, UpdateLegendPresetMutationVariables>;
+export const DeleteLegendPresetDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"deleteLegendPreset"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"uuid"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"delete_legends_preset_by_pk"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}}]}}]}}]} as unknown as DocumentNode<DeleteLegendPresetMutation, DeleteLegendPresetMutationVariables>;
+export const RestyleComponentsByPresetDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"restyleComponentsByPreset"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"presetId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"uuid"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"updateObj"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"components_component_set_input"}},"defaultValue":{"kind":"ObjectValue","fields":[]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"update_components_component"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"where"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"legendPresetId"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"_eq"},"value":{"kind":"Variable","name":{"kind":"Name","value":"presetId"}}}]}}]}},{"kind":"Argument","name":{"kind":"Name","value":"_set"},"value":{"kind":"Variable","name":{"kind":"Name","value":"updateObj"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"affected_rows"}}]}}]}}]} as unknown as DocumentNode<RestyleComponentsByPresetMutation, RestyleComponentsByPresetMutationVariables>;
 export const GetComponentTypesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"getComponentTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","alias":{"kind":"Name","value":"componentTypes"},"name":{"kind":"Name","value":"components_componentType"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}},{"kind":"Field","name":{"kind":"Name","value":"logo"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"fill"}},{"kind":"Field","name":{"kind":"Name","value":"textColor"}}]}}]}}]} as unknown as DocumentNode<GetComponentTypesQuery, GetComponentTypesQueryVariables>;
-export const GetComponentsForBaseDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"getComponentsForBase"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"uuid"}},"defaultValue":{"kind":"StringValue","value":"","block":false}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","alias":{"kind":"Name","value":"base"},"name":{"kind":"Name","value":"bases_base_by_pk"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"isPublic"}},{"kind":"Field","name":{"kind":"Name","value":"mapAnchorLng"}},{"kind":"Field","name":{"kind":"Name","value":"mapAnchorLat"}},{"kind":"Field","name":{"kind":"Name","value":"mapAnchorZoom"}},{"kind":"Field","name":{"kind":"Name","value":"landingLng"}},{"kind":"Field","name":{"kind":"Name","value":"landingLat"}},{"kind":"Field","name":{"kind":"Name","value":"landingZoom"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"components"},"name":{"kind":"Name","value":"components_component"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"where"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"baseId"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"_eq"},"value":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}}}]}}]}},{"kind":"Argument","name":{"kind":"Name","value":"order_by"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"position"},"value":{"kind":"EnumValue","value":"asc"}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"componentType"}},{"kind":"Field","name":{"kind":"Name","value":"zoomResistant"}},{"kind":"Field","name":{"kind":"Name","value":"children"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}},{"kind":"Field","name":{"kind":"Name","value":"x"}},{"kind":"Field","name":{"kind":"Name","value":"x1"}},{"kind":"Field","name":{"kind":"Name","value":"x2"}},{"kind":"Field","name":{"kind":"Name","value":"y"}},{"kind":"Field","name":{"kind":"Name","value":"y1"}},{"kind":"Field","name":{"kind":"Name","value":"y2"}},{"kind":"Field","name":{"kind":"Name","value":"fill"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"stroke"}},{"kind":"Field","name":{"kind":"Name","value":"linewidth"}},{"kind":"Field","name":{"kind":"Name","value":"strokeType"}},{"kind":"Field","name":{"kind":"Name","value":"textColor"}},{"kind":"Field","name":{"kind":"Name","value":"opacity"}},{"kind":"Field","name":{"kind":"Name","value":"position"}}]}}]}}]} as unknown as DocumentNode<GetComponentsForBaseQuery, GetComponentsForBaseQueryVariables>;
+export const GetComponentsForBaseDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"getComponentsForBase"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"uuid"}},"defaultValue":{"kind":"StringValue","value":"","block":false}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","alias":{"kind":"Name","value":"base"},"name":{"kind":"Name","value":"bases_base_by_pk"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"isPublic"}},{"kind":"Field","name":{"kind":"Name","value":"mapAnchorLng"}},{"kind":"Field","name":{"kind":"Name","value":"mapAnchorLat"}},{"kind":"Field","name":{"kind":"Name","value":"mapAnchorZoom"}},{"kind":"Field","name":{"kind":"Name","value":"landingLng"}},{"kind":"Field","name":{"kind":"Name","value":"landingLat"}},{"kind":"Field","name":{"kind":"Name","value":"landingZoom"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"legendPresets"},"name":{"kind":"Name","value":"legends_preset"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"where"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"baseId"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"_eq"},"value":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}}}]}}]}},{"kind":"Argument","name":{"kind":"Name","value":"order_by"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"position"},"value":{"kind":"EnumValue","value":"asc"}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"baseId"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"elementType"}},{"kind":"Field","name":{"kind":"Name","value":"style"}},{"kind":"Field","name":{"kind":"Name","value":"position"}},{"kind":"Field","name":{"kind":"Name","value":"createdBy"}}]}},{"kind":"Field","alias":{"kind":"Name","value":"components"},"name":{"kind":"Name","value":"components_component"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"where"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"baseId"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"_eq"},"value":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}}}]}}]}},{"kind":"Argument","name":{"kind":"Name","value":"order_by"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"position"},"value":{"kind":"EnumValue","value":"asc"}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"componentType"}},{"kind":"Field","name":{"kind":"Name","value":"legendPresetId"}},{"kind":"Field","name":{"kind":"Name","value":"zoomResistant"}},{"kind":"Field","name":{"kind":"Name","value":"children"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}},{"kind":"Field","name":{"kind":"Name","value":"x"}},{"kind":"Field","name":{"kind":"Name","value":"x1"}},{"kind":"Field","name":{"kind":"Name","value":"x2"}},{"kind":"Field","name":{"kind":"Name","value":"y"}},{"kind":"Field","name":{"kind":"Name","value":"y1"}},{"kind":"Field","name":{"kind":"Name","value":"y2"}},{"kind":"Field","name":{"kind":"Name","value":"fill"}},{"kind":"Field","name":{"kind":"Name","value":"width"}},{"kind":"Field","name":{"kind":"Name","value":"height"}},{"kind":"Field","name":{"kind":"Name","value":"stroke"}},{"kind":"Field","name":{"kind":"Name","value":"linewidth"}},{"kind":"Field","name":{"kind":"Name","value":"strokeType"}},{"kind":"Field","name":{"kind":"Name","value":"textColor"}},{"kind":"Field","name":{"kind":"Name","value":"opacity"}},{"kind":"Field","name":{"kind":"Name","value":"position"}}]}}]}}]} as unknown as DocumentNode<GetComponentsForBaseQuery, GetComponentsForBaseQueryVariables>;
 export const GetBaseComponentCountDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"getBaseComponentCount"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"uuid"}}},"defaultValue":{"kind":"StringValue","value":"","block":false}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","alias":{"kind":"Name","value":"components"},"name":{"kind":"Name","value":"components_component_aggregate"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"where"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"baseId"},"value":{"kind":"ObjectValue","fields":[{"kind":"ObjectField","name":{"kind":"Name","value":"_eq"},"value":{"kind":"Variable","name":{"kind":"Name","value":"baseId"}}}]}}]}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"aggregate"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"count"}}]}}]}}]}}]} as unknown as DocumentNode<GetBaseComponentCountQuery, GetBaseComponentCountQueryVariables>;

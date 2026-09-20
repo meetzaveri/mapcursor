@@ -24,7 +24,29 @@ import {
     CREATE_BASE,
     UPDATE_BASE_VISIBILITY,
     SHARE_PERSISTED_BASE,
+    INSERT_BULK_LEGEND_PRESETS,
+    RESTYLE_COMPONENTS_BY_PRESET,
 } from '../../schema/mutations'
+import LegendPanel from '../../components/legend/legendPanel'
+import PresetChips from '../../components/legend/presetChips'
+import {
+    useLegendPresets,
+    writeLegendPresetsLocal,
+} from '../../hooks/useLegendPresets'
+import type { LegendPresetInput } from '../../hooks/useLegendPresets'
+import type { LegendPreset, LegendPresetType } from '../../types/legend'
+import {
+    readArmedPresets,
+    writeArmedPresets,
+} from '../../utils/armedLegendPreset'
+import type { ArmedPresetMap } from '../../utils/armedLegendPreset'
+import { presetStylePatch } from '../../types/legend'
+import {
+    applyPresetToElement,
+    applyPresetToMany,
+    idsBoundToPreset,
+    presetApplyPatch,
+} from '../../utils/applyLegendPreset'
 import Canvas from '../../newCanvas'
 import ZoomControls from '../../components/ZoomControls'
 import GoToContentButton from '../../components/goToContentButton'
@@ -278,6 +300,15 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const [insertBulkComponents] = useMutation(INSERT_BULK_COMPONENTS, {
         ignoreResults: true,
     })
+
+    const [insertBulkLegendPresets] = useMutation(INSERT_BULK_LEGEND_PRESETS, {
+        ignoreResults: true,
+    })
+
+    const [restyleComponentsByPreset] = useMutation(
+        RESTYLE_COMPONENTS_BY_PRESET,
+        { ignoreResults: true }
+    )
 
     const [componentStore, setComponentStore] = useState<ComponentStore>({})
 
@@ -535,6 +566,19 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         stripTypename,
     })
 
+    const {
+        legendPresets,
+        legendPresetsRef,
+        createPreset,
+        updatePreset,
+        deletePreset,
+        replacePresets,
+    } = useLegendPresets({
+        baseId,
+        isPersistedRef,
+        seed: getComponentsForBaseData?.legendPresets,
+    })
+
     // Write-side size guard. The measurement lives in useLocalDraftPersistence
     // (real UTF-8 size of the persisted draft, after each save); when it's over
     // budget it calls this, and we revert the last action + open the "canvas is
@@ -561,9 +605,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         exportBaseAsJson(
             stateRefForComponentStore.current,
             viewport,
-            readBackdropConfig()
+            readBackdropConfig(),
+            legendPresetsRef.current
         )
         setShowBaseFullModal(false)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [readBackdropConfig])
 
     // ---- Board import (P0) ----
@@ -624,6 +670,13 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 store[id] = { ...comp, baseId: newLocalId }
             })
             stateRefForComponentStore.current = store
+            // The file's legend replaces the current one wholesale — this is
+            // "open as new canvas", so the old canvas's captions are as gone as
+            // its elements. Preset ids are kept exactly as the file has them,
+            // which is what makes the imported records' `legendPresetId` still
+            // resolve; there is nothing here to collide with.
+            writeLegendPresetsLocal(newLocalId, parsed.legendPresets)
+            replacePresets(parsed.legendPresets)
             // Rotate localBaseId without the id-change effect wiping the store.
             skipComponentStoreResetRef.current = true
             setLocalBaseId(newLocalId)
@@ -639,7 +692,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     // fresh UUID (so it can't collide) and stack on top. One BATCH entry so a
     // single undo removes the whole import.
     const mergeImportedBase = useCallback(
-        (parsed: ParsedImport): void => {
+        async (parsed: ParsedImport): Promise<void> => {
             const records = Object.values(parsed.components)
             // Add in ascending original z-order so the assigned positions
             // preserve the imported set's relative stacking.
@@ -659,11 +712,64 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             const idMap = new Map<string, string>()
             records.forEach((r) => idMap.set(r.id, generateUUID()))
 
+            // The legend merges the same way the elements do: every imported
+            // preset is re-keyed so it cannot collide with one already on this
+            // canvas, and each record's binding is rewritten through that map.
+            // An imported preset is ADDED rather than matched by name — two
+            // canvases can easily both have a "Residential cluster" meaning
+            // different colours, and silently folding them together would
+            // restyle the marks already here.
+            const presetIdMap = new Map<string, string>()
+            const importedPresets = parsed.legendPresets.map((preset, i) => {
+                const newId = generateUUID()
+                presetIdMap.set(preset.id, newId)
+                return {
+                    ...preset,
+                    id: newId,
+                    baseId,
+                    position: legendPresetsRef.current.length + i,
+                }
+            })
+            if (importedPresets.length > 0) {
+                replacePresets([
+                    ...legendPresetsRef.current,
+                    ...importedPresets,
+                ])
+                // replacePresets only mirrors to localStorage in local mode, so
+                // a merge into a SAVED base has to insert them itself — the
+                // components around them are already being inserted by
+                // addToLocalComponentStore below, and a binding whose preset
+                // row never landed would violate the FK.
+                if (isPersistedRef.current) {
+                    // AWAITED, unlike most mutations here. The component
+                    // inserts below carry legendPresetId as a real FK, so a
+                    // fire-and-forget preset insert can lose the race and take
+                    // the whole batch down with a constraint violation.
+                    await insertBulkLegendPresets({
+                        variables: {
+                            objects: importedPresets.map((p) => ({
+                                id: p.id,
+                                baseId,
+                                name: p.name,
+                                elementType: p.elementType,
+                                style: p.style,
+                                position: p.position,
+                            })),
+                        },
+                    }).catch(() => {})
+                }
+            }
+
             const batch: HistoryEntry[] = []
             records.forEach((r, i) => {
                 const newId = idMap.get(r.id) as string
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const cloned: any = { ...r, id: newId, baseId }
+                // A binding whose preset did not survive validation is dropped
+                // rather than carried as a dangling id — the mark keeps its
+                // styling and simply arrives without a caption.
+                cloned.legendPresetId =
+                    presetIdMap.get(r.legendPresetId ?? '') ?? null
                 // Explicit top position, in sorted order — O(1) per add.
                 cloned.position = baseMax + i + 1
                 addToLocalComponentStore(
@@ -749,7 +855,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         if (rejectIfWontFit(projected)) return // stay open, show error
         setShowImportChooser(false)
         pendingImportRef.current = null
-        mergeImportedBase(parsed)
+        void mergeImportedBase(parsed)
     }, [mergeImportedBase, rejectIfWontFit])
 
     const handleImportChooserClose = useCallback(() => {
@@ -1404,6 +1510,17 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 if (val === undefined && key === 'zoomResistant') {
                     val = true
                 }
+                // And again for the legend binding. An element that has never
+                // carried a preset has no value here, so without this the
+                // snapshot omits the key entirely and undoing the FIRST apply
+                // reverts the styling while leaving the element bound — the
+                // legend would keep counting a mark that no longer matches it.
+                // `null` (not undefined) is what reaches the DB: toComponentColumns
+                // drops undefined and keeps an explicit null, which is the
+                // difference between "no opinion" and "unbind this".
+                if (val === undefined && key === 'legendPresetId') {
+                    val = null
+                }
                 if (val !== undefined) {
                     prevProps[key] = val
                 }
@@ -1664,6 +1781,32 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const serverBaseId = baseData?.base?.id
         if (!serverBaseId) throw new Error('createBase returned no id')
 
+        // The legend goes FIRST, and its ids are re-minted like everything
+        // else. Components carry `legendPresetId` as a real FK, so inserting
+        // them before their presets exist would be a constraint violation —
+        // and carrying the OLD ids across would point every binding at rows on
+        // another base. `presetIdMap` is what keeps a shared canvas's captions
+        // attached to the marks they caption; without it, sharing silently
+        // unbinds the whole legend at the exact moment it starts mattering.
+        const presetIdMap = new Map<string, string>()
+        const presetsForDB = legendPresetsRef.current.map((preset) => {
+            const newId = generateUUID()
+            presetIdMap.set(preset.id, newId)
+            return {
+                id: newId,
+                baseId: serverBaseId,
+                name: preset.name,
+                elementType: preset.elementType,
+                style: preset.style,
+                position: preset.position,
+            }
+        })
+        if (presetsForDB.length > 0) {
+            await insertBulkLegendPresets({
+                variables: { objects: presetsForDB },
+            })
+        }
+
         // Insert all components to DB under the server base ID.
         // Generate a fresh UUID for each component's id so re-sharing from '/'
         // never hits a "duplicate key" uniqueness violation.
@@ -1682,6 +1825,15 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 ),
                 id: generateUUID(),
                 baseId: serverBaseId,
+                // Re-point the binding at this base's copy of the preset. A
+                // record whose preset somehow did not come across is unbound
+                // rather than left pointing at a foreign row — it keeps its
+                // styling and simply loses its caption, which is the same
+                // outcome as deleting the preset.
+                legendPresetId:
+                    presetIdMap.get(
+                        (comp as ComponentRecord)?.legendPresetId ?? ''
+                    ) ?? null,
             }))
 
         const skipped = allEntries.filter(
@@ -1717,6 +1869,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         // diverge in identity, not in substrate.
         try {
             writeAnchorConfig(newLocalId, readBackdropConfig())
+            // The legend rides along for the same reason the anchor does: the
+            // `/` session keeps its elements, so it has to keep the captions
+            // that explain them. These stay on the ORIGINAL preset ids — the
+            // re-minted ones above belong to the shared copy, and the two
+            // diverge from here exactly as the component ids do.
+            writeLegendPresetsLocal(newLocalId, legendPresetsRef.current)
             const scene = twoJSInstanceRef.current?.scene
             if (scene) {
                 writeViewport(newLocalId, isMobile, {
@@ -2224,6 +2382,163 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setDefaultTextFontFamily,
     })
 
+    // --- Legend presets: the three writes that reach elements --------------
+
+    const legendApplyDeps = {
+        twoJSInstance,
+        updateComponentBulkPropertiesInLocalStore,
+    }
+
+    /**
+     * Snapshot the columns a preset application is about to overwrite, so a
+     * BATCH entry can reverse it. Mirrors the snapshot
+     * `updateComponentBulkPropertiesInLocalStore` takes for a single write —
+     * including the `undefined → null` fallback for a never-bound element,
+     * without which undoing the first apply would leave it bound.
+     */
+    const snapshotForPreset = useCallback(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (id: string, keys: string[]): Record<string, any> => {
+            const current = stateRefForComponentStore.current[id]
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const prev: Record<string, any> = {}
+            keys.forEach((key) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                let val = (current as any)?.[key]
+                if (val === undefined && key === 'legendPresetId') val = null
+                if (val !== undefined) prev[key] = val
+            })
+            return prev
+        },
+        []
+    )
+
+    /**
+     * Restyle every element bound to a preset, as ONE undo step.
+     *
+     * This is the live binding doing its job. The DB half is a single
+     * statement; the client half has to repaint each mounted element by hand,
+     * because ElementRenderWrapper froze their props at mount and a store write
+     * alone would not reach them until a reload.
+     */
+    const restyleBoundElements = useCallback(
+        (preset: LegendPreset): void => {
+            const ids = idsBoundToPreset(
+                stateRefForComponentStore.current,
+                preset.id
+            )
+            if (ids.length === 0) return
+            const patchKeys = Object.keys(presetApplyPatch(preset))
+            const entries = applyPresetToMany(
+                legendApplyDeps,
+                ids,
+                preset,
+                (id) => snapshotForPreset(id, patchKeys)
+            )
+            recordBatchToHistoryLog(entries as never)
+            if (isPersistedRef.current) {
+                restyleComponentsByPreset({
+                    variables: {
+                        presetId: preset.id,
+                        updateObj: toComponentColumns(presetStylePatch(preset)),
+                    },
+                }).catch(() => {})
+            }
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [twoJSInstance, snapshotForPreset, recordBatchToHistoryLog]
+    )
+
+    const createLegendPreset = useCallback(
+        (input: LegendPresetInput): LegendPreset => createPreset(input),
+        [createPreset]
+    )
+
+    const updateLegendPreset = useCallback(
+        (id: string, patch: Partial<LegendPresetInput>): void => {
+            const next = updatePreset(id, patch)
+            // A rename changes no styling, so only re-sweep when the style (or
+            // the type, which decides which keys the style even has) moved.
+            if (!next) return
+            if (patch.style === undefined && patch.elementType === undefined) {
+                return
+            }
+            restyleBoundElements(next)
+        },
+        [updatePreset, restyleBoundElements]
+    )
+
+    /**
+     * Delete unbinds; it never restyles. The FK is ON DELETE SET NULL, so the
+     * server does its half — this does the client's, which the DB cannot.
+     */
+    const deleteLegendPreset = useCallback(
+        (id: string): void => {
+            const ids = idsBoundToPreset(stateRefForComponentStore.current, id)
+            if (ids.length > 0) {
+                const entries = applyPresetToMany(
+                    legendApplyDeps,
+                    ids,
+                    null,
+                    (elementId) =>
+                        snapshotForPreset(elementId, ['legendPresetId'])
+                )
+                recordBatchToHistoryLog(entries as never)
+            }
+            deletePreset(id)
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [deletePreset, snapshotForPreset, recordBatchToHistoryLog, twoJSInstance]
+    )
+
+    const applyLegendPresetToSelection = useCallback(
+        (preset: LegendPreset | null): void => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const id = (selectedComponent as any)?.group?.data?.elementData?.id
+            if (!id) return
+            applyPresetToElement(legendApplyDeps, id, preset)
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [selectedComponent, twoJSInstance]
+    )
+
+    // Keep the ARMED presets honest against the live legend.
+    //
+    // The armed map stores whole presets so a creation path needs nothing but
+    // that file to style a mark — which means a stale copy would keep arming a
+    // colour the legend no longer has, or an id no longer in the table (a
+    // dangling FK, and a failed insert). Re-syncing here is what lets every
+    // creation path simply trust the map: a deleted preset disarms, an edited
+    // one re-arms with its new style, a rename carries over.
+    useEffect(() => {
+        const armed = readArmedPresets()
+        const next: ArmedPresetMap = {}
+        let changed = false
+        ;(Object.keys(armed) as LegendPresetType[]).forEach((type) => {
+            const live = legendPresets.find((p) => p.id === armed[type]?.id)
+            if (!live) {
+                changed = true
+                return
+            }
+            next[type] = live
+            if (JSON.stringify(live) !== JSON.stringify(armed[type])) {
+                changed = true
+            }
+        })
+        if (changed) writeArmedPresets(next)
+    }, [legendPresets])
+
+    /** How many elements carry each preset — the "(3)" on a legend row. */
+    const legendPresetCounts = useMemo(() => {
+        const counts: Record<string, number> = {}
+        Object.keys(componentStore).forEach((id) => {
+            const bound = componentStore[id]?.legendPresetId
+            if (!bound) return
+            counts[bound] = (counts[bound] ?? 0) + 1
+        })
+        return counts
+    }, [componentStore])
+
     const updateBulkPropsForRectangleWithText = (
         id: string,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2291,6 +2606,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         applyProperty,
         selectedGroup,
         applyGroupProperty,
+        legendPresets,
+        createLegendPreset,
+        updateLegendPreset,
+        deleteLegendPreset,
+        applyLegendPresetToSelection,
+        legendPresetCounts,
         reorderSelected,
         fitToContent,
         componentStore,
@@ -2401,6 +2722,8 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                         </button>
                     )}
                     <ElementPropertiesToolbar />
+                    <PresetChips />
+                    <LegendPanel />
                     <Canvas
                         pointerToggle={pointerToggle}
                         isPencilMode={isPencilMode}

@@ -3,7 +3,6 @@ import type { ReactElement } from 'react'
 import { useBaseContext } from '../../views/Base/baseContext'
 
 import CircleFactory from '../../factory/circle'
-import { strokeTypeToDashes } from '../../utils/misc'
 import { readOpacity } from '../../utils/canvasUtils'
 import { scheduleRender } from '../../utils/renderScheduler'
 import {
@@ -14,7 +13,6 @@ import {
 import {
     computeCounterScale,
     resolveLabelResist,
-    resolveResist,
 } from '../../utils/counterScale'
 import {
     buildCircleLabel,
@@ -54,22 +52,16 @@ function Circle(props: ElementProps): ReactElement {
 
     const two = props.twoJSInstance
 
-    // A circle's STROKE counter-scales against the camera while its geometry
-    // stays world-glued, so a 5km radius stays 5km (see isStrokeScaled).
-    // Unless one was stored, this lands on the default — the same value area
-    // and route run at. `resolveResist` is the single reader.
-    const resist = resolveResist(props)
-    // The LABEL counter-scales at its own rate, under the user's "Zoom
-    // resistant" switch. Two resists on one element: reading the column for
-    // the stroke as well would make that switch delete the ring at low zoom.
-    // Held in a ref because the switch reaches us by event, not by prop —
+    // A radius map is BORDERLESS (see CIRCLE_DEFAULTS): the disc itself is the
+    // mark, and the factory paints a zero-width ring. So there is no stroke to
+    // counter-scale here, unlike area/route — the geometry stays world-glued so
+    // a 5km radius stays 5km, and the only thing that resists zoom is the
+    // LABEL, at its own rate under the user's "Zoom resistant" switch. Held in
+    // a ref because the switch reaches us by event, not by prop —
     // ElementRenderWrapper freezes props at mount.
     const labelResistRef = useRef<number>(
         resolveLabelResist(props.itemData ?? props)
     )
-    // Logical (unscaled) stroke width. Only this counter-scales; the geometry
-    // stays glued to the world so a 5km radius stays 5km.
-    const baseLinewidth = props.linewidth ?? 2
 
     useEffect(() => {
         const prevX = props.x
@@ -113,15 +105,10 @@ function Circle(props: ElementProps): ReactElement {
             shapeRef.current = circle
             group.children.unshift(circle)
 
-            // Seed the stroke counter-scale from the current camera so the ring
-            // is already the right weight before the first zoom event fires —
-            // mirrors area.tsx.
+            // The label is counter-scaled from the current camera below, so it
+            // is already the right size before the first zoom event fires.
             const initialScale =
                 (zuiInBase as ShapeLike)?.zui?.scale ?? two?.scene?.scale
-            if (initialScale) {
-                circle.linewidth =
-                    baseLinewidth * computeCounterScale(initialScale, resist)
-            }
 
             // Opacity goes on the ELLIPSE, not the group. A circle is created
             // half-transparent so the basemap reads through it — but its label
@@ -152,10 +139,6 @@ function Circle(props: ElementProps): ReactElement {
                 if (groupEl) {
                     groupEl.setAttribute('class', 'dragger-picker')
                     groupEl.setAttribute('data-component-id', props.id)
-                    groupEl.setAttribute(
-                        'data-linewidth',
-                        String(props.linewidth ?? '')
-                    )
                     groupEl.addEventListener('dblclick', openEditor)
                 }
             })
@@ -218,7 +201,7 @@ function Circle(props: ElementProps): ReactElement {
     }, [props.x, props.y, props.fill, props.width, props.height, two])
 
     // Both the wrap and the cap-band centring are measured off the FONT, and
-    // under `font-display: swap` the ring is drawn before the font arrives — so
+    // under `font-display: swap` the disc is drawn before the font arrives — so
     // the first build ran against the fallback face. Rebuild once the real one
     // lands. A full rebuild rather than a nudge, unlike a point's single-line
     // label: the wrap width is a font measurement too, so the line breaks can
@@ -237,37 +220,27 @@ function Circle(props: ElementProps): ReactElement {
         }
     }, [])
 
-    // Counter-scale the stroke width on every camera change so the ring stays a
-    // readable couple of pixels across the map's whole zoom range, while the
-    // circle itself keeps marking the same ground. Reads the scale off the
-    // event each fire — no stale closure (see CLAUDE.md).
+    // The disc keeps marking the same ground at every zoom — nothing about it
+    // counter-scales, because it is borderless and its geometry is the data.
+    // Its LABEL is a caption, so it rides its own resist to hold a
+    // near-constant screen size. Reads the scale off the event each fire — no
+    // stale closure (see CLAUDE.md).
     useEffect(() => {
         const onZoom = (e: Event): void => {
             const group = groupRef.current
-            const shape = shapeRef.current
-            if (!group || !shape) return
+            if (!group) return
             const scale = (e as CustomEvent<{ scale: number }>).detail?.scale
             if (!scale) return
-            // Logical width lives on elementData (kept in sync by the property
-            // panel); fall back to the mount-time base.
-            const base = group.elementData?.linewidth ?? baseLinewidth
-            shape.linewidth = base * computeCounterScale(scale, resist)
-            // The label rides its own resist, so the name holds a near-constant
-            // screen size while the ring keeps marking the same ground.
             const label = labelRef.current ?? getCircleLabelGroup(group)
-            if (label) {
-                label.scale = computeCounterScale(
-                    scale,
-                    labelResistRef.current
-                )
-            }
+            if (!label) return
+            label.scale = computeCounterScale(scale, labelResistRef.current)
             scheduleRender(two)
         }
         window.addEventListener('zoomChanged', onZoom as EventListener)
         return (): void => {
             window.removeEventListener('zoomChanged', onZoom as EventListener)
         }
-    }, [two, resist, baseLinewidth])
+    }, [two])
 
     // The "Zoom resistant" switch (and undo/redo of it) reaches us here rather
     // than through props — a column write never re-renders a frozen-prop
@@ -298,13 +271,6 @@ function Circle(props: ElementProps): ReactElement {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.id, two])
-
-    useEffect(() => {
-        if (shapeRef.current) {
-            shapeRef.current.dashes = strokeTypeToDashes(props.strokeType)
-            scheduleRender(two)
-        }
-    }, [props.strokeType, two])
 
     useEffect(() => {
         const group = groupRef.current

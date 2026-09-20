@@ -54,18 +54,16 @@ function defaultResistFor(type: string): number {
 
 /**
  * The resist exponent for an element's own body — a point's pin, a text's
- * group, an area/route/pencil/circle's STROKE.
+ * group, an area/route/pencil's STROKE.
  *
  * `properties.resist` is the numeric strength knob and the sole mechanism for
- * point / area / route / pencil / circle. It is reachable on ALL of them now —
- * under the old polymorphic metadata a route's was a bare vertex array, so
- * `.resist` was always `undefined` there and area/route/pencil silently ran on
- * the default no matter what was stored. The `zoomResistant` column is read
- * here for **text only**, because for text the body and the label are the same
- * thing. A circle has both a stroke and a label, resisting at two
- * different rates — its column is read by `resolveLabelResist` below and must
- * NOT be read here, or turning the label's switch off would also stop the ring
- * counter-scaling and the ring would vanish at z4.
+ * point / area / route / pencil. It is reachable on ALL of them now — under the
+ * old polymorphic metadata a route's was a bare vertex array, so `.resist` was
+ * always `undefined` there and area/route/pencil silently ran on the default no
+ * matter what was stored. The `zoomResistant` column is read here for **text
+ * only**, because for text the body and the label are the same thing. A circle
+ * has no body to resist with — it is borderless and its geometry is the data,
+ * so only its label counter-scales; that is `resolveLabelResist` below.
  */
 export function resolveResist(item: ShapeLike): number {
     const type = item?.componentType
@@ -89,20 +87,24 @@ export function resolveLabelResist(item: ShapeLike): number {
 
 /**
  * Which types counter-scale their STROKE only, keeping their geometry
- * world-scaled: area, route, pencil and circle.
+ * world-scaled: area, route and pencil.
  *
- * A circle marks a real-world radius, so its geometry has to stay world-scaled;
- * only the outline is held near-constant, or the ring becomes a thick band at
- * z18 and disappears at z4. The same reasoning covers a freehand stroke.
+ * Each of those marks real ground with its path, so the geometry has to stay
+ * world-scaled; only the outline is held near-constant, or it becomes a thick
+ * band at z18 and disappears at z4.
  *
- * This used to be split — pencil and circle were offered on the whiteboard too,
- * so `objectClass` decided per record whether a given one was drawn on a map.
- * With the map the only substrate, every pencil and every circle is a map mark.
+ * A circle is NOT in this set: it is borderless (see CIRCLE_DEFAULTS), so there
+ * is no stroke to hold steady — its disc is the data and its label resists on
+ * its own, via resolveLabelResist.
+ *
+ * This used to be split — pencil was offered on the whiteboard too, so
+ * `objectClass` decided per record whether a given one was drawn on a map. With
+ * the map the only substrate, every pencil is a map mark.
  */
 export function isStrokeScaled(item: ShapeLike): boolean {
     const type = item?.componentType
     if (STROKE_SCALED_TYPES.has(type)) return true
-    return type === 'pencil' || type === 'circle'
+    return type === 'pencil'
 }
 
 /**
@@ -128,7 +130,13 @@ export function applyCounterScaleToCopy(
 ): void {
     if (!copy || !zuiScale) return
     const type = item?.componentType
-    if (!GROUP_SCALED_TYPES.has(type) && !isStrokeScaled(item)) return
+    // A circle comes through here with nothing to stroke-scale: it is
+    // borderless, but its LABEL still rides its own resist, and a grouped copy
+    // has no element component to do that for it.
+    const isCircle = type === 'circle'
+    if (!GROUP_SCALED_TYPES.has(type) && !isStrokeScaled(item) && !isCircle) {
+        return
+    }
 
     const factor = computeCounterScale(zuiScale, resolveResist(item))
 
@@ -149,6 +157,9 @@ export function applyCounterScaleToCopy(
             child.scale = labelFactor
             return
         }
+        // The circle's own ellipse: nothing to do, and writing a width onto it
+        // would hand a borderless mark a ring for the length of a selection.
+        if (isCircle) return
         if (typeof child?.linewidth === 'number') {
             child.linewidth = base * factor
         }

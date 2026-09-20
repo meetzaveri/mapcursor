@@ -1,6 +1,8 @@
 import type { ComponentRecord, ComponentStore } from '../types/base'
 import { GROUP_COMPONENT } from '../constants/misc'
 import { readGeometry } from './geometry'
+import { isLegendPresetType } from './../types/legend'
+import type { LegendPreset } from '../types/legend'
 
 export interface BaseViewport {
     scale: number
@@ -17,6 +19,12 @@ export interface ParsedImport {
     total: number
     /** Records dropped for being malformed / unknown. */
     skipped: number
+    /**
+     * The file's legend, or an empty list. Validated the same way records are —
+     * a preset whose `elementType` is not a mark this app can draw captions
+     * nothing, so it is dropped rather than shown as a dead legend row.
+     */
+    legendPresets: LegendPreset[]
 }
 
 /**
@@ -57,6 +65,31 @@ function isValidRecord(value: unknown): value is ComponentRecord {
         // that mount as nothing — they are counted in `skipped` instead.
         readGeometry(r) !== null
     )
+}
+
+function parseLegendPresets(value: unknown): LegendPreset[] {
+    if (!Array.isArray(value)) return []
+    const out: LegendPreset[] = []
+    value.forEach((row) => {
+        if (!row || typeof row !== 'object') return
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const r = row as any
+        if (typeof r.id !== 'string') return
+        if (!isLegendPresetType(r.elementType)) return
+        out.push({
+            id: r.id,
+            baseId: null,
+            name: typeof r.name === 'string' ? r.name : '',
+            elementType: r.elementType,
+            style:
+                r.style && typeof r.style === 'object'
+                    ? r.style
+                    : {},
+            position: typeof r.position === 'number' ? r.position : 0,
+            createdBy: null,
+        })
+    })
+    return out
 }
 
 function isValidViewport(value: unknown): value is BaseViewport {
@@ -100,5 +133,8 @@ export function parseImportedBase(text: string): ParsedImport {
         viewport: isValidViewport(raw?.viewport) ? raw.viewport : null,
         total: entries.length,
         skipped,
+        // Absent in a pre-legend file, which is not an error: those canvases
+        // simply have no legend, exactly as they did before the feature.
+        legendPresets: parseLegendPresets(raw?.legendPresets),
     }
 }

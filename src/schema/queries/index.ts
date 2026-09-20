@@ -47,12 +47,29 @@ export const GET_COMPONENTS_FOR_BASE_QUERY: TypedDocumentNode<
             landingLat
             landingZoom
         }
+        # The base's legend presets. Rides this query for exactly the reason
+        # the base row does: one gate, already in place. A query of its own
+        # would need its own loading state, and a legend that pops in after
+        # the canvas has painted reads as a glitch.
+        legendPresets: legends_preset(
+            where: { baseId: { _eq: $baseId } }
+            order_by: { position: asc }
+        ) {
+            id
+            baseId
+            name
+            elementType
+            style
+            position
+            createdBy
+        }
         components: components_component(
             where: { baseId: { _eq: $baseId } }
             order_by: { position: asc }
         ) {
             id
             componentType
+            legendPresetId
             zoomResistant
             children
             metadata

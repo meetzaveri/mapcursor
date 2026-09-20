@@ -66,6 +66,23 @@ export const VIEWPORT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 // rescue path are unaffected by it. Shares the viewport TTL and its sweep.
 export const MAP_ANCHOR_KEY_PREFIX = 'mapcursor_map_anchor_'
 
+// Per-base legend presets, for a canvas that has not been persisted yet.
+// A sidecar like the anchor, and out of the draft blob for the same reason —
+// but deliberately NOT part of the viewport TTL sweep: the camera and the
+// anchor are caches that can be rebuilt, a legend is authored content. It is
+// dropped only when its base is persisted (persistBase rotates it) or cleared.
+export const LEGEND_PRESETS_KEY_PREFIX = 'mapcursor_legend_presets_'
+
+// The legend preset ARMED per element type — what the next mark drawn with
+// that tool will wear. UI state, not content, so it is one flat key rather
+// than a per-base sidecar; base.tsx re-syncs it against the live legend, so a
+// preset that was deleted or restyled can never reach a creation path stale.
+//
+// In localStorage rather than only in React because `finishGeoDraw` reads it
+// from inside `addZUI`, whose handlers bind once on mount and never see a
+// state update (see the stale-closure rule in CLAUDE.md).
+export const ARMED_LEGEND_PRESETS_KEY = 'mapcursor_armed_legend_presets'
+
 // Every component type mapcursor can author. These are `componentType` values
 // on `components.component`, and each one names the element module that renders
 // it (`components/elements/<componentType>.tsx` — see elementModules.ts).
@@ -260,9 +277,15 @@ export const ELEMENT_DEFAULTS: Record<
 // default is the whiteboard's pale shape fill, which at 50% over a basemap is
 // invisible. Stroke is not listed because a new map circle takes its fill as
 // its stroke, so the two read as one mark until the user separates them.
+//
+// `linewidth: 0` is the border: a radius map is BORDERLESS. It answers "what is
+// within this distance", and a hard ring reads as an edge the data does not
+// have — the translucent disc alone is the mark. Nothing offers a width for it
+// (see SETS.CIRCLE and PRESET_STYLE_KEYS.circle), so the value is not a default
+// the user can move off; it is the shape of the mark.
 export const CIRCLE_DEFAULTS = {
     fill: '#A32D2D',
-    linewidth: 2,
+    linewidth: 0,
     opacity: 0.5,
 } as const
 
@@ -300,11 +323,10 @@ export const DRAFT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
 export const BACKGROUND_BASE_STORAGE_KEY = 'mapcursor_background_base_id'
 export const STORAGE_QUOTA_ERROR_NAME = 'QuotaExceededError'
 
-// Top offset of the hint slot under the primary toolbar, shared by #tool-hint
+// Bottom offset of the hint slot from the bottom of the page, shared by #tool-hint
 // and #geo-text-zoom-hint — only ever one of them is up at a time, and they
-// must land in the same place. The toolbar's bottom edge computes to 54px, so
-// this leaves ~5px of air under it rather than butting against the shadow.
-export const HINT_SLOT_TOP = '60px'
+// must land in the same place.
+export const HINT_SLOT_BOTTOM = '20px'
 
 // On mobile the toolbar is pinned bottom-left, so there is no "below the
 // toolbar" slot — the hint goes to the empty strip along the TOP instead,

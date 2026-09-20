@@ -88,9 +88,13 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
     // color is `textColor`. Excluded so a group fill leaves text untouched and
     // never stamps a spurious `fill` onto a text row.
     fill: new Set(['rectangle', 'circle', 'diamond', 'frame']),
+    // A radius map is borderless (see CIRCLE_DEFAULTS), so `circle` is absent
+    // from all three stroke keys: a group edit must not hand it the ring its
+    // own toolbar refuses to offer. Its fill still reaches it, and the fill
+    // branch below keeps the stroke COLUMN in step — that mirror is not gated
+    // on this set.
     stroke: new Set([
         'rectangle',
-        'circle',
         'diamond',
         'frame',
         'arrowLine',
@@ -98,7 +102,6 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
     ]),
     linewidth: new Set([
         'rectangle',
-        'circle',
         'diamond',
         'frame',
         'arrowLine',
@@ -106,7 +109,6 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
     ]),
     strokeType: new Set([
         'rectangle',
-        'circle',
         'diamond',
         'frame',
         'arrowLine',
@@ -333,13 +335,13 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     sceneEl.elementData[propertyKey] = value
                 child[propertyKey] = value
 
-                // A radius map reads as ONE mark: its ring is its fill, from
-                // creation onward. Mirror it here too, or the same edit means
-                // two different things depending on whether the circle happens
-                // to be in a group. One-way, like the single-element path —
-                // `stroke` leaves `fill` alone, so the two can still be
-                // separated. `applyToTwoShape` already painted the leaf's
-                // `fill`; this adds the `stroke` alongside it.
+                // A radius map reads as ONE mark: its stroke column follows
+                // its fill, from creation onward. Mirror it here too, or the
+                // same edit means two different things depending on whether
+                // the circle happens to be in a group. Nothing is painted at
+                // zero width — this keeps the record one colour.
+                // `applyToTwoShape` already painted the leaf's `fill`; this
+                // adds the `stroke` alongside it.
                 if (propertyKey === 'fill' && type === 'circle') {
                     // Written to the LEAF, not the group. A Two.js Group's
                     // stroke setter loops every child, and the label's line

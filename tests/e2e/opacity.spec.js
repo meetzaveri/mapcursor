@@ -94,7 +94,9 @@ test.describe('opacity', () => {
         await clickPointerTool(page)
         const b = await circle.boundingBox()
         await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
-        await page.waitForSelector('#floating-toolbar #stroke-width-section')
+        // Fill, not stroke width: a radius map is borderless, so its panel
+        // carries no stroke controls at all (see SETS.CIRCLE).
+        await page.waitForSelector('#floating-toolbar [data-section="fill"]')
 
         // Its own controls are there, but opacity is not one of them.
         await expect(

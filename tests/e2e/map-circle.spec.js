@@ -3,10 +3,10 @@
 // A circle is the natural mark for a radius — a blast radius, a catchment, a
 // hotspot — and drawing one as a polygon `area` is fiddly and never actually
 // round. What these tests protect: it is created at 50% opacity with its stroke
-// seeded from its fill, carries no opacity control, takes a name rather than
-// craftbase-style inner text (the shape is never resized by it), and
-// counter-scales its stroke while its geometry stays world-scaled. Its label
-// is covered separately, in map-circle-label.spec.js.
+// column seeded from its fill, it is BORDERLESS (no ring at any zoom and no
+// stroke controls to grow one), it carries no opacity control, and it takes a
+// name rather than craftbase-style inner text (the shape is never resized by
+// it). Its label is covered separately, in map-circle-label.spec.js.
 
 import { test, expect } from './helpers/test.js'
 import {
@@ -86,7 +86,7 @@ const lastRecord = (page) =>
     })
 
 test.describe('the map circle', () => {
-    test('is stamped geo, created at 50%, with stroke inherited from fill', async ({
+    test('is stamped geo, created at 50%, borderless, stroke from fill', async ({
         page,
     }) => {
         await openMapBase(page)
@@ -111,8 +111,13 @@ test.describe('the map circle', () => {
         // The GROUP stays fully opaque — it carries the label too, and group
         // opacity would multiply onto both.
         expect(rec.paintedGroupOpacity).toBe(1)
-        // Outline starts as the fill, so a new circle lands as one mark.
+        // The stroke column starts as the fill, so the record reads as one
+        // mark — but nothing is drawn with it: a radius map is borderless, so
+        // the ring is zero-width from creation and there is no control to
+        // widen it (see CIRCLE_DEFAULTS).
         expect(rec.stroke).toBe(rec.fill)
+        expect(rec.linewidth).toBe(0)
+        expect(rec.paintedLinewidth).toBe(0)
         // Not the whiteboard's pale shape fill, which at 50% over a basemap is
         // invisible — the reason geo circles carry their own default.
         expect(rec.fill.toLowerCase()).toBe('#a32d2d')
@@ -140,7 +145,7 @@ test.describe('the map circle', () => {
         await expect(page.locator('text=Fill').first()).toBeVisible()
     })
 
-    test('holds its ring width steady as the map zooms', async ({ page }) => {
+    test('paints no ring at any zoom', async ({ page }) => {
         await openMapBase(page)
         const box = await getCanvasBox(page)
         await drawShape(page, 'circle', {
@@ -150,12 +155,9 @@ test.describe('the map circle', () => {
             endY: box.y + 410,
         })
 
-        // The camera is parked at scale 1, where counter-scale is a no-op, so
-        // this is the logical width the record carries.
-        const atIdentity = (await lastRecord(page)).paintedLinewidth
-        expect(atIdentity).toBeGreaterThan(0)
+        expect((await lastRecord(page)).paintedLinewidth).toBe(0)
 
-        /** Announce a camera change and read back what the ring now paints. */
+        /** Announce a camera change and read back what the disc now paints. */
         const paintedAt = (scale) =>
             page.evaluate(async (s) => {
                 window.dispatchEvent(
@@ -168,19 +170,13 @@ test.describe('the map circle', () => {
                 return g?.children?.[0]?.linewidth ?? null
             }, scale)
 
-        // Zoomed OUT (scale < 1) the world shrinks, so the ring is drawn wider
-        // in surface units to land at the same pixels on screen...
-        const zoomedOut = await paintedAt(0.25)
-        expect(zoomedOut).toBeGreaterThan(atIdentity)
-        // ...and zoomed IN it is drawn narrower, instead of becoming the thick
-        // band a raw width would paint at z18.
-        const zoomedIn = await paintedAt(4)
-        expect(zoomedIn).toBeLessThan(atIdentity)
-
-        // apparentSize ∝ scale^(1 - resist) at resist 0.9 — the same model
-        // area and route run. Checked loosely: the point is that the ring is
-        // counter-scaled at all, not the exact exponent.
-        expect(zoomedOut / atIdentity).toBeCloseTo(1 / Math.pow(0.25, 0.9), 1)
+        // Unlike area/route, a circle has no stroke to counter-scale: the disc
+        // IS the data, so it stays world-glued and borderless at every zoom.
+        // A width creeping back in at one end of the range is the regression
+        // this guards — that is how the ring used to become a thick band at
+        // z18 and a hairline at z4.
+        expect(await paintedAt(0.25)).toBe(0)
+        expect(await paintedAt(4)).toBe(0)
     })
 
     test('double-click opens the label editor, not the shape text editor', async ({
@@ -252,7 +248,7 @@ test.describe('the map circle', () => {
         expect(after.defaultFill).toBe(fillBefore)
     })
 
-    test('a fill edit carries the ring with it', async ({ page }) => {
+    test('a fill edit carries the stroke column with it', async ({ page }) => {
         await openMapBase(page)
         const box = await getCanvasBox(page)
         await drawShape(page, 'circle', {
@@ -264,8 +260,9 @@ test.describe('the map circle', () => {
         await page.waitForTimeout(400)
 
         // A new circle lands as ONE mark — stroke seeded from fill. Recolouring
-        // has to keep that promise, or the first fill edit strands the ring on
-        // the old colour and the mark reads as two.
+        // has to keep that promise, or the first fill edit strands the stroke
+        // column on the old colour and anything reading it (SVG export, a
+        // grouped copy) disagrees with the disc.
         await page.click(
             '#floating-toolbar [data-section="fill"] [title="#FF5630"]'
         )
@@ -289,17 +286,18 @@ test.describe('the map circle', () => {
         expect(painted.fill.toLowerCase()).toBe('#ff5630')
         expect(painted.stroke.toLowerCase()).toBe('#ff5630')
 
-        // One-way: a STROKE edit leaves the fill alone, so the two can still
-        // be separated deliberately.
-        await page.click(
-            '#floating-toolbar [data-section="stroke"] [title="#0065FF"]'
-        )
-        await expect
-            .poll(async () => {
-                const r = await lastRecord(page)
-                return [r.fill?.toLowerCase(), r.stroke?.toLowerCase()]
-            })
-            .toEqual(['#ff5630', '#0065ff'])
+        // And there is no way to pull the two apart: a radius map is
+        // borderless, so the toolbar offers no stroke colour, no width and no
+        // dash pattern — the fill is its only colour.
+        await expect(
+            page.locator('#floating-toolbar [data-section="stroke"]')
+        ).toHaveCount(0)
+        await expect(
+            page.locator('#floating-toolbar #stroke-width-section')
+        ).toHaveCount(0)
+        await expect(
+            page.locator('#floating-toolbar #stroke-type-section')
+        ).toHaveCount(0)
     })
 })
 

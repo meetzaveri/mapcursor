@@ -25,10 +25,11 @@ import { readProperties } from '../utils/geometry'
 //     it returns [] for a circle, `buildToolbarState` leaves `text.data` empty,
 //     and neither applyProperty's legacy `isShapeWithText` branch nor the
 //     selection controller's auto-height reflow can ever fire on a circle.
-//  2. The sub-group is also the single node to counter-scale. A circle is
-//     stroke-scaled, not group-scaled (see isStrokeScaled) — its geometry stays
-//     world-glued so 5km stays 5km — so the point's `group.scale` trick is not
-//     available here. circle.tsx scales THIS group instead.
+//  2. The sub-group is also the single node to counter-scale, and the ONLY
+//     thing about a circle that resists zoom: the disc is borderless and its
+//     geometry stays world-glued so 5km stays 5km, so neither the point's
+//     `group.scale` trick nor area/route's stroke scaling applies here.
+//     circle.tsx scales THIS group instead.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
