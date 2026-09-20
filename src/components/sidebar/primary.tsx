@@ -8,6 +8,8 @@ import TextZoomHint from '../textZoomHint'
 import ToolHint from '../toolHint'
 import { GET_COMPONENT_TYPES } from '../../schema/queries'
 import SpinnerWithSize from '../common/spinnerWithSize'
+import { armedPresetPatch } from '../../utils/armedLegendPreset'
+import { isLegendPresetType } from '../../types/legend'
 import { generateUUID } from '../../utils/misc'
 import { prefetchElementModule } from '../../elementModules'
 import { useBaseContext } from '../../views/Base/baseContext'
@@ -266,6 +268,10 @@ const PrimarySidebar = (): ReactElement => {
             fill: POINT_COLOR,
             textColor: null,
             updatedBy: userId,
+            // LAST, so an armed preset beats the design defaults above — that
+            // is what "the preset overrides the styling" means. `{}` when
+            // nothing is armed, so by default this changes nothing.
+            ...armedPresetPatch('point'),
         }
 
         updateLastAddedElement(shapeData)
@@ -536,7 +542,16 @@ const PrimarySidebar = (): ReactElement => {
                     localStorage.setItem('pendingShapeType', label)
                     localStorage.setItem(
                         'pendingShapeProps',
-                        JSON.stringify(shapeData)
+                        JSON.stringify({
+                            ...shapeData,
+                            // Folded in at STAGING time rather than on mouseup:
+                            // the canvas spreads these props first and overrides
+                            // none of them, so this is the last word — and the
+                            // drag preview picks up the preset's colour too.
+                            ...(isLegendPresetType(label)
+                                ? armedPresetPatch(label)
+                                : {}),
+                        })
                     )
                     const root = document.getElementById('main-two-root')
                     if (root) root.style.cursor = 'crosshair'

@@ -8,6 +8,7 @@ import { getPointCircle, getPointLabelNode } from '../factory/point'
 import { POINT_LABEL_SIZES } from '../constants/misc'
 import { capCenterOffset } from '../utils/fontMetrics'
 import { setProperties } from './geometry'
+import { LEGEND_STYLE_KEYS } from '../types/legend'
 import {
     TEXT_RESIST,
     TEXT_RESIST_CHANGED_EVENT,
@@ -100,7 +101,7 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         const {
             selectedComponent,
             twoJSInstance,
-            updateComponentBulkPropertiesInLocalStore,
+            updateComponentBulkPropertiesInLocalStore: bulkWriteRaw,
             updateBulkPropsForRectangleWithText,
             handleTextSizeChange,
             handleRectangleTextSizeChange,
@@ -119,6 +120,39 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         // rather than alongside the other selection lookups further down.
         const selectedElementData = selectedComponent?.group?.data?.elementData
         const isCircle = selectedElementData?.componentType === 'circle'
+
+        // Hand-editing a style a legend preset owns UNBINDS the element.
+        //
+        // A legend is only worth anything if its swatch is guaranteed to match
+        // the marks it counts. The moment someone recolours one bound area by
+        // hand, that guarantee is gone — so the element drops to "None" and
+        // keeps the new colour, rather than staying in a count it no longer
+        // looks like.
+        //
+        // Only the keys a preset actually carries count: changing a circle's
+        // label font or an element's opacity leaves the binding alone, because
+        // a preset has no opinion about those.
+        //
+        // The unbind rides the SAME bulk write as the style change, so it lands
+        // in one UPDATE_BULK entry and a single undo restores both the colour
+        // and the binding. Wrapping the dep is what keeps that true at all
+        // twelve call sites below without touching any of them.
+        const unbinds =
+            !opts?.preview &&
+            !!selectedElementData?.legendPresetId &&
+            LEGEND_STYLE_KEYS.has(propertyKey)
+        const updateComponentBulkPropertiesInLocalStore = (
+            id: string,
+            bulkObj: Partial<ComponentRow>
+        ): void => {
+            if (unbinds && selectedElementData) {
+                selectedElementData.legendPresetId = null
+            }
+            bulkWriteRaw(
+                id,
+                unbinds ? { ...bulkObj, legendPresetId: null } : bulkObj
+            )
+        }
 
         // 1. Update the matching default. Opacity is deliberately excluded — it
         // is a per-element property only and must never persist as a default,

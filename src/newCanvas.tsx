@@ -82,6 +82,8 @@ import SelectionController, {
     SELECTION_PADDING,
 } from './canvas/selectionController'
 import { updateX1Y1Vertices, updateX2Y2Vertices } from './utils/updateVertices'
+import { armedPresetPatch } from './utils/armedLegendPreset'
+import type { LegendPresetType } from './types/legend'
 import { generateUUID } from './utils/misc'
 import {
     geometryFields,
@@ -1120,6 +1122,15 @@ function addZUI(
             isDummy: null,
             createdAt: null,
             children: {},
+            // LAST, and the ordering is load-bearing: stroke / linewidth /
+            // strokeType above are re-read from the live element defaults
+            // AFTER the staged draw props are spread, so an armed preset
+            // folded in any earlier would be silently overwritten. A preset
+            // overrides the styling — it cannot be the thing that loses.
+            //
+            // Read from localStorage, not a prop: this runs inside addZUI,
+            // whose handlers close over the props they mounted with.
+            ...armedPresetPatch(type as LegendPresetType),
         }
 
         clearGeoPreviewArtifacts()

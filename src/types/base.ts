@@ -8,6 +8,8 @@ import type Two from 'two.js'
 import type { EraserSize } from '../constants/misc'
 import type { MapBackdropConfig, MapAnchor } from '../baseTypes/types'
 import type { ServerBaseConfig } from '../baseTypes/serverConfig'
+import type { LegendPreset } from './legend'
+import type { LegendPresetInput } from '../hooks/useLegendPresets'
 
 // --- DB shape (mirrors CLAUDE.md "Component schema (from DB)") ----------
 
@@ -93,6 +95,15 @@ export interface ComponentRecord {
      * to 1 — the map circle is the exception, seeded at CIRCLE_DEFAULTS.
      */
     opacity?: number | null
+    /**
+     * The legend preset this element is bound to, or null/absent for "None".
+     *
+     * A live binding, not a stamp: editing the preset restyles every element
+     * carrying its id. Hand-editing any style key the preset owns clears this
+     * (see the unbind wrap in utils/applyProperty.ts), so a legend swatch can
+     * never disagree with the mark it captions.
+     */
+    legendPresetId?: string | null
     baseId: string | null
     baseName: string | null
     metadata: ComponentMetadata | null
@@ -232,6 +243,25 @@ export interface BaseContextValue {
         value: unknown,
         opts?: { preview?: boolean }
     ) => void
+
+    // --- Legend presets ------------------------------------------------
+    // The base's legend, and the four things the UI does to it. Writes are
+    // gated on persistence inside useLegendPresets, exactly as component
+    // mutations are — consumers never branch on it themselves.
+    legendPresets: LegendPreset[]
+    createLegendPreset: (input: LegendPresetInput) => LegendPreset
+    /**
+     * Rename or restyle a preset. Restyling immediately repaints and rewrites
+     * every element bound to it — that is the live binding, and it is one undo
+     * step for the whole sweep.
+     */
+    updateLegendPreset: (id: string, patch: Partial<LegendPresetInput>) => void
+    /** Removes the caption; bound elements keep their styling and unbind. */
+    deleteLegendPreset: (id: string) => void
+    /** Apply a preset (or `null` for "None") to the current selection. */
+    applyLegendPresetToSelection: (preset: LegendPreset | null) => void
+    /** How many elements currently carry each preset, keyed by preset id. */
+    legendPresetCounts: Record<string, number>
 
     // Z-order of the currently-selected element. Bridged up from newCanvas via
     // a ref (the implementation lives there alongside reconcileZOrder); a no-op

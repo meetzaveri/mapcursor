@@ -21,6 +21,16 @@ import type {
     SharePersistedBaseMutationVariables,
     UpdateUserRevisitCountMutation,
     UpdateUserRevisitCountMutationVariables,
+    InsertLegendPresetMutation,
+    InsertLegendPresetMutationVariables,
+    InsertBulkLegendPresetsMutation,
+    InsertBulkLegendPresetsMutationVariables,
+    UpdateLegendPresetMutation,
+    UpdateLegendPresetMutationVariables,
+    DeleteLegendPresetMutation,
+    DeleteLegendPresetMutationVariables,
+    RestyleComponentsByPresetMutation,
+    RestyleComponentsByPresetMutationVariables,
 } from '../generated'
 
 export const UPDATE_COMPONENT_INFO: TypedDocumentNode<
@@ -189,6 +199,109 @@ export const UPDATE_USER_REVISIT_COUNT: TypedDocumentNode<
             count
             user_id
             last_visit
+        }
+    }
+`
+
+// --- Legend presets ----------------------------------------------------
+//
+// `createdBy` is never in an insert payload. Hasura stamps it from the
+// `x-hasura-user-id` header via a column preset on the insert permission
+// (see legends_preset.yaml), so the creator is recorded server-side and the
+// client cannot claim to be someone else. It IS selected back, which is what
+// lets a shared legend say who authored an entry.
+
+export const INSERT_LEGEND_PRESET: TypedDocumentNode<
+    InsertLegendPresetMutation,
+    InsertLegendPresetMutationVariables
+> = gql`
+    mutation insertLegendPreset($object: legends_preset_insert_input = {}) {
+        preset: insert_legends_preset_one(object: $object) {
+            id
+            baseId
+            name
+            elementType
+            style
+            position
+            createdBy
+        }
+    }
+`
+
+/**
+ * Used by `persistBase`, which has to carry a local canvas's whole legend over
+ * in one shot before the components that reference it are inserted.
+ */
+export const INSERT_BULK_LEGEND_PRESETS: TypedDocumentNode<
+    InsertBulkLegendPresetsMutation,
+    InsertBulkLegendPresetsMutationVariables
+> = gql`
+    mutation insertBulkLegendPresets(
+        $objects: [legends_preset_insert_input!] = {}
+    ) {
+        presets: insert_legends_preset(objects: $objects) {
+            returning {
+                id
+                baseId
+                name
+                elementType
+                style
+                position
+                createdBy
+            }
+        }
+    }
+`
+
+export const UPDATE_LEGEND_PRESET: TypedDocumentNode<
+    UpdateLegendPresetMutation,
+    UpdateLegendPresetMutationVariables
+> = gql`
+    mutation updateLegendPreset(
+        $id: uuid!
+        $updateObj: legends_preset_set_input = {}
+    ) {
+        update_legends_preset_by_pk(pk_columns: { id: $id }, _set: $updateObj) {
+            id
+        }
+    }
+`
+
+/**
+ * Deleting a preset must NOT disturb the marks it captioned. The FK is
+ * `ON DELETE SET NULL`, so every bound element keeps its styling and simply
+ * stops being explained — removing a caption is not a request to restyle a map.
+ */
+export const DELETE_LEGEND_PRESET: TypedDocumentNode<
+    DeleteLegendPresetMutation,
+    DeleteLegendPresetMutationVariables
+> = gql`
+    mutation deleteLegendPreset($id: uuid!) {
+        delete_legends_preset_by_pk(id: $id) {
+            id
+        }
+    }
+`
+
+/**
+ * The live binding, server-side: one statement restyles every element carrying
+ * this preset's id. The client mirrors the same patch onto the in-memory store
+ * and the Two.js scene (see utils/applyLegendPreset.ts) — this is the durable
+ * half, not a substitute for it.
+ */
+export const RESTYLE_COMPONENTS_BY_PRESET: TypedDocumentNode<
+    RestyleComponentsByPresetMutation,
+    RestyleComponentsByPresetMutationVariables
+> = gql`
+    mutation restyleComponentsByPreset(
+        $presetId: uuid!
+        $updateObj: components_component_set_input = {}
+    ) {
+        update_components_component(
+            where: { legendPresetId: { _eq: $presetId } }
+            _set: $updateObj
+        ) {
+            affected_rows
         }
     }
 `
