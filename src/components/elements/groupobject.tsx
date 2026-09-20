@@ -10,6 +10,7 @@ import { useBaseContext } from '../../views/Base/baseContext'
 import getEditComponents from '../utils/editWrapper'
 import {
     selectionHandleRadiusPx,
+    selectionHandleHitRadiusPx,
     HANDLE_STROKE,
     SELECTION_HANDLE_FILL,
     SELECTION_HANDLE_LINEWIDTH_PX,
@@ -970,6 +971,12 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             selector.circle3,
             selector.circle4,
         ]
+        const cornerHitHandles = [
+            selector.hitCircle1,
+            selector.hitCircle2,
+            selector.hitCircle3,
+            selector.hitCircle4,
+        ]
         const sizeResizeHandles = (effectiveScale: number): void => {
             const s = effectiveScale > 0 ? effectiveScale : 1
             const r = selectionHandleRadiusPx() / s
@@ -978,17 +985,31 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 c.radius = r
                 c.linewidth = SELECTION_HANDLE_LINEWIDTH_PX / s
             })
+            // The invisible grab circles counter-scale on their own radius, so
+            // the target stays finger-sized however small the dot is drawn.
+            const hitR = selectionHandleHitRadiusPx() / s
+            cornerHitHandles.forEach((c: ShapeLike) => {
+                if (c) c.radius = hitR
+            })
         }
         sizeHandlesRef.current = sizeResizeHandles
 
         // Wire the 4 corner circles as grab handles. They're children of the
         // group, so they track the corners automatically while it scales.
         if (GROUP_RESIZE_ENABLED) {
-            const cornerCircles: { name: string; circle: ShapeLike }[] = [
-                { name: 'nw', circle: selector.circle1 },
-                { name: 'ne', circle: selector.circle2 },
-                { name: 'se', circle: selector.circle3 },
-                { name: 'sw', circle: selector.circle4 },
+            // `circle` is what gets styled, `hit` is what gets pressed — the
+            // dot is drawn small and its transparent stand-in keeps the touch
+            // target (see utils/selectionTheme). Falls back to the dot so a
+            // selector built without stand-ins still resizes.
+            const cornerCircles: {
+                name: string
+                circle: ShapeLike
+                hit: ShapeLike
+            }[] = [
+                { name: 'nw', circle: selector.circle1, hit: selector.hitCircle1 },
+                { name: 'ne', circle: selector.circle2, hit: selector.hitCircle2 },
+                { name: 'se', circle: selector.circle3, hit: selector.hitCircle3 },
+                { name: 'sw', circle: selector.circle4, hit: selector.hitCircle4 },
             ]
             const cursorFor: Record<string, string> = {
                 nw: 'nwse-resize',
@@ -996,13 +1017,14 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 ne: 'nesw-resize',
                 sw: 'nesw-resize',
             }
-            cornerCircles.forEach(({ name, circle }) => {
+            cornerCircles.forEach(({ name, circle, hit }) => {
                 if (!circle) return
                 // Clear, filled handle (cream fill, indigo ring) so it reads as
                 // the same grab dot every other selection shows.
                 circle.fill = SELECTION_HANDLE_FILL
                 circle.stroke = HANDLE_STROKE
-                const elem = circle._renderer?.elem as SVGElement | undefined
+                const target = hit ?? circle
+                const elem = target._renderer?.elem as SVGElement | undefined
                 if (!elem) return
                 elem.style.cursor = cursorFor[name] ?? 'pointer'
                 const onDown = (e: MouseEvent): void =>

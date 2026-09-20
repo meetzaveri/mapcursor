@@ -30,21 +30,57 @@ export const SELECTION_BOX_LINEWIDTH_PX = 1.5
 /** Ring width of a grab dot, in screen px. Matches the box by design. */
 export const SELECTION_HANDLE_LINEWIDTH_PX = 1.5
 
-// Dot radius in screen px. Touch needs a bigger target than a mouse: the
-// ObjectSelector and the vertex handles hit-test the SVG dot itself, so the dot
-// IS the target. At the mouse value these measured ~5px across on a zoomed-out
-// map base, which is unhittable with a finger.
+// Grab dots come in two sizes, and they are NOT the same number.
+//
+// Touch needs a bigger target than a mouse, and the ObjectSelector, the vertex
+// handles and the group's resize dots all hit-test the SVG dot itself — so for
+// them the dot IS the target. That is why the touch dot was 11px: at the mouse
+// value it measured ~5px across on a zoomed-out map base, which is unhittable
+// with a finger.
+//
+// The cost was that an 11px radius draws a 22px dot, which on a phone crowds
+// the very shape it is describing — four of them around a small area read as
+// the selection rather than as its corners. So the two concerns are now
+// separate numbers: a dot is DRAWN at the visual radius and GRABBED at the hit
+// radius, with an invisible companion circle carrying the listener (see
+// objectSelector / vertexHandles).
+//
+// The touch hit radius is deliberately still 11 — the old visual value — so
+// the change is visual only and nothing became harder to grab. Mouse keeps one
+// number for both, leaving desktop behaviour untouched.
 const SELECTION_HANDLE_RADIUS_PX_MOUSE = 5
-const SELECTION_HANDLE_RADIUS_PX_TOUCH = 11
+const SELECTION_HANDLE_RADIUS_PX_TOUCH = 7
+const SELECTION_HANDLE_HIT_RADIUS_PX_MOUSE = 5
+const SELECTION_HANDLE_HIT_RADIUS_PX_TOUCH = 11
 
-/** Grab-dot radius in screen px for the pointer currently in use. */
-export function selectionHandleRadiusPx(): number {
-    const coarse =
+/**
+ * Touch and pen report a coarse pointer; a mouse or trackpad reports fine.
+ * Deliberately a pointer query rather than a viewport width — a small window
+ * on a laptop is still a mouse, and a large tablet is still a finger.
+ */
+function isCoarsePointer(): boolean {
+    return (
         typeof window !== 'undefined' &&
-        window.matchMedia?.('(pointer: coarse)')?.matches
-    return coarse
+        window.matchMedia?.('(pointer: coarse)')?.matches === true
+    )
+}
+
+/** Radius a grab dot is DRAWN at, in screen px. */
+export function selectionHandleRadiusPx(): number {
+    return isCoarsePointer()
         ? SELECTION_HANDLE_RADIUS_PX_TOUCH
         : SELECTION_HANDLE_RADIUS_PX_MOUSE
+}
+
+/**
+ * Radius a grab dot is GRABBED at, in screen px — always >= the visual radius.
+ * Consumers that hit-test a real SVG node give it a transparent circle this
+ * big; `selectionController`, which hit-tests by distance, measures against it.
+ */
+export function selectionHandleHitRadiusPx(): number {
+    return isCoarsePointer()
+        ? SELECTION_HANDLE_HIT_RADIUS_PX_TOUCH
+        : SELECTION_HANDLE_HIT_RADIUS_PX_MOUSE
 }
 
 /**

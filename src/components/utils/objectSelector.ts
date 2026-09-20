@@ -4,6 +4,7 @@ import { scheduleRender } from '../../utils/renderScheduler'
 import {
     getSelectionStroke,
     selectionHandleRadiusPx,
+    selectionHandleHitRadiusPx,
     HANDLE_STROKE,
     SELECTION_BOX_LINEWIDTH_PX,
     SELECTION_HANDLE_FILL,
@@ -42,6 +43,15 @@ export default class Selector {
     circle3: ShapeLike = null
     circle4: ShapeLike = null
     circleGroup: ShapeLike = null
+    // Transparent stand-ins that carry the pointer events for circle1..4. The
+    // dots are drawn small enough not to bury what they describe; these keep
+    // the grab area at the touch size. Consumers that wire a drag (groupobject)
+    // must bind to these, not to the dots.
+    hitCircle1: ShapeLike = null
+    hitCircle2: ShapeLike = null
+    hitCircle3: ShapeLike = null
+    hitCircle4: ShapeLike = null
+    hitGroup: ShapeLike = null
     areaGroup: ShapeLike = null
     showCircles: unknown
     vertices: SelectorVertices
@@ -59,6 +69,16 @@ export default class Selector {
         this.group = group
         this.showCircles = showCircles
         this.vertices = { x1, x2, y1, y2 }
+    }
+
+    /** One invisible stand-in, sized for a finger rather than for the eye. */
+    private makeHitCircle(cx: number, cy: number): ShapeLike {
+        const circle = this.two.makeCircle(cx, cy, selectionHandleHitRadiusPx())
+        // `transparent` is still a paint, so the default `visiblePainted`
+        // hit-testing applies to it — `none` would not be hittable at all.
+        circle.fill = 'transparent'
+        circle.noStroke()
+        return circle
     }
 
     create(): void {
@@ -91,6 +111,8 @@ export default class Selector {
                     styleHandle(circleRight)
                     circleGroup = this.two.makeGroup(circleLeft, circleRight)
                     this.circleGroup = circleGroup
+                    this.hitCircle1 = this.makeHitCircle(x1, yAxisMidpoint)
+                    this.hitCircle2 = this.makeHitCircle(x2, yAxisMidpoint)
                     break
                 }
                 case 4: {
@@ -118,6 +140,10 @@ export default class Selector {
                     circleGroup.stroke = HANDLE_STROKE
                     ;[circle1, circle2, circle3, circle4].forEach(styleHandle)
                     this.circleGroup = circleGroup
+                    this.hitCircle1 = this.makeHitCircle(x1, y1)
+                    this.hitCircle2 = this.makeHitCircle(x2, y1)
+                    this.hitCircle3 = this.makeHitCircle(x2, y2)
+                    this.hitCircle4 = this.makeHitCircle(x1, y2)
                     break
                 }
                 default:
@@ -125,7 +151,26 @@ export default class Selector {
             }
         }
 
-        const areaGroup = this.two.makeGroup(area, circleGroup)
+        // A group of their own, NOT circleGroup: that one is styled wholesale
+        // (`circleGroup.stroke = HANDLE_STROKE`, and setScale writes its
+        // linewidth), and Two.js propagates group styling to children — which
+        // would paint a ring around every invisible hit circle.
+        //
+        // Added last so it renders on top. SVG hit-testing takes the topmost
+        // node, and these are siblings of the dots rather than ancestors, so
+        // nothing bubbles from a dot to its stand-in: with the dots on top the
+        // centre of every handle would be dead.
+        const hitCircles = [
+            this.hitCircle1,
+            this.hitCircle2,
+            this.hitCircle3,
+            this.hitCircle4,
+        ].filter(Boolean)
+        const hitGroup =
+            hitCircles.length > 0 ? this.two.makeGroup(...hitCircles) : null
+        this.hitGroup = hitGroup
+
+        const areaGroup = this.two.makeGroup(area, circleGroup, hitGroup)
 
         this.areaGroup = areaGroup
         this.group.add(areaGroup)
@@ -166,6 +211,16 @@ export default class Selector {
             // extreme zoom-out.
             const base = selectionHandleRadiusPx()
             const radius = Math.min(base / s, base * 3)
+            const hitBase = selectionHandleHitRadiusPx()
+            const hitRadius = Math.min(hitBase / s, hitBase * 3)
+            ;[
+                this.hitCircle1,
+                this.hitCircle2,
+                this.hitCircle3,
+                this.hitCircle4,
+            ].forEach((c: ShapeLike) => {
+                if (c) c.radius = hitRadius
+            })
             const linewidth = Math.min(
                 SELECTION_HANDLE_LINEWIDTH_PX / s,
                 SELECTION_HANDLE_LINEWIDTH_PX * 3
@@ -232,18 +287,29 @@ export default class Selector {
 
         if (this.showCircles) {
             this.circleGroup.opacity = 1
+            // Each stand-in rides its dot exactly; they are only ever a
+            // different radius, never a different place.
+            const seat = (
+                dot: ShapeLike,
+                hit: ShapeLike,
+                x: number,
+                y: number
+            ): void => {
+                dot.translation.set(x, y)
+                hit?.translation.set(x, y)
+            }
             switch (this.showCircles) {
                 case 2: {
                     const yAxisMidpoint = (y1 + y2) / 2
-                    this.circle1.translation.set(x1, yAxisMidpoint)
-                    this.circle2.translation.set(x2, yAxisMidpoint)
+                    seat(this.circle1, this.hitCircle1, x1, yAxisMidpoint)
+                    seat(this.circle2, this.hitCircle2, x2, yAxisMidpoint)
                     break
                 }
                 case 4:
-                    this.circle1.translation.set(x1, y1)
-                    this.circle2.translation.set(x2, y1)
-                    this.circle3.translation.set(x2, y2)
-                    this.circle4.translation.set(x1, y2)
+                    seat(this.circle1, this.hitCircle1, x1, y1)
+                    seat(this.circle2, this.hitCircle2, x2, y1)
+                    seat(this.circle3, this.hitCircle3, x2, y2)
+                    seat(this.circle4, this.hitCircle4, x1, y2)
                     break
                 default:
                     break

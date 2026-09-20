@@ -245,7 +245,7 @@ const PrivacyPage: React.FC = () => {
                     </ul>
                 </Section>
 
-                {/* <Section title="Analytics">
+                <Section title="Analytics">
                     <p>
                         We use{' '}
                         <a
@@ -269,7 +269,16 @@ const PrivacyPage: React.FC = () => {
                         This data is aggregate, and we don't join it to the
                         anonymous in-app identity described above.
                     </p>
-                </Section> */}
+                    <p>
+                        We also record a few named events so we can see where
+                        people get stuck: that the start-location prompt was
+                        shown and how it was answered, which drawing tool was
+                        picked, that a first element was drawn, and that a
+                        canvas was shared or opened. These carry the name of a
+                        tool and a count of elements — never what you drew,
+                        typed, or searched for, and never where your map is.
+                    </p>
+                </Section>
 
                 <Section title="What we never collect">
                     <ul className="list-disc pl-5 space-y-1">

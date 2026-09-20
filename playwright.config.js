@@ -24,8 +24,15 @@ export default defineConfig({
         // this every run lands in the production dashboard as fake traffic.
         // Failing DNS at the browser level covers every page in the run,
         // including a spec that imports `test` from @playwright/test and so
-        // bypasses the opt-out fixture in tests/e2e/helpers/test.js. Safe
-        // because no app code reads window.umami.
+        // bypasses the opt-out fixture in tests/e2e/helpers/test.js.
+        //
+        // App code DOES read window.umami now (src/utils/analytics.ts sends
+        // the funnel events), so this is load-bearing rather than belt-and
+        // braces. With the CDN unresolvable the tracker never attaches,
+        // trackEvent queues its events, and the queue is dropped after its
+        // timeout — nothing is sent and nothing leaks into the dashboard.
+        // Chromium-only flag: a firefox or webkit project would need the
+        // fixture's route abort, which is engine-independent, to carry it.
         launchOptions: {
             args: [
                 '--host-resolver-rules=MAP cloud.umami.is ~NOTFOUND,MAP gateway.umami.is ~NOTFOUND',

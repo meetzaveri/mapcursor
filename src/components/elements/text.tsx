@@ -16,6 +16,7 @@ import { readOpacity } from '../../utils/canvasUtils'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import {
     DEFAULT_TEXT_FONT_FAMILY,
+    TEXT_SELECTOR_REFRESH_EVENT,
     TEXT_RESIST_CHANGED_EVENT,
     TEXT_EDIT_CANCEL_EVENT,
     TEXT_EDIT_COMMIT_EVENT,
@@ -25,6 +26,7 @@ import {
 import { computeCounterScale, resolveResist } from '../../utils/counterScale'
 import { readProperties, setProperties } from '../../utils/geometry'
 import { isPanMode } from '../../utils/drawModeUtils'
+import { svgTextScreenRect } from '../../utils/svgTextRect'
 
 // Text renders exactly like NewText — same TextFactory, same multiline
 // editing, resize handles and floating-toolbar contract. What separates the two
@@ -89,6 +91,19 @@ function Text(props: ElementProps): ReactElement {
     // ref to the layout sync so the metadata effect can re-run it.
     const extraLineNodesRef = useRef<ShapeLike[]>([])
     const syncMultilineRef = useRef<(() => void) | null>(null)
+    // `blockRect` lives in the mount effect's closure; the selector-refresh
+    // listener below is a separate effect and needs the same measurement.
+    const blockRectRef = useRef<
+        | (() => {
+              left: number
+              right: number
+              top: number
+              bottom: number
+              width: number
+              height: number
+          })
+        | null
+    >(null)
     const selectorRef = useRef<ShapeLike>(null)
 
     const two = props.twoJSInstance
@@ -139,6 +154,31 @@ function Text(props: ElementProps): ReactElement {
         const { group, twoText } = elementFactory.createElement()
         group.elementData = { ...props.itemData, ...props }
         twoText.opacity = readOpacity(props)
+
+        /**
+         * What an edit commits its geometry FROM.
+         *
+         * Never `props`. ElementRenderWrapper freezes an element's props at
+         * mount, and the toolbar's Text tool creates its element off-screen at
+         * -9999,-9999, placing it only on the click that follows. So the
+         * frozen bag still says -9999 long after the text is sitting where the
+         * user put it.
+         *
+         * That matters because `setProperties` REBUILDS metadata.geometry from
+         * whatever source it is handed — so committing a size change or the
+         * editor's blur from `props` wrote the placeholder position back over
+         * the placement. Nothing looked wrong: the Two.js translation was set
+         * at placement and is never re-read from metadata. The text only went
+         * missing on the next load, ~10,000 surface units from anything.
+         *
+         * `group.elementData` is the live copy, and the placement path keeps
+         * it in step (`Object.assign(group.elementData, placement)` in
+         * base.tsx) precisely so element-side editors have something truthful
+         * to commit from — a point's label was fixed this way and text was
+         * left behind.
+         */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const commitSource = (): any => group.elementData ?? props
 
         twoTextRef.current = twoText
         groupObject = group
@@ -242,6 +282,8 @@ function Text(props: ElementProps): ReactElement {
             }
         }
 
+        blockRectRef.current = blockRect
+
         // Render any persisted multiline content as the stacked block.
         syncMultilineLayout()
 
@@ -252,12 +294,20 @@ function Text(props: ElementProps): ReactElement {
         two.update()
 
         // Resize via corner handles (proportional font-size scaling).
-        const cornerCircles: ShapeLike[] = [
-            selectorInstance.circle1,
-            selectorInstance.circle2,
-            selectorInstance.circle3,
-            selectorInstance.circle4,
-        ].filter(Boolean)
+        //
+        // The press goes on the selector's transparent stand-in, NOT on the
+        // visible dot. The stand-ins are siblings drawn on top of the dots, so
+        // a listener on the dot never sees the event — it is hit-tested away,
+        // and nothing bubbles between siblings. `elementFromPoint` in
+        // newCanvas's touch pipeline resolves the stand-in for the same
+        // reason. Falls back to the dot so a selector built without stand-ins
+        // still resizes (see utils/selectionTheme, objectSelector).
+        const cornerCircles: { dot: ShapeLike; hit: ShapeLike }[] = [
+            { dot: selectorInstance.circle1, hit: selectorInstance.hitCircle1 },
+            { dot: selectorInstance.circle2, hit: selectorInstance.hitCircle2 },
+            { dot: selectorInstance.circle3, hit: selectorInstance.hitCircle3 },
+            { dot: selectorInstance.circle4, hit: selectorInstance.hitCircle4 },
+        ].filter(({ dot }) => Boolean(dot))
 
         const resizeCursors = [
             'nwse-resize', // circle1 = TL
@@ -312,7 +362,7 @@ function Text(props: ElementProps): ReactElement {
             const newWidth = Math.round(bRect.width || 60)
             const newHeight = Math.round(bRect.height || twoText.size)
 
-            const resizePatch = setProperties(props, {
+            const resizePatch = setProperties(commitSource(), {
                 fontSize: finalSize,
                 content: textValueRef.current,
             })
@@ -326,8 +376,9 @@ function Text(props: ElementProps): ReactElement {
             }
         }
 
-        cornerCircles.forEach((circle, index) => {
-            const circleElem = circle._renderer?.elem as HTMLElement | undefined
+        cornerCircles.forEach(({ dot, hit }, index) => {
+            const target = hit ?? dot
+            const circleElem = target._renderer?.elem as HTMLElement | undefined
             if (!circleElem) return
 
             circleElem.style.cursor = resizeCursors[index] ?? 'pointer'
@@ -387,20 +438,27 @@ function Text(props: ElementProps): ReactElement {
             const groupDomElem = document.getElementById(`${group.id}`)
             if (!groupDomElem) return
 
-            const textDomElem = twoText._renderer.elem as HTMLElement
-            const screenRect = textDomElem.getBoundingClientRect()
-
-            groupDomElem.style.display = 'none'
-
             // The editing overlay must render at the same on-screen size as
             // the glyphs it covers. That is the text size through the camera
             // AND through the group's zoom-resist counter-scale — the camera
             // alone was what made the textarea microscopic on a zoomed-out map,
             // exactly like the glyphs underneath it.
+            //
+            // Resolved BEFORE the measurement below, which needs the font size
+            // to place an empty text's box. See svgTextScreenRect.
             const fontSize = twoText.size || 36
             const cssFontSize = fontSize * effectiveScale()
             const lineH = Math.ceil(cssFontSize * 1.6)
             const vertPad = Math.ceil((lineH - cssFontSize) / 2) + 4
+
+            const textDomElem = twoText._renderer.elem as SVGGraphicsElement
+            // Measured while the group is still visible — a display:none
+            // subtree measures as zero — and through svgTextScreenRect, because
+            // a text being placed has no glyphs yet and Firefox reports no
+            // position at all for an empty <text>.
+            const screenRect = svgTextScreenRect(textDomElem, cssFontSize)
+
+            groupDomElem.style.display = 'none'
 
             const input = document.createElement('textarea')
             const randomId = Math.floor(Math.random() * 90 + 10)
@@ -578,7 +636,7 @@ function Text(props: ElementProps): ReactElement {
                 selectorInstance.hide()
                 two.update()
 
-                const commitPatch = setProperties(props, {
+                const commitPatch = setProperties(commitSource(), {
                     content: textValueRef.current,
                 })
                 updateComponentBulkPropertiesInLocalStore(props.id, {
@@ -728,6 +786,56 @@ function Text(props: ElementProps): ReactElement {
             window.removeEventListener(
                 TEXT_RESIST_CHANGED_EVENT,
                 onResistChanged
+            )
+        }
+    }, [props.id, two])
+
+    // Re-box the selection after the properties toolbar changes this text's
+    // size or family. The toolbar mutates the Two.Text nodes directly, so the
+    // glyphs repaint but the selection box keeps the bounds it was built from.
+    //
+    // Left alone, what the user saw depended on a focus difference rather than
+    // on anything deliberate: Chromium fires `blur` on our SVG group when the
+    // toolbar takes focus and `elementOnBlurHandler` hid the box, so the
+    // selection vanished; Firefox does not fire it, so a box at the OLD size
+    // stayed on screen around the new glyphs. Measuring again and keeping the
+    // selection makes both engines do what dragging the resize handle has
+    // always done.
+    useEffect(() => {
+        const onSelectorRefresh = ((e: CustomEvent<{ id: string }>): void => {
+            if (e.detail?.id !== props.id) return
+            const selector = selectorRef.current
+            const measure = blockRectRef.current
+            const group = groupRef.current
+            if (!selector || !measure || !group) return
+
+            const sceneScale = two?.scene?.scale || 1
+            const groupScale = typeof group.scale === 'number' ? group.scale : 1
+            const bRect = measure()
+            // show() BEFORE update(): it only sets opacity, while update()
+            // ends in the two.update() that paints. Calling it after would
+            // need a second repaint, which is the back-to-back update() the
+            // subtractions pitfall in CLAUDE.md warns about.
+            //
+            // Chromium has already hidden the box by this point; on Firefox
+            // this is a no-op. Either way it ends up visible and correct.
+            selector.show()
+            selector.update(
+                bRect.left - 4,
+                bRect.right + 4,
+                bRect.top - 4,
+                bRect.bottom + 4,
+                sceneScale * groupScale || 1
+            )
+        }) as EventListener
+        window.addEventListener(
+            TEXT_SELECTOR_REFRESH_EVENT,
+            onSelectorRefresh
+        )
+        return (): void => {
+            window.removeEventListener(
+                TEXT_SELECTOR_REFRESH_EVENT,
+                onSelectorRefresh
             )
         }
     }, [props.id, two])

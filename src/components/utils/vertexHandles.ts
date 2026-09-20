@@ -31,6 +31,7 @@ import {
 import type { ComponentMetadata } from '../../types/base'
 import {
     selectionHandleRadiusPx,
+    selectionHandleHitRadiusPx,
     HANDLE_STROKE,
     SELECTION_HANDLE_FILL,
     SELECTION_HANDLE_LINEWIDTH_PX,
@@ -111,6 +112,11 @@ export function attachVertexHandles({
     let cancelled = false
 
     const handles: ShapeLike[] = []
+    // The transparent circles that actually receive the drag. Same centres as
+    // the dots above them, but the touch-sized radius — so the dot can be drawn
+    // small enough not to bury a small area under four blobs while staying
+    // exactly as grabbable as before. Same idea as the fat hit path below.
+    const hitHandles: ShapeLike[] = []
     const verts = path.vertices ?? []
     for (let i = 0; i < verts.length; i++) {
         const v = verts[i]
@@ -125,13 +131,31 @@ export function attachVertexHandles({
         handle.opacity = 0
         group.add(handle)
         handles.push(handle)
+
+        // Added AFTER its dot so it renders on top. SVG hit-testing picks the
+        // topmost node and these are siblings, so nothing bubbles from the dot
+        // to the hit circle — if the dot were on top, the centre of the handle
+        // would be dead.
+        const hit = two.makeCircle(v.x, v.y, selectionHandleHitRadiusPx())
+        hit.fill = 'transparent'
+        hit.noStroke()
+        group.add(hit)
+        hitHandles.push(hit)
+        // Hung off the dot rather than returned separately: `handles` is a
+        // published array that setVertexHandlesVisible and
+        // applyRevertedVertices already walk, and they must move and gate the
+        // hit circle in lockstep or it drifts off the vertex and keeps eating
+        // clicks after deselection.
+        handle.hitHandle = hit
     }
 
     // Hold the dots at a constant on-screen size so they stay grabbable when
     // zoomed far out (else ~1px at 20%).
     const initialScale = zuiRef.current?.zui?.scale ?? two?.scene?.scale ?? 1
+    // Both sets counter-scale together. applyHandleCounterScale only sets
+    // `.scale`, never radius, so each keeps the radius it was built with.
     const detachHandleScale = attachHandleCounterScale(
-        handles,
+        [...handles, ...hitHandles],
         two,
         initialScale
     )
@@ -192,7 +216,12 @@ export function attachVertexHandles({
         // stopPropagation keeps the canvas from also starting a body-drag or a
         // reselect on the same press.
         handles.forEach((handle, index) => {
-            const el = document.getElementById(handle.id)
+            // The transparent companion is what the user actually presses; the
+            // drawn dot is decoration and never takes a pointer event.
+            const dotEl = document.getElementById(handle.id)
+            if (dotEl) dotEl.style.pointerEvents = 'none'
+
+            const el = document.getElementById(handle.hitHandle?.id)
             if (!el) return
             el.style.cursor = 'move'
             el.setAttribute('class', 'dragger-picker is-vertex-handle')
@@ -221,6 +250,10 @@ export function attachVertexHandles({
                     vertex.y = surface.y - grp.translation.y
                     handle.translation.x = vertex.x
                     handle.translation.y = vertex.y
+                    if (handle.hitHandle) {
+                        handle.hitHandle.translation.x = vertex.x
+                        handle.hitHandle.translation.y = vertex.y
+                    }
                     // A curved, non-manual Path recomputes its control points
                     // from the anchors on render — flag so it re-flows. Inert
                     // but harmless on the straight-segment route/area.
@@ -291,7 +324,10 @@ export function setVertexHandlesVisible(
 ): void {
     handles.forEach((handle) => {
         handle.opacity = visible ? 1 : 0
-        const el = document.getElementById(handle.id)
+        // The dot is never interactive; its transparent companion is the one
+        // that has to be gated, or an unselected shape keeps swallowing clicks
+        // in a ring around every vertex.
+        const el = document.getElementById(handle.hitHandle?.id)
         if (el) el.style.pointerEvents = visible ? 'auto' : 'none'
     })
     scheduleRender(two)
@@ -325,6 +361,10 @@ export function applyRevertedVertices(
         if (!vx) return
         handle.translation.x = vx.x
         handle.translation.y = vx.y
+        if (handle.hitHandle) {
+            handle.hitHandle.translation.x = vx.x
+            handle.hitHandle.translation.y = vx.y
+        }
     })
     path._flagVertices = true
     two.update()

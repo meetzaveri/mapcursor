@@ -82,7 +82,12 @@ import SelectionController, {
     SELECTION_PADDING,
 } from './canvas/selectionController'
 import { updateX1Y1Vertices, updateX2Y2Vertices } from './utils/updateVertices'
-import { armedPresetPatch } from './utils/armedLegendPreset'
+import {
+    armedPresetPatch,
+    readArmedPreset,
+} from './utils/armedLegendPreset'
+import { applyPresetToElement } from './utils/applyLegendPreset'
+import { isLegendPresetType } from './types/legend'
 import type { LegendPresetType } from './types/legend'
 import { generateUUID } from './utils/misc'
 import {
@@ -619,6 +624,11 @@ function addZUI(
     let geoDrawType: 'area' | 'route' | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoDrawProps: any = null
+    // The preset armed on this tool, captured when the draw starts. Held apart
+    // from `geoDrawProps` because it has to outrank the live element defaults
+    // in `geoPreviewStyle`, and those already outrank the staged props.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let geoArmedStyle: any = null
     let geoVertices: { x: number; y: number }[] = []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoDots: any[] = []
@@ -734,9 +744,20 @@ function addZUI(
     // so what you trace matches what you get.
     const geoPreviewStyle = () => {
         const scale = zui.scale || two.scene.scale || 1
-        const lw = defaultLinewidthValue || geoDrawProps?.linewidth || 2
+        // The armed preset comes FIRST, ahead of the live element defaults.
+        // Those defaults are what the stroke controls set, and they legitimately
+        // beat the staged draw props — but a preset is the user naming what
+        // this mark IS, so it outranks both. Without this the preview traced in
+        // the default colour and only snapped to the preset on finish, which is
+        // exactly the jump `finishGeoDraw` folds the same patch in to avoid.
+        const lw =
+            geoArmedStyle?.linewidth ||
+            defaultLinewidthValue ||
+            geoDrawProps?.linewidth ||
+            2
         return {
             stroke:
+                geoArmedStyle?.stroke ||
                 defaultStrokeColorValue ||
                 geoDrawProps?.stroke ||
                 SHAPE_DEFAULT_STROKE,
@@ -1037,6 +1058,7 @@ function addZUI(
     const resetGeoDrawState = () => {
         geoDrawType = null
         geoDrawProps = null
+        geoArmedStyle = null
         geoVertices = []
         routeSnapper = null
         routeSnapPending = null
@@ -2222,6 +2244,28 @@ function addZUI(
                                 surfaceCoords.x,
                                 surfaceCoords.y
                             )
+                            // Same late read as the radius map above, for the
+                            // same reason: the toolbar builds this point when
+                            // the TOOL is picked, but the preset chips only
+                            // appear once that tool is current — so a preset
+                            // chosen for a point was always armed after the
+                            // record already existed, and never reached it.
+                            //
+                            // skipHistory: this is part of placing the point,
+                            // not an edit of it. Without it a single undo
+                            // would strip the colour and leave the pin.
+                            const armed = readArmedPreset('point')
+                            if (armed) {
+                                applyPresetToElement(
+                                    {
+                                        twoJSInstance: two,
+                                        updateComponentBulkPropertiesInLocalStore,
+                                    },
+                                    pointId,
+                                    armed,
+                                    true
+                                )
+                            }
                             // A point is a circle plus a name, so placing one
                             // opens its label editor straight away — the same
                             // event the text tools use, answered by point.tsx.
@@ -2249,6 +2293,14 @@ function addZUI(
                     geoDrawProps = JSON.parse(
                         localStorage.getItem(DRAW_PROPS_KEY) ?? 'null'
                     )
+                    // Read at the FIRST CLICK, not when the tool was picked:
+                    // the preset chips for a tool only appear once that tool is
+                    // current, so arming always happens after staging and the
+                    // staged copy is a pick behind. `finishGeoDraw` re-reads it
+                    // the same way for the committed mark.
+                    geoArmedStyle = isLegendPresetType(geoDrawType)
+                        ? armedPresetPatch(geoDrawType)
+                        : null
                     geoVertices = []
                     // Route only. An area is a region, not a way — snapping its
                     // boundary to road centrelines would trace the middle of the
@@ -2276,6 +2328,28 @@ function addZUI(
                 drawShapeProps = JSON.parse(
                     localStorage.getItem(PENDING_SHAPE_PROPS_KEY) ?? 'null'
                 )
+
+                // The armed preset is folded in HERE — the first moment in the
+                // gesture that is late enough to see it, and early enough for
+                // the drag preview to wear it.
+                //
+                // The toolbar stages these props when the TOOL is picked and
+                // folds the preset in there too, but the preset chips for a
+                // tool only appear once that tool is current: arming always
+                // happens after staging, so the staged copy is always one pick
+                // behind. Reading it again on mousedown is what makes the mark
+                // the right colour from the first frame of the drag rather
+                // than only once it is finished.
+                //
+                // One read, not two: everything downstream — the preview below
+                // and `finalShapeData` on mouseup — spreads this object, so
+                // there is a single source of truth for what is being drawn.
+                drawShapeProps = {
+                    ...(drawShapeProps ?? {}),
+                    ...(isLegendPresetType(drawShapeType)
+                        ? armedPresetPatch(drawShapeType)
+                        : {}),
+                }
 
                 localStorage.removeItem(PENDING_SHAPE_TYPE_KEY)
                 localStorage.removeItem(PENDING_SHAPE_PROPS_KEY)
