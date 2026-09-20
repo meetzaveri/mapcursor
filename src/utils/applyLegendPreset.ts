@@ -3,6 +3,7 @@ import { computeCounterScale, isStrokeScaled, resolveResist } from './counterSca
 import { presetStylePatch } from '../types/legend'
 import type { LegendPreset } from '../types/legend'
 import type { ComponentRecord } from '../types/base'
+import { getPointCircle } from '../factory/point'
 
 // Applying a legend preset: the store/DB write, and the live repaint that has
 // to accompany it.
@@ -43,10 +44,19 @@ function paintPresetKey(
     name: string,
     value: unknown
 ): void {
-    const shape = group?.children?.[0]
-    if (!shape) return
-    const elementData = group.elementData
+    const elementData = group?.elementData
     const componentType = elementData?.componentType
+    // A point's pin is NOT children[0]. Rebuilding a point group leaves any
+    // selection chrome in place and appends the new circle and label after it,
+    // so once a point has been selected the chrome sits at index 0 — and a
+    // recolour lands on the overlay while the pin keeps its old colour. That is
+    // exactly why `getPointCircle` exists, and why a hand-edit through
+    // applyProperty was fine while a preset silently was not.
+    const shape =
+        componentType === 'point'
+            ? getPointCircle(group)
+            : group?.children?.[0]
+    if (!shape) return
 
     switch (name) {
         case 'fill':

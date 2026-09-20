@@ -26,6 +26,7 @@ import {
 import {
     getSelectionStroke,
     selectionHandleRadiusPx,
+    selectionHandleHitRadiusPx,
     HANDLE_STROKE,
     SELECTION_BOX_LINEWIDTH_PX,
     SELECTION_HANDLE_FILL,
@@ -554,10 +555,14 @@ export default class SelectionController {
 
         const surface = this.zui.clientToSurface(clientX, clientY)
         const scale = this.zui.scale || 1
-        // Grab radius is tied to the visible dot (half its diameter) plus a few
-        // px of slop, so resize only fires on the dot — not in a bloated zone
-        // around it. Constant in screen px at any zoom.
-        const hitRadiusPx = handleScreenPx() / 2 + this._hitSlopPx()
+        // Grab radius is tied to the dot's HIT radius plus a few px of slop, so
+        // resize only fires on the dot — not in a bloated zone around it.
+        // Constant in screen px at any zoom.
+        //
+        // The hit radius, not the visual one: on touch the dot is now drawn
+        // smaller than it is grabbed, and reading the visual radius here would
+        // have quietly shrunk this zone along with the dot.
+        const hitRadiusPx = selectionHandleHitRadiusPx() + this._hitSlopPx()
         const hitLimit = hitRadiusPx / scale
 
         // Corners win over edges so the corner-resize/rotate zone isn't shadowed

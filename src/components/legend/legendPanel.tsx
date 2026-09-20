@@ -15,7 +15,7 @@ import type { ReactElement } from 'react'
 
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
-import { useTopRightOffset } from '../../hooks/useTopRightOffset'
+import { RIGHT_MARGIN } from '../../hooks/useTopRightOffset'
 import Tooltip from '../common/tooltip'
 import PresetPreview from './presetPreview'
 import LegendPresetWizard from './legendPresetWizard'
@@ -55,8 +55,8 @@ export function LegendList({
         return (
             <div className="px-3 py-4 text-center">
                 <div className="text-xs text-ink-muted mb-3">
-                    No legend presets yet. Create one so the colours on this map
-                    explain themselves later.
+                    No legend presets yet. Create legend preset so that you can
+                    create object with that preset styling.
                 </div>
                 <button
                     type="button"
@@ -64,7 +64,7 @@ export function LegendList({
                     className="w-full h-8 text-xs rounded-md bg-accent text-white
                         hover:shadow-lg transition-shadow duration-150"
                 >
-                    Create a preset
+                    Create a Legend
                 </button>
             </div>
         )
@@ -215,7 +215,6 @@ export default function LegendPanel(): ReactElement | null {
     const { legendPresets, legendPresetCounts, deleteLegendPreset } =
         useBaseContext()
     const { isMobile } = useMediaQueryUtils()
-    const rightOffset = useTopRightOffset(!isMobile)
     const wizard = useLegendWizard()
     const [collapsed, setCollapsed] = useState(false)
 
@@ -228,10 +227,18 @@ export default function LegendPanel(): ReactElement | null {
                 className="fixed"
                 style={{
                     top: `${PANEL_TOP}px`,
-                    right: `${rightOffset}px`,
+                    // The screen's right edge, NOT the search field's. The
+                    // panel used to take the measured offset that keeps the
+                    // place search clear of the share button, which lined the
+                    // two up and made the legend read as a dropdown hanging
+                    // off the search field. Tucked against the edge it reads
+                    // as what it is: a panel about the map, parked in the
+                    // corner. `useTopRightOffset` stays for the place search,
+                    // which does still have to dodge the share button.
+                    right: `${RIGHT_MARGIN}px`,
                     width: `${PANEL_WIDTH}px`,
-                    // Same band as the place search it stacks under, and below
-                    // the modal backdrop (1000) by a wide margin.
+                    // Same band as the place search, and below the modal
+                    // backdrop (1000) by a wide margin.
                     zIndex: 11,
                 }}
             >

@@ -21,9 +21,11 @@ export const RIGHT_MARGIN = 10
  * Re-measured for a few frames after mount because the share row settles late
  * (its label swaps between "Saving…" and "Live"), and on resize.
  *
- * Extracted from `placeSearch.tsx` when the legend panel needed to line up with
- * the search field: two pieces of chrome stacking in one corner must agree on
- * where that corner starts, and the only way to guarantee that is one reader.
+ * Extracted from `placeSearch.tsx` when the legend panel needed to line up
+ * with the search field. The legend has since moved to the screen's right edge
+ * (it read as a dropdown of the search field), so the place search is the only
+ * caller again — but this stays a hook rather than folding back in, because
+ * anything else landing in that corner faces the same measurement problem.
  */
 export function useTopRightOffset(isActive: boolean): number {
     const [rightOffset, setRightOffset] = useState<number>(RIGHT_MARGIN)

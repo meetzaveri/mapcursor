@@ -82,6 +82,13 @@ import {
 import { writeAnchorConfig } from '../../baseTypes/anchorStorage'
 import { baseUrl } from '../../utils/baseRoutes'
 import {
+    trackEvent,
+    rememberOwnBase,
+    isOwnBase,
+    onceEver,
+    oncePerSession,
+} from '../../utils/analytics'
+import {
     readViewport,
     writeViewport,
     IDENTITY_VIEWPORT,
@@ -113,6 +120,7 @@ import {
     DRAFT_STORAGE_KEY,
     ARROW_DRAW_MODE_KEY,
     TEXT_DRAW_MODE_KEY,
+    TEXT_SELECTOR_REFRESH_EVENT,
     PENDING_SHAPE_TYPE_KEY,
     PENDING_SHAPE_PROPS_KEY,
     LAST_ADDED_ELEMENT_ID_KEY,
@@ -246,6 +254,15 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             }
         } catch (_) {}
     }, [localBaseId, baseIdFromUrl])
+
+    // Funnel: a persisted base was opened. `own` separates a real arrival from
+    // the sharer's own tab (shareLinkPopup opens the new link straight after
+    // sharing) and from the owner revisiting — without it the share loop looks
+    // like it works whether or not anyone ever follows a link.
+    useEffect(() => {
+        if (!baseIdFromUrl) return
+        trackEvent('base_opened', { own: isOwnBase(baseIdFromUrl) })
+    }, [baseIdFromUrl])
 
     const {
         loading: getComponentsForBaseLoading,
@@ -401,6 +418,16 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         baseId,
         serverConfig: props.serverBaseConfig,
     })
+
+    // Funnel: the canvas is mounted and usable. This is what every other step
+    // divides by. `backdropReady` only flips once mapBackdrop.mount returns a
+    // handle, i.e. once MapLibre has initialised — which needs WebGL, so a
+    // headless scanner never gets here. That makes it a much truer count of
+    // real arrivals than a pageview, which anything that parses HTML books.
+    useEffect(() => {
+        if (!backdropReady) return
+        trackEvent('canvas_ready', { persisted: !!baseIdFromUrl })
+    }, [backdropReady, baseIdFromUrl])
 
     /**
      * Where a recipient of this shared map should land, resolved once at mount.
@@ -1209,6 +1236,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
 
         askedMapStartRef.current = true
         mapStartPendingRef.current = true
+        trackEvent('map_start_shown')
         setShowMapStartModal(true)
     }, [hadStoredMapAnchor, backdropReady, componentStore])
 
@@ -1243,6 +1271,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         (place: MapAnchor): void => {
             if (!mapStartPendingRef.current) return
             mapStartPendingRef.current = false
+            trackEvent('map_start_answered', { via: 'pick' })
             setShowMapStartModal(false)
             // The map is empty (that is the gate), so this re-anchors rather
             // than flying the camera — which is what we want: the whole zoom
@@ -1263,12 +1292,18 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
      */
     const handleMapStartFallback = useCallback((): void => {
         if (!mapStartPendingRef.current) return
+        // Not an answer — the browser refused on their behalf and the dialog
+        // stays open — so it is tracked apart from 'skip'. A high share here
+        // means the prompt is losing people to a permission dialog they never
+        // asked for, which is a different fix from "they weren't interested".
+        trackEvent('map_start_answered', { via: 'fallback' })
         settleOnTimezoneCity()
     }, [settleOnTimezoneCity])
 
     const handleMapStartSkip = useCallback((): void => {
         if (!mapStartPendingRef.current) return
         mapStartPendingRef.current = false
+        trackEvent('map_start_answered', { via: 'skip' })
         setShowMapStartModal(false)
         // Persist the timezone city they are already looking at. Declining is a
         // decision, so we record it and stop asking, rather than treating it as
@@ -1278,14 +1313,31 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
 
     // Creates a base in the background on first interaction (non-blocking).
     // Stores the server base ID in state + ref + localStorage for later use.
-    const ensureBackgroundBase = async () => {
+    //
+    // `trigger` names the interaction that caused it, and rides the
+    // `first_element_drawn` event. Every guard above the insert is also a
+    // guard on that event, which is exactly what we want: the row is created
+    // once per browser, so the event marks the first edit this browser has
+    // ever made — the step the whole funnel turns on.
+    const ensureBackgroundBase = async (trigger: string = 'unknown') => {
+        // Fired above every guard below, and before the insert is attempted.
+        // Activation is "this person edited something" — not "this person
+        // edited something AND Hasura happened to be up", which is what
+        // tracking it after the await used to mean. Above the isPersisted
+        // guard too, so a first edit made on a map opened from someone else's
+        // link still counts: that is activation by any honest reading.
+        // `onceEver` is what keeps it to one per browser now that the
+        // backgroundBaseId guard no longer gates it.
+        if (onceEver('first_element_drawn')) {
+            trackEvent('first_element_drawn', { trigger })
+        }
+
         if (isPersistedRef.current) return
         if (backgroundBaseIdRef.current) return
         if (baseCreationInFlightRef.current) return
 
         baseCreationInFlightRef.current = true
         try {
-            const userId = localStorage.getItem('userId')
             const { data: baseData } = await createBase({
                 variables: { object: {} },
             })
@@ -1342,7 +1394,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
 
         // Trigger background base creation on first interaction
-        ensureBackgroundBase()
+        ensureBackgroundBase(type)
 
         if (!skipHistory) {
             recordToHistoryLog({
@@ -1484,7 +1536,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     ) => {
         // Editing a property counts as a first real interaction: spin up the
         // background base, same as the shapes toolbar. One-shot.
-        ensureBackgroundBase()
+        ensureBackgroundBase('property')
 
         const userId = localStorage.getItem('userId')
 
@@ -1569,7 +1621,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     ) => {
         // Dragging counts as a first real interaction: spin up the background
         // base, same as drawing via the shapes toolbar. Idempotent.
-        ensureBackgroundBase()
+        ensureBackgroundBase('drag')
 
         const userId = localStorage.getItem('userId')
 
@@ -1628,7 +1680,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     }
 
     const deleteBulkComponentsFromLocalStore = (ids: string[]) => {
-        ensureBackgroundBase()
+        ensureBackgroundBase('delete_bulk')
 
         const batchEntries: HistoryEntry[] = ids.map((id) => ({
             action: 'DELETE',
@@ -1656,7 +1708,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
 
     // Snapshots full component state before deletion, then removes from store and DB
     const deleteComponentFromLocalStore = (id: string) => {
-        ensureBackgroundBase()
+        ensureBackgroundBase('delete')
 
         recordToHistoryLog({
             action: 'DELETE',
@@ -1686,11 +1738,26 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     }
 
     const setCurrentElementInBase = (val: string | null) => {
+        // The single chokepoint for "which tool is active", so it catches the
+        // keyboard shortcuts as well as the toolbar. Clearing the tool (null)
+        // is not a selection and isn't tracked.
+        //
+        // Two events, because they answer different questions. `tool_selected`
+        // fires on every switch and measures tool popularity; a single drawing
+        // session produces dozens. `first_tool_selected` fires once per
+        // session and is the funnel step — paired with `first_element_drawn`
+        // it separates "never found the toolbar" from "picked a tool and
+        // couldn't draw with it", which need completely different fixes.
+        if (val) {
+            if (oncePerSession('first_tool_selected')) {
+                trackEvent('first_tool_selected', { tool: val })
+            }
+            trackEvent('tool_selected', { tool: val })
+        }
         setCurrentElement(val)
     }
 
     const onCreateBase = () => {
-        const userId = localStorage.getItem('userId')
         createBase({
             variables: {
                 object: {},
@@ -1780,6 +1847,10 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         })
         const serverBaseId = baseData?.base?.id
         if (!serverBaseId) throw new Error('createBase returned no id')
+
+        // Claim it before anyone can open it, so this browser's own visit to
+        // the new link isn't counted as someone arriving from a share.
+        rememberOwnBase(serverBaseId)
 
         // The legend goes FIRST, and its ids are re-minted like everything
         // else. Components carry `legendPresetId` as a real FK, so inserting
@@ -2023,6 +2094,23 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }
 
+    /**
+     * Ask a standalone text to re-measure its selection box.
+     *
+     * The toolbar resizes text by mutating its Two.Text nodes in place, which
+     * never reaches the mounted component through React — ElementRenderWrapper
+     * freezes its props at mount — so the box it drew at selection time is the
+     * only thing left describing bounds that no longer exist.
+     */
+    const refreshTextSelector = (componentId?: string): void => {
+        if (!componentId) return
+        window.dispatchEvent(
+            new CustomEvent(TEXT_SELECTOR_REFRESH_EVENT, {
+                detail: { id: componentId },
+            })
+        )
+    }
+
     const handleTextSizeChange = (newLabel: string) => {
         const sizesMap = isMobile ? MOBILE_TEXT_SIZES_OBJECT : TEXT_SIZES_OBJECT
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2060,6 +2148,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         updateComponentBulkPropertiesInLocalStore(componentId, patch)
         twoJSInstance?.update()
         syncOpenTextarea({ fontSize: textSize })
+        // The glyphs changed size, so the selection box around them is wrong.
+        // Nothing else re-measures it: Chromium happened to hide it on blur and
+        // Firefox happened to leave it stale, which is why the two looked so
+        // different. See TEXT_SELECTOR_REFRESH_EVENT.
+        refreshTextSelector(componentId)
     }
 
     // After a text style change (size/family) on a shape-with-text, re-wrap the
@@ -2185,6 +2278,8 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         updateComponentBulkPropertiesInLocalStore(componentId, patch)
         twoJSInstance?.update()
         syncOpenTextarea({ fontFamily })
+        // A different face has different metrics, so the box moves here too.
+        refreshTextSelector(sel?.group?.data?.elementData?.id)
         // Make selection universal: future new elements pick up this family.
         setDefaultTextFontFamily(fontFamily)
     }

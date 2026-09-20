@@ -197,6 +197,24 @@ export const SELECT_COMPONENT_EVENT = 'selectComponent'
  * there when the editor opened", which only the editor knows — hence a request
  * rather than a value.
  */
+/**
+ * "This text's bounds changed — re-box its selection." Carries the element id;
+ * every text on the base hears it, only the named one acts.
+ *
+ * The properties toolbar resizes a text by mutating its Two.Text nodes
+ * directly (see `handleTextSizeChange`), which repaints the glyphs but leaves
+ * the selection box on the bounds it was built from. What happened next was
+ * decided by a focus difference rather than by any deliberate design: Chromium
+ * fires `blur` on the text's SVG group when the toolbar takes focus, so
+ * `elementOnBlurHandler` hid the stale box; Firefox does not, so it stayed on
+ * screen at the old size. One browser silently dropped the selection, the
+ * other showed a wrong one.
+ *
+ * Both are now the same thing — the box is re-measured and kept — which is
+ * what the drag-to-resize path (`onResizeMouseMove`) has always done.
+ */
+export const TEXT_SELECTOR_REFRESH_EVENT = 'textSelectorRefresh'
+
 export const TEXT_EDIT_START_EVENT = 'textEditStart'
 export const TEXT_EDIT_END_EVENT = 'textEditEnd'
 export const TEXT_EDIT_COMMIT_EVENT = 'commitTextEdit'

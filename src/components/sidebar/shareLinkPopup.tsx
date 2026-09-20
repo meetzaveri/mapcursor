@@ -7,6 +7,7 @@ import CopyIcon from '../../assets/copy.svg'
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import { baseUrl } from '../../utils/baseRoutes'
+import { trackEvent } from '../../utils/analytics'
 import { SHARE_BUTTON_ID } from './shapesToolbarId'
 
 const ShareLinkPopup = (): ReactElement => {
@@ -57,6 +58,10 @@ const ShareLinkPopup = (): ReactElement => {
             setShowLink(false)
             return
         }
+        // Intent, not outcome. The gap between this and `share_succeeded` is
+        // how many people open the dialog and back out of it, which is a
+        // different problem from never reaching for share at all.
+        trackEvent('share_clicked', { persisted: isPersisted })
         setShowConfirmModal(true)
     }
 
@@ -65,6 +70,12 @@ const ShareLinkPopup = (): ReactElement => {
         try {
             const wasPersisted = isPersisted
             const serverBaseId = await shareBase()
+            trackEvent('share_succeeded', {
+                persisted: wasPersisted,
+                elements: Object.values(
+                    stateRefForComponentStore.current
+                ).filter((c) => c?.componentType).length,
+            })
             const url = baseUrl(serverBaseId)
             setShareUrl(url)
             setShowConfirmModal(false)
@@ -91,6 +102,13 @@ const ShareLinkPopup = (): ReactElement => {
                 return
             }
             window.open(openUrl, '_blank', 'noopener,noreferrer')
+        } catch (e) {
+            // Re-thrown, not swallowed: this only observes the failure, it
+            // does not change what happens on one.
+            trackEvent('share_failed', {
+                reason: e instanceof Error ? e.name : 'unknown',
+            })
+            throw e
         } finally {
             setIsPersisting(false)
         }
