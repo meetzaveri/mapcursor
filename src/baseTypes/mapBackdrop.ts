@@ -22,6 +22,7 @@ import {
 } from '../utils/timezoneCities'
 import { makeLngLatToSurface, surfaceUnitsPerMeter } from './mercator'
 import { setRoadSource, type RoadSnapshot } from './roadSource'
+import { addLandLayers } from './landPaint'
 import type { RoadPolyline } from '../utils/roadGraph'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -332,8 +333,12 @@ export const mapBackdrop = {
             }),
         })
 
-        // Positron's water is grey by design; see paintWater.
-        map.on('styledata', () => paintWater(map))
+        // Positron's water and land are grey by design; see paintWater and
+        // landPaint.ts.
+        map.on('styledata', () => {
+            paintWater(map)
+            addLandLayers(map)
+        })
 
         const handle: MapHandle = {
             map,

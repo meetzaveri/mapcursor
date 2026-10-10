@@ -27,6 +27,7 @@ import { computeCounterScale, resolveResist } from '../../utils/counterScale'
 import { readProperties, setProperties } from '../../utils/geometry'
 import { isPanMode } from '../../utils/drawModeUtils'
 import { svgTextScreenRect } from '../../utils/svgTextRect'
+import { clampTextSizeOnScreen } from '../../utils/textResize'
 
 // Text renders exactly like NewText — same TextFactory, same multiline
 // editing, resize handles and floating-toolbar contract. What separates the two
@@ -325,8 +326,10 @@ function Text(props: ElementProps): ReactElement {
                 (e.clientX - centerX) ** 2 + (e.clientY - centerY) ** 2
             )
             const scale = currentDist / Math.max(startDist, 1)
-            const newSize = Math.round(
-                Math.min(Math.max(startSize * scale, 8), 300)
+            // Clamped in screen px, not surface units — see textResize.ts.
+            const newSize = clampTextSizeOnScreen(
+                startSize * scale,
+                effectiveScale()
             )
 
             twoText.size = newSize
@@ -415,6 +418,12 @@ function Text(props: ElementProps): ReactElement {
         if (groupEl) {
             groupEl.setAttribute('class', 'dragger-picker')
             groupEl.setAttribute('data-component-id', props.id)
+            // Deleting and deselecting ride on this <g>'s focus/blur. Blink
+            // focuses an SVG node on click regardless; Gecko and WebKit only
+            // focus one with a tabindex — without it Delete does nothing in
+            // Firefox. See focusSvgElement in canvasUtils.
+            groupEl.setAttribute('tabindex', '-1')
+            groupEl.style.outline = 'none'
         }
 
         setInternalState((draft) => {

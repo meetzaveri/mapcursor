@@ -16,6 +16,7 @@ import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 import type { ComponentMetadata } from '../types/base'
 import { pointGeometry, setGeometry } from '../utils/geometry'
 import { markSelectionChrome } from '../utils/svgExportShared'
+import { clampTextSizeOnScreen } from '../utils/textResize'
 import {
     buildCircleLabel,
     circleLabelColorOf,
@@ -1053,7 +1054,16 @@ export default class SelectionController {
         const curDist = Math.hypot(surface.x - center.x, surface.y - center.y)
         const factor = curDist / Math.max(startDist, 1)
         const base = initialFontSize ?? 36
-        const newSize = Math.round(Math.min(Math.max(base * factor, 8), 300))
+        // Clamped in screen px, not surface units — see textResize.ts. The
+        // group's own scale is its zoom-resistance counter-scale.
+        const groupScale =
+            typeof this.currentGroup.scale === 'number'
+                ? this.currentGroup.scale
+                : 1
+        const newSize = clampTextSizeOnScreen(
+            base * factor,
+            this.two.scene.scale * groupScale
+        )
         this._applyTextFontSize(this.currentGroup, newSize)
         this.syncToTarget()
         this.two.update()

@@ -24,24 +24,25 @@ const ChevronLeft = () => (
     </svg>
 )
 
-const cards = [
-    {
-        href: 'https://github.com/meetzaveri/mapcursor/issues',
-        icon: <img src={errorIcon} className="w-5 h-5" alt="Issues" />,
-        label: 'GitHub Issues',
-        description:
-            'Found a bug or want to request a feature? Open an issue directly on our repository.',
-        cta: 'Open an issue →',
-    },
-    {
-        href: 'https://github.com/meetzaveri/mapcursor/discussions',
-        icon: <img src={chatAltIcon} className="w-5 h-5" alt="Discussions" />,
-        label: 'GitHub Discussions',
-        description:
-            'Have a question or idea to share? Please open a discussion post.',
-        cta: 'Start a discussion →',
-    },
-]
+const cards = []
+// const cards = [
+//     {
+//         href: 'https://github.com/meetzaveri/mapcursor/issues',
+//         icon: <img src={errorIcon} className="w-5 h-5" alt="Issues" />,
+//         label: 'GitHub Issues',
+//         description:
+//             'Found a bug or want to request a feature? Open an issue directly on our repository.',
+//         cta: 'Open an issue →',
+//     },
+//     {
+//         href: 'https://github.com/meetzaveri/mapcursor/discussions',
+//         icon: <img src={chatAltIcon} className="w-5 h-5" alt="Discussions" />,
+//         label: 'GitHub Discussions',
+//         description:
+//             'Have a question or idea to share? Please open a discussion post.',
+//         cta: 'Start a discussion →',
+//     },
+// ]
 
 const SupportPage: React.FC = () => {
     const { isMobile } = useMediaQueryUtils()
@@ -125,17 +126,17 @@ const SupportPage: React.FC = () => {
                 </div>
 
                 {/* Divider */}
-                <div className="flex items-center gap-3 mb-4 tablet-landscape:mb-5">
+                {/* <div className="flex items-center gap-3 mb-4 tablet-landscape:mb-5">
                     <div className="flex-1 h-px bg-border-panel" />
                     <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">
                         Submit Issue/ Forum Channel
                     </span>
                     <div className="flex-1 h-px bg-border-panel" />
-                </div>
+                </div> */}
 
                 {/* Cards */}
                 <div className="grid grid-cols-1 tablet-landscape:grid-cols-2 gap-3">
-                    {cards.map((card) => (
+                    {/* {cards.map((card) => (
                         <a
                             key={card.label}
                             href={card.href}
@@ -159,7 +160,7 @@ const SupportPage: React.FC = () => {
                                 </div>
                             </div>
                         </a>
-                    ))}
+                    ))} */}
                 </div>
             </main>
         </div>

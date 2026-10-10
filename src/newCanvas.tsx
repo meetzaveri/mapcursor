@@ -127,7 +127,6 @@ import {
 import {
     velocityToLinewidth,
     smoothLinewidth,
-    simplifyWithLinewidth,
     chaikinSmooth,
 } from './utils/pencilHelper'
 import {
@@ -445,6 +444,9 @@ function addZUI(
     let pencilGroup: any = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pencilPath: any = null
+    // Where the preview group sits: the stroke's first point. The preview's
+    // vertices are stored relative to it — see the mousedown pencil branch.
+    let pencilPreviewOrigin = { x: 0, y: 0 }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pencilRawPoints: any[] = []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2451,13 +2453,25 @@ function addZUI(
                     lw: lastPencilLinewidth,
                 })
 
+                // The preview's vertices are relative to the stroke's first
+                // point, which goes on the group's translation instead — the
+                // same shape the committed element has. Path data is rasterised
+                // in float32, and far from the anchor absolute surface
+                // coordinates run to ~1e7, where float32 resolves only whole
+                // units: the smoothed preview points collapsed onto each other
+                // and the live stroke drew broken, then turned solid on mouseup
+                // when the element re-rendered with local vertices. The render
+                // origin (canvas/renderOrigin.ts) can't help here: it rebases
+                // transforms, not path data.
+                pencilPreviewOrigin = { x: startCoords.x, y: startCoords.y }
+                pencilGroup.translation.set(startCoords.x, startCoords.y)
+
                 // Note: two.makePath only treats numeric (x, y) pair args as
                 // vertices. Passing a Two.Anchor here would be silently dropped,
                 // leaving the path empty and missing the mousedown start point.
                 pencilPath = two.makePath()
-                pencilPath.vertices.push(
-                    new Two.Anchor(startCoords.x, startCoords.y)
-                )
+                pencilPath.translation.set(0, 0)
+                pencilPath.vertices.push(new Two.Anchor(0, 0))
                 pencilPath.noFill()
                 pencilPath.stroke = defaultStrokeColorValue
                 pencilPath.linewidth = pencilPreviewLinewidth()
@@ -2791,9 +2805,12 @@ function addZUI(
                     updateRouteSnapPreview(preview)
                     // The two previews are mutually exclusive: whichever one is
                     // not describing this segment has to go, or the user sees
-                    // the route and the chord at once.
+                    // the route and the chord at once. The chord lives in the
+                    // preview group, so it must leave through the group —
+                    // `two.remove` on the scene is a silent no-op here, and
+                    // nulling the ref then orphans a frozen chord on screen.
                     if (geoPreviewLine) {
-                        two.remove(geoPreviewLine)
+                        geoPreviewGroup?.remove(geoPreviewLine)
                         geoPreviewLine = null
                     }
                     two.update()
@@ -2938,8 +2955,11 @@ function addZUI(
                             ? chaikinSmooth(pencilRawPoints, 2)
                             : pencilRawPoints
                     pencilPath.vertices.splice(0)
+                    const { x: ox, y: oy } = pencilPreviewOrigin
                     smoothedPreview.forEach((pt) => {
-                        pencilPath.vertices.push(new Two.Anchor(pt.x, pt.y))
+                        pencilPath.vertices.push(
+                            new Two.Anchor(pt.x - ox, pt.y - oy)
+                        )
                     })
                 }
 
@@ -3504,12 +3524,13 @@ function addZUI(
                     break
                 }
 
-                // Light simplification keeps the final shape close to what the
-                // user actually drew (smaller epsilon = more fidelity).
-                const simplifiedPoints = simplifyWithLinewidth(
-                    pencilRawPoints,
-                    0.3
-                )
+                // Commit exactly the points the preview was built from. The
+                // element re-smooths them the same way the preview did
+                // (chaikinSmooth ×2), so the stroke stays put on release. An
+                // RDP simplification used to run here; it changed the input to
+                // that smoothing, and the stroke visibly wobbled on mouseup by
+                // up to a few pixels when zoomed in.
+                const committedPoints = pencilRawPoints
 
                 let pencilId = generateUUID()
                 // A pencil stroke is a LineString whose per-point pressure
@@ -3523,8 +3544,8 @@ function addZUI(
                     baseId: props.baseId,
                     componentType: 'pencil',
                     children: {},
-                    ...geometryFields(lineGeometry(simplifiedPoints), {
-                        widths: simplifiedPoints.map((point) => point.lw),
+                    ...geometryFields(lineGeometry(committedPoints), {
+                        widths: committedPoints.map((point) => point.lw),
                     }),
                     linewidth: defaultLinewidthValue,
                     stroke: defaultStrokeColorValue,

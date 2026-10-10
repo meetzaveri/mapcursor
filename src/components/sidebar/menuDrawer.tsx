@@ -8,10 +8,12 @@ import { exportBaseAsJson } from '../../utils/exportBase'
 import Modal from '../common/modal'
 import Button from '../common/button'
 import ShortcutsModal from './shortcutsModal'
+import SettingsModal from './settingsModal'
 import PlaceSearchModal from './placeSearchModal'
 import LegendPanelModal from '../legend/legendPanelModal'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import HelpIcon from '../../assets/help.svg?react'
+import SettingsIcon from '../../assets/settings.svg?react'
 import ChevronRightIcon from '../../assets/chevron-right.svg?react'
 import { MENU_BUTTON_ID } from './shapesToolbarId'
 
@@ -168,6 +170,7 @@ const MenuDrawer = (): ReactElement => {
     const [showMenu, setShowMenu] = useState(false)
     const [showConfirm, setShowConfirm] = useState(false)
     const [showShortcuts, setShowShortcuts] = useState(false)
+    const [showSettings, setShowSettings] = useState(false)
     const [showPlaceSearch, setShowPlaceSearch] = useState(false)
     const [showLegend, setShowLegend] = useState(false)
     const [isExporting, setIsExporting] = useState(false)
@@ -216,6 +219,11 @@ const MenuDrawer = (): ReactElement => {
     const handleShortcutsClick = (): void => {
         setShowMenu(false)
         setShowShortcuts(true)
+    }
+
+    const handleSettingsClick = (): void => {
+        setShowMenu(false)
+        setShowSettings(true)
     }
 
     const handlePlaceSearchClick = (): void => {
@@ -447,6 +455,20 @@ const MenuDrawer = (): ReactElement => {
                             <span>Keyboard shortcuts</span>
                         </button>
 
+                        <button
+                            className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
+                                hover:bg-sidebar rounded cursor-pointer
+                                transition-colors ease-in-out duration-150"
+                            style={{ width: 'calc(100% - 8px)' }}
+                            onClick={handleSettingsClick}
+                        >
+                            <SettingsIcon
+                                className="w-3.5 h-3.5"
+                                aria-hidden="true"
+                            />
+                            <span>Settings</span>
+                        </button>
+
                         <div className="h-px bg-border-panel mx-2 mt-1 mb-1" />
 
                         <div className="relative">
@@ -600,6 +622,11 @@ const MenuDrawer = (): ReactElement => {
             <ShortcutsModal
                 open={showShortcuts}
                 onClose={(): void => setShowShortcuts(false)}
+            />
+
+            <SettingsModal
+                open={showSettings}
+                onClose={(): void => setShowSettings(false)}
             />
 
             <Modal
