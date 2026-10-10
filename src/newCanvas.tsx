@@ -2791,9 +2791,12 @@ function addZUI(
                     updateRouteSnapPreview(preview)
                     // The two previews are mutually exclusive: whichever one is
                     // not describing this segment has to go, or the user sees
-                    // the route and the chord at once.
+                    // the route and the chord at once. The chord lives in the
+                    // preview group, so it must leave through the group —
+                    // `two.remove` on the scene is a silent no-op here, and
+                    // nulling the ref then orphans a frozen chord on screen.
                     if (geoPreviewLine) {
-                        two.remove(geoPreviewLine)
+                        geoPreviewGroup?.remove(geoPreviewLine)
                         geoPreviewLine = null
                     }
                     two.update()

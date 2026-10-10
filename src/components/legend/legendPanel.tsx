@@ -237,8 +237,9 @@ export default function LegendPanel(): ReactElement | null {
                     // which does still have to dodge the share button.
                     right: `${RIGHT_MARGIN}px`,
                     width: `${PANEL_WIDTH}px`,
-                    // Same band as the place search, and below the modal
-                    // backdrop (1000) by a wide margin.
+                    // One below the place search (12), so its results
+                    // dropdown opens over this panel; well below the modal
+                    // backdrop (1000).
                     zIndex: 11,
                 }}
             >

@@ -74,7 +74,10 @@ const PlaceSearch = (): ReactElement | null => {
             style={{
                 top: '8px',
                 right: `${rightOffset}px`,
-                zIndex: 11,
+                // One above the legend panel (11), which sits directly below
+                // this field: at equal z the panel wins by DOM order and its
+                // card covered the results dropdown.
+                zIndex: 12,
                 width: `${DESKTOP_WIDTH}px`,
             }}
         >

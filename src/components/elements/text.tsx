@@ -415,6 +415,12 @@ function Text(props: ElementProps): ReactElement {
         if (groupEl) {
             groupEl.setAttribute('class', 'dragger-picker')
             groupEl.setAttribute('data-component-id', props.id)
+            // Deleting and deselecting ride on this <g>'s focus/blur. Blink
+            // focuses an SVG node on click regardless; Gecko and WebKit only
+            // focus one with a tabindex — without it Delete does nothing in
+            // Firefox. See focusSvgElement in canvasUtils.
+            groupEl.setAttribute('tabindex', '-1')
+            groupEl.style.outline = 'none'
         }
 
         setInternalState((draft) => {
