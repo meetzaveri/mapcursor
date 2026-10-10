@@ -19,9 +19,11 @@ import { RIGHT_MARGIN } from '../../hooks/useTopRightOffset'
 import Tooltip from '../common/tooltip'
 import PresetPreview from './presetPreview'
 import LegendPresetWizard from './legendPresetWizard'
+import ApplyPresetButton from './applyPresetButton'
 import { LEGEND_TYPE_LABELS } from '../../types/legend'
 import type { LegendPreset } from '../../types/legend'
 import type { LegendPresetInput } from '../../hooks/useLegendPresets'
+import { readSelectedPresetTarget } from '../../utils/legendPresetTarget'
 
 /** Top of the panel: 8px margin + the 46px search shell + an 8px gap. */
 const PANEL_TOP = 62
@@ -43,6 +45,10 @@ interface LegendListProps {
  * A count of 0 is rendered as "Unused" rather than "(0)", because zero is a
  * meaningful state here — a preset created before the marks it describes — and
  * a bare zero reads like a bug.
+ *
+ * When a mark on the canvas is selected, rows of the SAME type offer "Apply" on
+ * hover — the same apply path as the secondary drawer's chips, reached from the
+ * place the preset is actually described.
  */
 export function LegendList({
     presets,
@@ -51,6 +57,9 @@ export function LegendList({
     onEdit,
     onDelete,
 }: LegendListProps): ReactElement {
+    const { selectedComponent, applyLegendPresetToSelection } = useBaseContext()
+    const selection = readSelectedPresetTarget(selectedComponent)
+
     if (presets.length === 0) {
         return (
             <div className="px-3 py-4 text-center">
@@ -108,12 +117,28 @@ export function LegendList({
                             </div>
                             {/* Always in the DOM, revealed on hover/focus —
                                 mounting them on hover would make them
-                                unreachable by keyboard. */}
+                                unreachable by keyboard. Collapsed to zero
+                                WIDTH, not just faded: an invisible-but-sized
+                                strip would truncate the name even at rest. */}
                             <div
-                                className="flex items-center gap-1 opacity-0
-                                    group-hover:opacity-100 focus-within:opacity-100
-                                    transition-opacity duration-150"
+                                className="flex items-center gap-1 shrink-0 overflow-hidden
+                                    max-w-0 opacity-0
+                                    group-hover:max-w-40 group-hover:opacity-100
+                                    focus-within:max-w-40 focus-within:opacity-100
+                                    transition-[max-width,opacity] duration-150"
                             >
+                                {selection?.elementType ===
+                                    preset.elementType && (
+                                    <ApplyPresetButton
+                                        presetName={preset.name}
+                                        isApplied={
+                                            selection.boundId === preset.id
+                                        }
+                                        onApply={(): void =>
+                                            applyLegendPresetToSelection(preset)
+                                        }
+                                    />
+                                )}
                                 <Tooltip label="Edit preset" placement="left">
                                     <button
                                         type="button"

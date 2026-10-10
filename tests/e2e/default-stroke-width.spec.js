@@ -5,6 +5,9 @@ import {
     setDefaultStrokeWidth,
     clickToolbarButton,
     getCanvasBox,
+    drawArea,
+    getDraftComponents,
+    clickPointerTool,
 } from './helpers/index.js'
 
 // The Defaults panel's Stroke Width labels (see src/components/sidebar/defaults.js)
@@ -54,5 +57,42 @@ test.describe('Default stroke width applies to drawn shapes', () => {
         })
 
         expect(await getLinewidth(handle)).toBe(EXPECTED_LINEWIDTH)
+    })
+
+    test('pencil stroke width does not restyle the area just drawn', async ({
+        page,
+    }) => {
+        // With an area selected, picking the pencil shows the PENCIL
+        // properties set, so a width chosen there is a pencil default — it
+        // used to also land on the still-selected area.
+        const box = await getCanvasBox(page)
+        const cx = box.x + box.width * 0.5
+        const cy = box.y + box.height * 0.6
+        await drawArea(page, [
+            { x: cx - 80, y: cy - 60 },
+            { x: cx + 80, y: cy - 60 },
+            { x: cx, y: cy + 60 },
+        ])
+        // Select it by clicking its top edge.
+        await clickPointerTool(page)
+        await page.mouse.click(cx - 40, cy - 59)
+        await expect(page.locator('#stroke-width-section')).toBeVisible()
+
+        const readAreaLinewidth = async () => {
+            const components = (await getDraftComponents(page)) || {}
+            const area = Object.values(components).find(
+                (c) => c.componentType === 'area'
+            )
+            return area?.linewidth
+        }
+        // The draft flush is debounced (500ms).
+        await expect.poll(readAreaLinewidth).toBeDefined()
+        const before = await readAreaLinewidth()
+
+        await clickToolbarButton(page, 'Pencil')
+        await setDefaultStrokeWidth(page, String(before) === '8' ? '2' : '8')
+        await page.waitForTimeout(800)
+
+        expect(await readAreaLinewidth()).toBe(before)
     })
 })

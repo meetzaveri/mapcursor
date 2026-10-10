@@ -69,69 +69,6 @@ export function smoothLinewidth(
 }
 
 /**
- * Perpendicular distance from a point to a line segment (for RDP algorithm).
- */
-function perpendicularDistance(
-    point: PencilPoint,
-    lineStart: PencilPoint,
-    lineEnd: PencilPoint
-): number {
-    const dx = lineEnd.x - lineStart.x
-    const dy = lineEnd.y - lineStart.y
-
-    if (dx === 0 && dy === 0) {
-        return Math.sqrt(
-            (point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2
-        )
-    }
-
-    const t =
-        ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) /
-        (dx * dx + dy * dy)
-    const clampedT = Math.max(0, Math.min(1, t))
-    const projX = lineStart.x + clampedT * dx
-    const projY = lineStart.y + clampedT * dy
-
-    return Math.sqrt((point.x - projX) ** 2 + (point.y - projY) ** 2)
-}
-
-/**
- * Ramer-Douglas-Peucker simplification that preserves {x, y, lw} tuples.
- */
-export function simplifyWithLinewidth(
-    points: PencilPoint[],
-    epsilon: number
-): PencilPoint[] {
-    if (points.length <= 2) return points
-
-    let maxDist = 0
-    let maxIndex = 0
-
-    for (let i = 1; i < points.length - 1; i++) {
-        const dist = perpendicularDistance(
-            points[i]!,
-            points[0]!,
-            points[points.length - 1]!
-        )
-        if (dist > maxDist) {
-            maxDist = dist
-            maxIndex = i
-        }
-    }
-
-    if (maxDist > epsilon) {
-        const left = simplifyWithLinewidth(
-            points.slice(0, maxIndex + 1),
-            epsilon
-        )
-        const right = simplifyWithLinewidth(points.slice(maxIndex), epsilon)
-        return left.slice(0, -1).concat(right)
-    }
-
-    return [points[0]!, points[points.length - 1]!]
-}
-
-/**
  * Groups consecutive points with similar linewidths into longer path segments.
  * Adjacent groups share an overlap point to prevent visual gaps.
  *

@@ -22,9 +22,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import PresetPreview from './presetPreview'
-import { isLegendPresetType } from '../../types/legend'
-import type { LegendPreset, LegendPresetType } from '../../types/legend'
-import { readArmedPreset, setArmedPreset } from '../../utils/armedLegendPreset'
+import type { LegendPreset } from '../../types/legend'
+import { setArmedPreset } from '../../utils/armedLegendPreset'
+import { readLegendPresetTarget } from '../../utils/legendPresetTarget'
 
 /**
  * The primary toolbar's bottom edge: `top-2` (8px) plus its 46px height. The
@@ -34,44 +34,6 @@ import { readArmedPreset, setArmedPreset } from '../../utils/armedLegendPreset'
 const TOOLBAR_BOTTOM = 54
 
 export const PRESET_CHIPS_ID = 'mc-preset-chips'
-
-/**
- * What the drawer is currently about: a mark already on the canvas, or a tool
- * armed to draw one.
- *
- * A selection outranks an armed tool — if something is selected, the drawer is
- * about that. The armed-tool branch falls back to `currentElement` exactly as
- * `resolveSetKey` already does for a pre-armed draw tool, rather than inventing
- * a second idea of what the toolbar is currently about.
- */
-function readTarget(
-    selectedComponent: unknown,
-    currentElement: string | null
-): {
-    elementType: LegendPresetType
-    boundId: string | null
-    /** True when there is no element yet — a pick arms instead of applying. */
-    isArmed: boolean
-} | null {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const elementData = (selectedComponent as any)?.group?.data?.elementData
-    const componentType = elementData?.componentType
-    if (isLegendPresetType(componentType)) {
-        return {
-            elementType: componentType,
-            boundId: elementData?.legendPresetId ?? null,
-            isArmed: false,
-        }
-    }
-    if (isLegendPresetType(currentElement)) {
-        return {
-            elementType: currentElement,
-            boundId: readArmedPreset(currentElement)?.id ?? null,
-            isArmed: true,
-        }
-    }
-    return null
-}
 
 interface ChipProps {
     label: string
@@ -127,7 +89,7 @@ export function PresetChipRow(): ReactElement | null {
     const [armedTick, setArmedTick] = useState(0)
     void armedTick
 
-    const target = readTarget(selectedComponent, currentElement)
+    const target = readLegendPresetTarget(selectedComponent, currentElement)
     if (!target) return null
 
     const applicable = legendPresets.filter(
@@ -186,7 +148,7 @@ export default function PresetChips(): ReactElement | null {
     // get out of the way while that selection is being dragged.
     const target = isElementDragging
         ? null
-        : readTarget(selectedComponent, currentElement)
+        : readLegendPresetTarget(selectedComponent, currentElement)
 
     return (
         <div

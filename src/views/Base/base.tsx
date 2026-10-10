@@ -1083,6 +1083,14 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setPencilMode(value)
         if (value) {
             cancelPendingElement()
+            // Drop the selection, as togglePointer and pan mode do. Pencil mode
+            // shows the PENCIL properties set over any selection (see
+            // resolveSetKey), but applyProperty still writes to whatever is
+            // selected — so without this, setting the pencil's width also
+            // restyled the area just finished drawing. `clearSelector` takes
+            // the controller box and element-owned chrome with it.
+            window.dispatchEvent(new CustomEvent('clearSelector', {}))
+            setSelectedComponent(null)
             setRubberModeInBase(false)
             localStorage.setItem(PENCIL_MODE_KEY, 'TRUE')
             setRootCursor('crosshair')
