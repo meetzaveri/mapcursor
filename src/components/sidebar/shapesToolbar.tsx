@@ -10,21 +10,15 @@ import Tooltip from '../common/tooltip'
 import UndoIcon from '../../assets/undo_amber.svg?react'
 import RedoIcon from '../../assets/redo.svg?react'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
+import { IMAGE_COMPONENT } from '../../constants/misc'
+import EraserSizeButtons from './eraserSizeButtons'
+import MobileDrawToolbar from './mobileDrawToolbar'
 import {
-    ERASER_SIZES,
-    ERASER_DOT_PX,
-    IMAGE_COMPONENT,
-    type EraserSize,
-} from '../../constants/misc'
-
-// Hover labels for the eraser size dots. The dots' pixel sizes come from
-// ERASER_DOT_PX rather than living here, because the trail drawn on the canvas
-// reads the same map — that's what keeps the swatch and the beam identical.
-const ERASER_SIZE_LABEL: Record<EraserSize, string> = {
-    small: 'Small',
-    medium: 'Medium',
-    large: 'Large',
-}
+    DRAW_GROUP,
+    groupToolsForMobile,
+    isDrawTool,
+    type DrawTool,
+} from './mobileToolGroups'
 
 const allElementsRaw = staticPrimaryElementData.flatMap(
     (section) => section.elements
@@ -89,6 +83,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
         eraserSize,
         setEraserSizeInBase,
         isPersisted,
+        showMobileToolbarPanel,
     } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
     const [openDrawer, setOpenDrawer] = useState<string | null>(null)
@@ -103,8 +98,31 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
     // toolbar space would be confusing, so it steps aside.
     const showEraserSizes = currentElement === 'rubber' && !selectedComponent
 
+    // Mobile Draw group (Pencil + Eraser in one button). The button shows, and
+    // a tap brings back, whichever of the two was used last.
+    const [lastDrawTool, setLastDrawTool] = useState<DrawTool>(
+        DRAW_GROUP.children[0]
+    )
+    useEffect(() => {
+        if (isDrawTool(currentElement)) setLastDrawTool(currentElement)
+    }, [currentElement])
+    const drawTriggerRef = useRef<HTMLDivElement | null>(null)
+    // Steps aside while the mobile styling panel is open: the panel sits over
+    // the same spot, and touching the canvas closes it, so the bar is back the
+    // moment drawing starts.
+    const showDrawToolbar =
+        isMobile && isDrawTool(currentElement) && !showMobileToolbarPanel
+    const drawTools = allElementsRaw.filter((el) => isDrawTool(el.elementName))
+
+    const pickTool = (tool: string): void => {
+        addElement(tool)
+        setCurrentElementInBase(tool)
+    }
+
     const allElements = (
-        isMobile ? allElementsRaw : flattenDrawersForDesktop(allElementsRaw)
+        isMobile
+            ? groupToolsForMobile(allElementsRaw, lastDrawTool)
+            : flattenDrawersForDesktop(allElementsRaw)
     )
         // Images are local-only for now; shared canvases don't offer the tool.
         .filter((el) => !isPersisted || el.elementName !== IMAGE_COMPONENT)
@@ -222,8 +240,11 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
             >
                 {allElements.map((element) => {
                     const Icon = element.elementIcon
+                    const isDrawGroup =
+                        element.elementName === DRAW_GROUP.elementName
                     const isActive =
                         currentElement === element.elementName ||
+                        (isDrawGroup && isDrawTool(currentElement)) ||
                         openDrawer === element.elementName ||
                         (element.hasDrawer &&
                             element.drawerData.some(
@@ -237,6 +258,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                             disabled={element.hasDrawer}
                         >
                             <div
+                                ref={isDrawGroup ? drawTriggerRef : undefined}
                                 className={`
                                 ${btnSize} flex items-center justify-center rounded cursor-pointer
                                 transition-all ease-in-out duration-200
@@ -274,6 +296,19 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                     closeHoverDrawer()
                                 }}
                                 onClick={(e): void => {
+                                    // Mobile Draw group: a tap turns on the
+                                    // last-used draw tool (which opens the
+                                    // secondary toolbar), a second tap goes
+                                    // back to Select.
+                                    if (isDrawGroup) {
+                                        setOpenDrawer(null)
+                                        pickTool(
+                                            isDrawTool(currentElement)
+                                                ? homeTool
+                                                : lastDrawTool
+                                        )
+                                        return
+                                    }
                                     // Hover-menu tools (e.g. Lines): a bare click
                                     // picks the default child — the drawer is for
                                     // switching to the alternative, not a required
@@ -325,22 +360,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                         addElement(IMAGE_COMPONENT)
                                     } else {
                                         setOpenDrawer(null)
-                                        if (element.elementName === 'rubber') {
-                                            // Anchor for the mobile size
-                                            // drawer, which renders above the
-                                            // toolbar off this icon's rect.
-                                            const rect =
-                                                e.currentTarget.getBoundingClientRect()
-                                            setDrawerAnchor({
-                                                left: rect.left,
-                                                top: rect.bottom,
-                                                rectTop: rect.top,
-                                            })
-                                        }
-                                        addElement(element.elementName)
-                                        setCurrentElementInBase(
-                                            element.elementName
-                                        )
+                                        pickTool(element.elementName)
                                     }
                                 }}
                             >
@@ -360,43 +380,12 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                 {!isMobile && showEraserSizes && (
                     <>
                         <div className="bg-border-panel w-px h-6 mx-1" />
-                        {ERASER_SIZES.map((size) => {
-                            const label = ERASER_SIZE_LABEL[size]
-                            const dotPx = ERASER_DOT_PX[size]
-                            const isActive = eraserSize === size
-                            return (
-                                <Tooltip
-                                    key={size}
-                                    label={label}
-                                    placement={tooltipPlacement}
-                                >
-                                    <button
-                                        type="button"
-                                        aria-label={`Eraser size: `}
-                                        className={`
-                                        ${btnSize} flex items-center justify-center rounded cursor-pointer
-                                        transition-all ease-in-out duration-200
-                                        ${
-                                            isActive
-                                                ? 'bg-accent/10 text-accent-dark ring-1 ring-accent/30'
-                                                : 'text-ink-muted hover:bg-sidebar hover:text-ink'
-                                        }
-                                    `}
-                                        onClick={(): void =>
-                                            setEraserSizeInBase(size)
-                                        }
-                                    >
-                                        <span
-                                            className="rounded-full bg-current pointer-events-none"
-                                            style={{
-                                                width: dotPx,
-                                                height: dotPx,
-                                            }}
-                                        />
-                                    </button>
-                                </Tooltip>
-                            )
-                        })}
+                        <EraserSizeButtons
+                            eraserSize={eraserSize}
+                            onChange={setEraserSizeInBase}
+                            btnSize={btnSize}
+                            tooltipPlacement={tooltipPlacement}
+                        />
                     </>
                 )}
                 {!isMobile && (
@@ -481,57 +470,21 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                 </div>
             )}
 
-            {/* Eraser size selector — mobile only. Reuses the same
-                above-toolbar drawer anchoring the shape drawers use; desktop
-                instead renders the sizes inline (see the divider-separated
-                segment next to the eraser icon). */}
-            {isMobile && showEraserSizes && drawerAnchor && (
-                <div
-                    className="fixed bg-card-bg border border-border-panel shadow-panel rounded-card flex items-center flex-row px-1 py-1 gap-0.5"
-                    style={{
-                        bottom: window.innerHeight - drawerAnchor.rectTop + 6,
-                        left: drawerAnchor.left,
-                        zIndex: 11,
-                    }}
-                >
-                    {ERASER_SIZES.map((size) => {
-                        const label = ERASER_SIZE_LABEL[size]
-                        const dotPx = ERASER_DOT_PX[size]
-                        const isActive = eraserSize === size
-                        return (
-                            <Tooltip
-                                key={size}
-                                label={label}
-                                placement={tooltipPlacement}
-                            >
-                                <button
-                                    type="button"
-                                    aria-label={`Eraser size: `}
-                                    className={`
-                                    ${btnSize} flex items-center justify-center rounded cursor-pointer
-                                    transition-all ease-in-out duration-200
-                                    ${
-                                        isActive
-                                            ? 'bg-accent/10 text-accent-dark ring-1 ring-accent/30'
-                                            : 'text-ink-muted hover:bg-sidebar hover:text-ink'
-                                    }
-                                `}
-                                    onClick={(): void =>
-                                        setEraserSizeInBase(size)
-                                    }
-                                >
-                                    <span
-                                        className="rounded-full bg-current pointer-events-none"
-                                        style={{
-                                            width: dotPx,
-                                            height: dotPx,
-                                        }}
-                                    />
-                                </button>
-                            </Tooltip>
-                        )
-                    })}
-                </div>
+            {/* Mobile Draw group's secondary toolbar: Pencil | Eraser, plus
+                the eraser sizes while erasing. Up for as long as a draw tool
+                is current. Desktop keeps pencil, eraser and sizes inline. */}
+            {showDrawToolbar && isDrawTool(currentElement) && (
+                <MobileDrawToolbar
+                    triggerRef={drawTriggerRef}
+                    tools={drawTools}
+                    currentTool={currentElement}
+                    onPick={pickTool}
+                    showEraserSizes={showEraserSizes}
+                    eraserSize={eraserSize}
+                    onEraserSizeChange={setEraserSizeInBase}
+                    btnSize={btnSize}
+                    iconSize={iconSize}
+                />
             )}
         </div>
     )

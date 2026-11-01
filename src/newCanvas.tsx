@@ -1338,10 +1338,24 @@ function addZUI(
     domElement.addEventListener('mousedown', mousedown, false)
     domElement.addEventListener('mousemove', hoverDetectMove, false)
     domElement.addEventListener('dblclick', dblclick, false)
+    // Wheel listens on window, not the SVG. Safari only delivers wheel events
+    // to the page inside regions it knows have a wheel listener, and for SVG
+    // that region is built from painted content. The ink layer is transparent
+    // over the map, so a listener on the SVG almost never fired there and the
+    // wheel did nothing. A window listener makes the whole page a wheel
+    // region; the target filter keeps wheel over toolbars and panels out of
+    // the camera. (Same fix as craftbase.) Synthetic wheel events skip that
+    // region check, so Playwright's WebKit can't reproduce the bug.
+    //
     // Non-passive so the handler can preventDefault. The legacy `mousewheel`
     // alias is deliberately NOT bound: no current browser fires both, but one
     // that did would now double-apply the zoom.
-    domElement.addEventListener('wheel', mousewheel, { passive: false })
+    const canvasWheel = (e: WheelEvent) => {
+        if (e.target instanceof Node && domElement.contains(e.target)) {
+            mousewheel(e)
+        }
+    }
+    window.addEventListener('wheel', canvasWheel, { passive: false })
 
     domElement.addEventListener('touchstart', touchstart, { passive: false })
     domElement.addEventListener('touchmove', touchmove, { passive: false })

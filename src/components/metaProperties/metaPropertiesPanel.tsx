@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+} from 'react'
 import type { ReactElement, RefObject } from 'react'
 
 import { useBaseContext } from '../../views/Base/baseContext'
@@ -7,7 +13,10 @@ import { RIGHT_MARGIN } from '../../hooks/useTopRightOffset'
 import Modal from '../common/modal'
 import { LEGEND_PANEL_ID } from '../legend/legendPanel'
 import { META_PANEL_DIALOG_ATTR, META_PANEL_ID } from '../../utils/canvasChrome'
-import { META_OBJECT_LABELS, useSelectedMetaObject } from './useSelectedMetaObject'
+import {
+    META_OBJECT_LABELS,
+    useSelectedMetaObject,
+} from './useSelectedMetaObject'
 import type { SelectedMetaObject } from './useSelectedMetaObject'
 import { useObjectMetaValues } from './useObjectMetaValues'
 import MetaPropertyRow from './metaPropertyRow'
@@ -25,7 +34,7 @@ import type { MetaProperty } from '../../types/metaProperty'
 // shown while exactly one point / route / area / radius map / geo-text is
 // selected. Lists that object's properties (editable in place) and adds new
 // ones through a two-step wizard. On mobile the same body opens in a sheet
-// from a button at the middle of the right edge.
+// from a button in the right-edge column under Share (MobileSideActions).
 // See .claude/context/meta-properties.md.
 
 const PANEL_WIDTH = 260
@@ -50,7 +59,10 @@ function useMidRightPlacement(panelRef: RefObject<HTMLDivElement | null>): {
         const height = panelRef.current?.offsetHeight ?? 0
         const centred = (window.innerHeight - height) / 2
         const top = Math.max(centred, legendBottom + GAP, GAP)
-        const maxHeight = Math.max(window.innerHeight - top - BOTTOM_CLEARANCE, 160)
+        const maxHeight = Math.max(
+            window.innerHeight - top - BOTTOM_CLEARANCE,
+            160
+        )
         setPlacement((p) =>
             p.top === top && p.maxHeight === maxHeight ? p : { top, maxHeight }
         )
@@ -73,7 +85,11 @@ function useMidRightPlacement(panelRef: RefObject<HTMLDivElement | null>): {
 }
 
 /** The panel's content, shared by the desktop card and the mobile sheet. */
-function MetaPanelBody({ target }: { target: SelectedMetaObject }): ReactElement {
+function MetaPanelBody({
+    target,
+}: {
+    target: SelectedMetaObject
+}): ReactElement {
     const { meta, isPersisted } = useBaseContext()
     const { values, loading, error } = useObjectMetaValues(target.objectId)
     const [view, setView] = useState<'list' | 'wizard'>('list')
@@ -107,14 +123,17 @@ function MetaPanelBody({ target }: { target: SelectedMetaObject }): ReactElement
     // objects lose one. A shared base would need a query for a sentence.
     const usageCount = (property: MetaProperty | null): number | null => {
         if (!property || isPersisted) return null
-        return meta.readLocalSet().values.filter((v) => v.propertyId === property.id)
-            .length
+        return meta
+            .readLocalSet()
+            .values.filter((v) => v.propertyId === property.id).length
     }
 
     return (
         <>
             <div className="flex items-center justify-between px-3 py-2 border-b border-border-panel">
-                <span className="text-xs font-semibold text-ink">Properties</span>
+                <span className="text-xs font-semibold text-ink">
+                    Properties
+                </span>
                 <span className="text-[11px] text-ink-muted">
                     {META_OBJECT_LABELS[target.objectType]}
                 </span>
@@ -140,7 +159,9 @@ function MetaPanelBody({ target }: { target: SelectedMetaObject }): ReactElement
             ) : (
                 <>
                     {error && (
-                        <div className="px-3 py-2 text-[11px] text-red-500">{error}</div>
+                        <div className="px-3 py-2 text-[11px] text-red-500">
+                            {error}
+                        </div>
                     )}
                     {rows.length === 0 && !loading && !error && (
                         <div className="px-3 py-4 text-center text-xs text-ink-muted">
@@ -163,7 +184,9 @@ function MetaPanelBody({ target }: { target: SelectedMetaObject }): ReactElement
                                         void meta.removeValue(value)
                                     }}
                                     onRename={(): void => setRenaming(property)}
-                                    onChangeType={(): void => setRetyping(property)}
+                                    onChangeType={(): void =>
+                                        setRetyping(property)
+                                    }
                                     onDelete={(): void => setDeleting(property)}
                                     onOpenImage={setLightbox}
                                 />
@@ -213,12 +236,19 @@ function MetaPanelBody({ target }: { target: SelectedMetaObject }): ReactElement
                     if (deleting) void meta.deleteProperty(deleting.id)
                 }}
             />
-            <ImageLightbox src={lightbox} onClose={(): void => setLightbox(null)} />
+            <ImageLightbox
+                src={lightbox}
+                onClose={(): void => setLightbox(null)}
+            />
         </>
     )
 }
 
-function DesktopPanel({ target }: { target: SelectedMetaObject }): ReactElement {
+function DesktopPanel({
+    target,
+}: {
+    target: SelectedMetaObject
+}): ReactElement {
     const panelRef = useRef<HTMLDivElement | null>(null)
     const { top, maxHeight } = useMidRightPlacement(panelRef)
     return (
@@ -250,7 +280,16 @@ function DesktopPanel({ target }: { target: SelectedMetaObject }): ReactElement 
     )
 }
 
-function MobilePanel({ target }: { target: SelectedMetaObject }): ReactElement {
+/**
+ * Mobile: the meta properties button and its sheet. Rendered in the right-edge
+ * column under Share by MobileSideActions, which owns the placement, so the
+ * button itself is in-flow.
+ */
+export function MobileMetaPropertiesButton({
+    target,
+}: {
+    target: SelectedMetaObject
+}): ReactElement {
     const [open, setOpen] = useState(false)
     // A new selection starts closed, like the desktop card's fresh view.
     useEffect(() => setOpen(false), [target.objectId])
@@ -264,13 +303,6 @@ function MobilePanel({ target }: { target: SelectedMetaObject }): ReactElement {
                 onClick={(): void => setOpen(true)}
                 className="w-10 h-10 rounded-lg flex items-center justify-center
                     bg-accent-dark text-white"
-                style={{
-                    position: 'fixed',
-                    top: '50%',
-                    right: `${RIGHT_MARGIN}px`,
-                    transform: 'translateY(-50%)',
-                    zIndex: 20,
-                }}
             >
                 <svg
                     width="18"
@@ -284,7 +316,11 @@ function MobilePanel({ target }: { target: SelectedMetaObject }): ReactElement {
                     <path d="M3 4h10M3 8h10M3 12h6" />
                 </svg>
             </button>
-            <Modal open={open} onClose={(): void => setOpen(false)} locked={false}>
+            <Modal
+                open={open}
+                onClose={(): void => setOpen(false)}
+                locked={false}
+            >
                 <div
                     {...{ [META_PANEL_DIALOG_ATTR]: '' }}
                     className="-m-5 text-left"
@@ -301,5 +337,7 @@ export default function MetaPropertiesPanel(): ReactElement | null {
     const target = useSelectedMetaObject()
     const { isMobile } = useMediaQueryUtils()
     if (!target) return null
-    return isMobile ? <MobilePanel target={target} /> : <DesktopPanel target={target} />
+    // Mobile renders its button in the right-edge column (MobileSideActions).
+    if (isMobile) return null
+    return <DesktopPanel target={target} />
 }

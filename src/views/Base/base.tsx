@@ -29,6 +29,7 @@ import {
 } from '../../schema/mutations'
 import LegendPanel from '../../components/legend/legendPanel'
 import MetaPropertiesPanel from '../../components/metaProperties/metaPropertiesPanel'
+import MobileSideActions from '../../components/sidebar/mobileSideActions'
 import PresetChips from '../../components/legend/presetChips'
 import {
     useLegendPresets,
@@ -2965,35 +2966,44 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                     <MobileTextControls
                         drawInProgress={showMultiClickDrawControls}
                     />
-                    {!isRubberMode && isMobile && (
-                        <button
-                            title="Element properties"
-                            onClick={() =>
-                                setShowMobileToolbarPanel((prev) => !prev)
-                            }
-                            style={{
-                                position: 'fixed',
-                                bottom: '16px',
-                                right: '10px',
-                                zIndex: 20,
-                            }}
-                            className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150 ${
-                                showMobileToolbarPanel
-                                    ? 'bg-accent'
-                                    : 'bg-accent-dark'
-                            }`}
-                        >
-                            <img
-                                src={controlsIcon}
-                                className="w-5 h-5"
-                                alt="Element properties"
-                            />
-                        </button>
-                    )}
+                    {/* Mobile styling button: while something is selected (a
+                        single element or a multi-selection), or while the
+                        pencil tool is on, so a stroke's colour, width and line
+                        style can be set before drawing it. */}
+                    {!isRubberMode &&
+                        isMobile &&
+                        Boolean(
+                            selectedComponent || selectedGroup || isPencilMode
+                        ) && (
+                            <button
+                                title="Element properties"
+                                onClick={() =>
+                                    setShowMobileToolbarPanel((prev) => !prev)
+                                }
+                                style={{
+                                    position: 'fixed',
+                                    bottom: '16px',
+                                    right: '10px',
+                                    zIndex: 20,
+                                }}
+                                className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150 ${
+                                    showMobileToolbarPanel
+                                        ? 'bg-accent'
+                                        : 'bg-accent-dark'
+                                }`}
+                            >
+                                <img
+                                    src={controlsIcon}
+                                    className="w-5 h-5"
+                                    alt="Element properties"
+                                />
+                            </button>
+                        )}
                     <ElementPropertiesToolbar />
                     <PresetChips />
                     <LegendPanel />
                     <MetaPropertiesPanel />
+                    <MobileSideActions />
                     <Canvas
                         pointerToggle={pointerToggle}
                         isPencilMode={isPencilMode}

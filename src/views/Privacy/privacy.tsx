@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import routes from '../../routes'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 
-const LAST_UPDATED = 'September 6, 2026'
+const LAST_UPDATED = 'November 1, 2026'
 
 const ChevronLeft = (): ReactNode => (
     <svg
@@ -127,8 +127,12 @@ const PrivacyPage: React.FC = () => {
                     <p>
                         <strong>Local mode (the default).</strong> While you are
                         sketching, everything you create stays in your own
-                        browser's local storage. That covers shapes, text and
-                        drawings. We don't upload any of it and we can't see it.
+                        browser's storage. Shapes, text and drawings are kept in
+                        local storage. Images are kept in your browser's
+                        IndexedDB storage. That covers images you place on the
+                        map and images you attach to a point or other object as
+                        a property. We don't upload any of it and we can't see
+                        it.
                     </p>
                     <p>
                         <strong>Shared canvases.</strong> When you share a
@@ -137,7 +141,40 @@ const PrivacyPage: React.FC = () => {
                         Anyone with the link can then view it. So avoid putting
                         confidential or sensitive information on a canvas you
                         plan to share. Nothing leaves your browser until you opt
-                        in.
+                        in. Images are not included in shared canvases. They
+                        stay on your device.
+                    </p>
+                    <p>
+                        <strong>Photo details.</strong> Photos often carry
+                        hidden details. Mapcursor removes these when you add an
+                        image, before it is saved:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1">
+                        <li>Location where the photo was taken (GPS)</li>
+                        <li>Date and time it was taken</li>
+                        <li>
+                            Camera or phone make and model, and its settings
+                        </li>
+                        <li>Editing software and edit history</li>
+                        <li>Captions, keywords, author and copyright fields</li>
+                        <li>Comments and text notes stored in the file</li>
+                        <li>
+                            Extra images some phones attach, such as thumbnails
+                            and depth maps
+                        </li>
+                    </ul>
+                    <p>
+                        We keep only what's needed to show the image correctly:
+                        its color profile, its rotation (applied to the image
+                        itself), and animation looping for GIFs. We never read a
+                        photo's location to place it on the map. Where an image
+                        sits is only ever where you put it.
+                    </p>
+                    <p>
+                        <strong>Exports.</strong> When you export a canvas as
+                        JSON, SVG or PNG, the file includes copies of your
+                        images. Share exported files with the same care as the
+                        photos themselves.
                     </p>
                 </Section>
 
@@ -300,6 +337,7 @@ const PrivacyPage: React.FC = () => {
                             The contents of canvases you keep in local mode and
                             never share
                         </li>
+                        <li>Images you add to a canvas</li>
                     </ul>
                     <p>We don't sell or rent any data to anyone.</p>
                 </Section>
@@ -307,8 +345,9 @@ const PrivacyPage: React.FC = () => {
                 <Section title="Your controls">
                     <p>
                         You can reset your anonymous identity and wipe every
-                        locally stored canvas at any time. Clear this site's
-                        data in your browser settings and both are gone.
+                        locally stored canvas and image at any time. Clear this
+                        site's data in your browser settings and all of it is
+                        gone.
                     </p>
                     <p>
                         Keep in mind that a canvas stays public once you have
