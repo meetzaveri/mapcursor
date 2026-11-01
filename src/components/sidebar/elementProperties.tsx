@@ -102,11 +102,14 @@ const SETS = {
     // CIRCLE_DEFAULTS and circle.tsx, which paint a zero-width ring).
     //
     // Its label takes colour, size and font (the latter two off the POINT
-    // ladder — see circleLabelFontSizeOf) plus the zoom-resistance switch.
+    // ladder — see circleLabelFontSizeOf). No zoom-resistance switch: its
+    // label scales with the map (see circleLabelScale).
     // Colour is a real control here, unlike a point's fixed ink: a point's
     // name hangs OUTSIDE a 10px pin, while a circle's sits inside a filled
     // disc the user colours, so black is not always readable.
-    CIRCLE: ['fill', 'textColor', 'textSize', 'textFont', 'zoomResist'],
+    CIRCLE: ['fill', 'textColor', 'textSize', 'textFont'],
+    // Bitmap: nothing to stroke or fill, only dim. Ported from craftbase.
+    IMAGE: ['opacity'],
     // GROUP: union of every property — toolbar shows them all when a group is
     // focused. applyGroupProperty silently skips children whose element type
     // doesn't accept a given property.
@@ -131,6 +134,7 @@ const SET_LABELS = {
     AREA: 'Area',
     ROUTE: 'Route',
     CIRCLE: 'Radius Map',
+    IMAGE: 'Image',
 }
 
 interface ResolveSetKeyOptions {
@@ -169,6 +173,9 @@ function resolveSetKey({
         if (elementType === 'area') return 'AREA'
         if (elementType === 'route') return 'ROUTE'
         if (elementType === 'circle') return 'CIRCLE'
+        // Its frame is a plain rectangle path; route it before anything that
+        // keys off the shape type.
+        if (elementType === 'image') return 'IMAGE'
         // Both spellings are checked because `shape.type` is set from
         // elementData.componentType for a selection made on the canvas, while
         // the elementType fallback covers the paths that don't populate it.

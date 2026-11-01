@@ -32,10 +32,13 @@ import {
     DRAW_PROPS_KEY,
     POINT_PLACE_MODE_KEY,
     LAST_ADDED_ELEMENT_ID_KEY,
+    IMAGE_COMPONENT,
     pointLabelSizeFor,
 } from '../../constants/misc'
 
 import './sidebar.css'
+import { openImageFilePicker } from '../../utils/imageFile'
+import { requestImageInsert } from '../../hooks/useImageDrop'
 import ShareLinkPopup from './shareLinkPopup'
 import MenuDrawer from './menuDrawer'
 
@@ -322,6 +325,16 @@ const PrimarySidebar = (): ReactElement => {
     }
 
     const addElement = (label: string): void => {
+        // Image is a one-shot action, not a draw mode: pick files, hand them to
+        // the canvas (useImageDrop places them at the viewport centre), and
+        // leave the active tool alone.
+        if (label === IMAGE_COMPONENT) {
+            prefetchElementModule(IMAGE_COMPONENT)
+            void openImageFilePicker().then((files) => {
+                if (files.length > 0) requestImageInsert(files)
+            })
+            return
+        }
         // Warm the shape's lazy chunk NOW, while the user moves to the canvas
         // and drags (~700ms–1s). By mouseup the chunk is cached, so the
         // component mounts instantly instead of the freshly-drawn shape sitting
@@ -576,10 +589,14 @@ const PrimarySidebar = (): ReactElement => {
             <ShapesToolbar addElement={addElement} />
             <PlaceSearch />
             <MenuDrawer />
+            {/* pointer-events-none: this is a full-width strip across the top
+                of the screen, hidden only by opacity, so it used to swallow
+                every press over the canvas beside the toolbars. It is a
+                read-only hint; nothing in it is meant to be clicked. */}
             <div
                 id="show-click-anywhere-btn"
-                className="fixed w-full flex justify-center top-0  opacity-0
-                transition-opacity ease-out duration-300"
+                className="fixed w-full flex justify-center top-0 opacity-0
+                pointer-events-none transition-opacity ease-out duration-300"
             >
                 <div className="w-auto mt-2 bg-hint text-hint-fg px-3 py-2 rounded-card shadow-panel">
                     <div className="flex items-center">

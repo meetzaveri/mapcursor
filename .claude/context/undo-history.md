@@ -35,6 +35,27 @@ Appends `{ ...entry, timestamp: Date.now() }` to the stack. Called at the top of
 | `DELETE` | `id`, `prevState` (full component snapshot) | `deleteComponentFromLocalStore` |
 | `UPDATE_BULK` | `id`, `prevProps` (only changed keys), `bulkObj` | `updateComponentBulkPropertiesInLocalStore` |
 | `UPDATE_VERTICES` | `id`, `prevX`, `prevY` | `updateComponentVerticesInLocalStore` |
+| `META` | `ops` (meta property steps, each carrying both sides) | `useMetaProperties` user operations |
+
+### `META` entries (meta properties)
+
+Meta property edits share this stack, so Ctrl/Cmd+Z and the toolbar reverse
+them in order with canvas edits. Each entry is ONE user action; its `ops` are
+`createProperty`, `deleteProperty` (with every value it had), `renameProperty`,
+`changeType` (old/new type, every value before, the converted values after),
+`setValue` (prev + next), `removeValue`. The wizard's "create and set" is one
+entry with two ops.
+
+- **Replay** goes through `applyMetaHistoryRef` (set in base.tsx), because
+  `useMetaProperties` is composed after this hook. Undo walks `ops` backwards,
+  redo forwards. No `captureNextState` step: every op already holds both sides.
+- **Recorded after the writes succeed**, unlike component actions: a failed
+  server write must not leave an undo step that does nothing.
+- **Values are addressed by cell** (propertyId, objectId), not row id: an
+  upsert onto an existing cell keeps the server's row id. On a shared base,
+  undo of a newly set value deletes by cell (`DELETE_META_VALUE_BY_CELL`).
+- A failed replay logs and re-loads the panel's values, so it shows what is
+  really stored.
 
 ## Reversing an action — `undoLastAction()`
 

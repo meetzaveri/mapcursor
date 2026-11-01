@@ -63,6 +63,11 @@ export interface CanvasClipboardOptions {
         ((groups: ComponentRecord[]) => void) | null
     >
     stateRefForComponentStore: MutableRefObject<ComponentStore | undefined>
+    /**
+     * Called after a paste with source id → clone id, so data keyed by object
+     * id (meta property values) can follow the copies.
+     */
+    onPasted?: (objectIdMap: Map<string, string>) => void
 }
 
 export interface CanvasClipboardApi {
@@ -78,8 +83,13 @@ export function useCanvasClipboard({
     recordBatchToHistoryLog,
     renderGroupRef,
     stateRefForComponentStore,
+    onPasted,
 }: CanvasClipboardOptions): CanvasClipboardApi {
     const clipboardRef = useRef<ClipboardPayload | null>(null)
+    // Read through a ref: the paste listener is bound in an effect, and must
+    // call the latest callback (stale-closure rule, CLAUDE.md).
+    const onPastedRef = useRef(onPasted)
+    onPastedRef.current = onPasted
     const lastMouseRef = useRef<MousePosition>({
         clientX: 0,
         clientY: 0,
@@ -334,6 +344,9 @@ export function useCanvasClipboard({
                     newItem.componentType,
                     newItem
                 )
+                if (typeof src.id === 'string') {
+                    onPastedRef.current?.(new Map([[src.id, newItem.id]]))
+                }
                 restackWhenMounted(newItem.id, arrowPorts)
                 // Drop the source's selection now, take the clone's when it
                 // mounts. Clearing first matters on the element-owned chrome
@@ -435,6 +448,7 @@ export function useCanvasClipboard({
                 if (pasteBatchEntries.length > 0) {
                     recordBatchToHistoryLog(pasteBatchEntries)
                 }
+                onPastedRef.current?.(idMap)
 
                 // Glue every pasted connector's docked endpoints onto their
                 // (possibly remapped) ports once the arrows mount.

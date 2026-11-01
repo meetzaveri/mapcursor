@@ -7,6 +7,24 @@
         <priority>1.0</priority>
     </url>
     <url>
+        <loc>http://mapcursor.com/</loc>
+        <lastmod>2026-06-14</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>1.0</priority>
+    </url>
+    <url>
+        <loc>https://www.mapcursor.com/</loc>
+        <lastmod>2026-06-14</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>1.0</priority>
+    </url>
+        <url>
+        <loc>http://www.mapcursor.com/</loc>
+        <lastmod>2026-06-14</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>1.0</priority>
+    </url>
+    <url>
         <loc>https://mapcursor.com/home</loc>
         <lastmod>2026-06-14</lastmod>
         <changefreq>monthly</changefreq>
@@ -23,5 +41,17 @@
         <lastmod>2026-06-14</lastmod>
         <changefreq>yearly</changefreq>
         <priority>0.3</priority>
+    </url>
+    <url>
+        <loc>https://mapcursor.com/use-cases</loc>
+        <lastmod>2026-11-01</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>https://mapcursor.com/use-cases/road-trip</loc>
+        <lastmod>2026-11-01</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
     </url>
 </urlset>

@@ -17,6 +17,10 @@ import BaseViewContainer from './views/Base'
 import HomePageViewContainer from './views/Home'
 import SupportViewContainer from './views/Support'
 import PrivacyViewContainer from './views/Privacy'
+import {
+    UseCasesViewContainer,
+    UseCaseDetailViewContainer,
+} from './views/UseCases'
 import MapcursorLoader from './components/common/mapcursorLoader'
 
 import routes from './routes'
@@ -168,6 +172,14 @@ class App extends Component {
                                 <Route
                                     path={routes.privacy}
                                     element={<PrivacyViewContainer />}
+                                />
+                                <Route
+                                    path={routes.useCases}
+                                    element={<UseCasesViewContainer />}
+                                />
+                                <Route
+                                    path={routes.useCase}
+                                    element={<UseCaseDetailViewContainer />}
                                 />
                             </Routes>
                         </div>

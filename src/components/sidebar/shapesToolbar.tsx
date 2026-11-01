@@ -13,6 +13,7 @@ import { useMediaQueryUtils } from '../../constants/exportHooks'
 import {
     ERASER_SIZES,
     ERASER_DOT_PX,
+    IMAGE_COMPONENT,
     type EraserSize,
 } from '../../constants/misc'
 
@@ -87,6 +88,7 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
         selectedComponent,
         eraserSize,
         setEraserSizeInBase,
+        isPersisted,
     } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
     const [openDrawer, setOpenDrawer] = useState<string | null>(null)
@@ -101,9 +103,11 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
     // toolbar space would be confusing, so it steps aside.
     const showEraserSizes = currentElement === 'rubber' && !selectedComponent
 
-    const allElements = isMobile
-        ? allElementsRaw
-        : flattenDrawersForDesktop(allElementsRaw)
+    const allElements = (
+        isMobile ? allElementsRaw : flattenDrawersForDesktop(allElementsRaw)
+    )
+        // Images are local-only for now; shared canvases don't offer the tool.
+        .filter((el) => !isPersisted || el.elementName !== IMAGE_COMPONENT)
 
     // Mount: highlight the resting tool. `pointer` is the resting state, so a
     // highlight is enough — no addElement call needed to activate it.
@@ -312,6 +316,13 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                                 ? homeTool
                                                 : element.elementName
                                         )
+                                    } else if (
+                                        element.elementName === IMAGE_COMPONENT
+                                    ) {
+                                        // One-shot file picker; the active
+                                        // tool stays as it was.
+                                        setOpenDrawer(null)
+                                        addElement(IMAGE_COMPONENT)
                                     } else {
                                         setOpenDrawer(null)
                                         if (element.elementName === 'rubber') {

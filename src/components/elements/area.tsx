@@ -4,6 +4,7 @@ import { useBaseContext } from '../../views/Base/baseContext'
 
 import AreaFactory from '../../factory/area'
 import { computeCounterScale, resolveResist } from '../../utils/counterScale'
+import { applyStrokeDashes } from '../../utils/strokeDashes'
 import {
     attachVertexHandles,
     setVertexHandlesVisible,
@@ -92,6 +93,9 @@ function Area(props: ElementProps): ReactElement {
                 path.linewidth =
                     baseLinewidth * computeCounterScale(initialScale, resist)
             }
+            // The dash pattern is sized on screen from that width, so it is
+            // seeded (and re-derived on every zoom below) with it.
+            applyStrokeDashes(path, props.strokeType, initialScale ?? 1)
 
             two.update()
 
@@ -144,6 +148,11 @@ function Area(props: ElementProps): ReactElement {
             // panel); fall back to the mount-time base.
             const base = group.elementData?.linewidth ?? baseLinewidth
             path.linewidth = base * computeCounterScale(scale, resist)
+            applyStrokeDashes(
+                path,
+                group.elementData?.strokeType ?? props.strokeType,
+                scale
+            )
             two.update()
         }
         window.addEventListener('zoomChanged', onZoom as EventListener)

@@ -45,7 +45,10 @@ Two things about the substrate that everything else depends on:
 - **Ink lives in Two.js surface space and is never rewritten.** The map is jumped
   so that surface (0,0) sits over the base's anchor — that is what makes
   annotations behave as if pinned to the geography. See `src/baseTypes/types.ts`
-  and `mapBackdrop.ts`.
+  and `mapBackdrop.ts`. The anchor is therefore content, not a cache: lose it
+  and the whole drawing is redrawn over the fallback (timezone) city. Never let
+  a local base's anchor expire or get left behind when its id rotates (see
+  `baseTypes/anchorStorage.ts`).
 - **The camera is split across two `<g>` transforms** (`src/canvas/renderOrigin.ts`)
   to dodge float32 cancellation at map-scale coordinates. The rendered matrix is
   therefore _not_ the camera — read the camera from `two.scene.scale`.
@@ -138,14 +141,15 @@ Top-level page views/routes.
 ### `/src/components`
 
 - **`elements/`** — one component per element type, lazily mounted into the
-  Two.js scene: `point`, `circle`, `area`, `route`, `pencil`, `text`,
+  Two.js scene: `point`, `circle`, `area`, `route`, `pencil`, `text`, `image`,
   `groupobject` (+ `circleLabelEditor.ts`). **This is the complete element set.**
+  `image` is local-only for now; see `context/meta-properties.md`.
 - **`sidebar/`**
     - `primary.tsx` — the main sidebar; seeds newly created elements from the
       current element defaults
     - `elementProperties.tsx` — the properties toolbar for the current selection.
       The `SETS` map declares which sections render per element kind (`PENCIL`,
-      `TEXT`, `POINT`, `AREA`, `ROUTE`, `CIRCLE`, `GROUP`); `resolveSetKey()`
+      `TEXT`, `POINT`, `AREA`, `ROUTE`, `CIRCLE`, `IMAGE`, `GROUP`); `resolveSetKey()`
       picks the active set. Every change routes through
       `utils/applyProperty.ts` (`createApplyProperty`) — it sets the matching
       default, then applies the same change to the selection if there is one.
@@ -153,6 +157,9 @@ Top-level page views/routes.
       `placeSearchModal.tsx`, `mobileDeleteButton.tsx`, `mobileTextControls.tsx`,
       `shareLinkPopup.tsx`, `shortcutsModal.tsx`, `userDetailsPopup.tsx`
 - **`legend/`** — the legend presets UI (panel, wizard, chips, preview)
+- **`metaProperties/`** — the meta properties panel (mid-right card on
+  desktop, sheet on mobile), its add-property wizard, value fields and
+  dialogs. Clicks inside it don't deselect the object: `utils/canvasChrome.ts`
 - **`modals/`** — standalone modals (import, size limit, storage limit,
   permission error, map start location)
 - **`common/`** — button, modal, portal, dropdown, toast, tooltip, spinner, loader
@@ -184,7 +191,7 @@ The map backdrop.
 
 One factory per element component, generating its template definition:
 `point.ts`, `circle.ts`, `circleLabel.ts`, `area.ts`, `route.ts`, `pencil.ts`,
-`text.ts`, plus `main.ts` (the dispatcher).
+`text.ts`, `image.ts`, plus `main.ts` (the dispatcher).
 
 ### `/src/hooks`
 
@@ -274,6 +281,9 @@ rather than duplicating it here.
 7. `useLocalDraftPersistence({ ..., onStorageLimitRef })` — draft + quota modal
 8. `useComponentHistory({ ... })` — undo/redo stack
 9. `useLegendPresets({ ... })` — the base's legend, and writes bound to it
+10. `useMetaProperties({ ... })` — base-wide meta property definitions and
+    per-object values (exposed as `meta` on `BaseContext`); see
+    `context/meta-properties.md`
 
 ## Technology Stack
 
@@ -282,7 +292,7 @@ rather than duplicating it here.
 - **Canvas Rendering**: Two.js (custom DOM-level event handling; see Stale Closure section)
 - **Map**: maplibre-gl (^5.24) — needs `canvasContextAttributes: { preserveDrawingBuffer: true }` or PNG export captures a blank backdrop
 - **State Management**: React Context (BaseContext) + local component state
-- **Backend**: GraphQL (Hasura) with codegen via `yarn codegen` → `src/schema/generated.ts` (never hand-edit). Two tables: `bases.base` (the workspace) and `components.component` (its elements).
+- **Backend**: GraphQL (Hasura) with codegen via `yarn codegen` → `src/schema/generated.ts` (never hand-edit). Tables: `bases.base` (the workspace), `components.component` (its elements), `legends.preset`, and `meta.property` / `meta."propertyValue"` (meta properties). **Never build a `gql` document with `${...}` interpolation**: codegen reads the templates statically, silently skips the whole file, and drops every operation type in it. After `yarn codegen`, check no existing export disappeared from `generated.ts`.
 - **GraphQL Client**: Apollo Client
 - **Error reporting**: @sentry/react
 - **Animation**: framer-motion
@@ -362,3 +372,5 @@ rather than adding its content here:
 - `responsive-design.md` — Tailwind responsive prefixes vs `useMediaQueryUtils`
 - `font-guide.md` — the font system and usage rules per area
 - `geo-objects-plan.md` — original plan for point/area/route (partly historical)
+- `meta-properties.md` — base-wide meta properties, image assets shared with
+  image elements, and the orphaned-value sweep (planned)

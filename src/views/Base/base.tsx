@@ -28,6 +28,7 @@ import {
     RESTYLE_COMPONENTS_BY_PRESET,
 } from '../../schema/mutations'
 import LegendPanel from '../../components/legend/legendPanel'
+import MetaPropertiesPanel from '../../components/metaProperties/metaPropertiesPanel'
 import PresetChips from '../../components/legend/presetChips'
 import {
     useLegendPresets,
@@ -79,7 +80,10 @@ import {
     scaleForMapZoom,
     surfaceToLngLat,
 } from '../../baseTypes/mercator'
-import { writeAnchorConfig } from '../../baseTypes/anchorStorage'
+import {
+    isAnchorKeyExpired,
+    writeAnchorConfig,
+} from '../../baseTypes/anchorStorage'
 import { baseUrl } from '../../utils/baseRoutes'
 import {
     trackEvent,
@@ -95,7 +99,15 @@ import {
 } from '../../utils/viewportStorage'
 import type { MapAnchor } from '../../baseTypes/types'
 import ImportBaseModal from '../../components/modals/ImportBaseModal'
-import { openBaseFilePicker, parseImportedBase } from '../../utils/importBase'
+import {
+    excludeImages,
+    openBaseFilePicker,
+    parseImportedBase,
+} from '../../utils/importBase'
+import { restoreImageAssets } from '../../utils/assetStore'
+import { useMetaProperties } from '../../hooks/useMetaProperties'
+import type { UseMetaPropertiesApi } from '../../hooks/useMetaProperties'
+import { writeMetaLocal } from '../../utils/metaPropertyStore'
 import type { ParsedImport, BaseViewport } from '../../utils/importBase'
 import { draftFitsForStore } from '../../utils/baseSizeGuard'
 import { generateUUID, generateRandomUsernames } from '../../utils/misc'
@@ -117,6 +129,7 @@ import {
 import {
     RUBBER_MODE_KEY,
     GROUP_COMPONENT,
+    IMAGE_COMPONENT,
     DRAFT_STORAGE_KEY,
     ARROW_DRAW_MODE_KEY,
     TEXT_DRAW_MODE_KEY,
@@ -334,6 +347,14 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         isPersisted,
         baseId,
     })
+
+    // Short self-dismissing notice at the bottom of the canvas (image drop
+    // refusals, etc.).
+    const [canvasNotice, setCanvasNotice] = useState<string | null>(null)
+    const showCanvasNotice = useCallback((message: string) => {
+        setCanvasNotice(message)
+    }, [])
+    const dismissCanvasNotice = useCallback(() => setCanvasNotice(null), [])
 
     const [lastAddedElement, setLastAddedElement] =
         useState<ComponentRecord | null>(null)
@@ -565,6 +586,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         isMobile,
     })
 
+    // Filled in once useMetaProperties exists (below): history replays `META`
+    // entries through it.
+    const applyMetaHistoryRef = useRef<
+        UseMetaPropertiesApi['applyHistory'] | null
+    >(null)
+
     const {
         historyLog,
         historyLogRef,
@@ -591,6 +618,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         selectedComponent,
         selectedGroupRef,
         stripTypename,
+        applyMetaHistoryRef,
     })
 
     const {
@@ -605,6 +633,19 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         isPersistedRef,
         seed: getComponentsForBaseData?.legendPresets,
     })
+
+    // Base-wide meta properties and their per-object values. Composed after
+    // the legend for the same reason: both seed off the base query and both
+    // ride persistBase's re-key. See .claude/context/meta-properties.md.
+    const metaPropertiesApi = useMetaProperties({
+        baseId,
+        isPersistedRef,
+        seed: getComponentsForBaseData?.metaProperties,
+        recordToHistoryLog,
+    })
+    // Closes the loop: meta edits record into the history above, and undo /
+    // redo of a `META` entry replays through the meta hook.
+    applyMetaHistoryRef.current = metaPropertiesApi.applyHistory
 
     // Write-side size guard. The measurement lives in useLocalDraftPersistence
     // (real UTF-8 size of the persisted draft, after each save); when it's over
@@ -629,12 +670,20 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                   ty: scene.translation.y,
               }
             : { scale: 1, tx: 0, ty: 0 }
-        exportBaseAsJson(
-            stateRefForComponentStore.current,
-            viewport,
-            readBackdropConfig(),
-            legendPresetsRef.current
-        )
+        // A failed meta fetch (shared base, offline) must not cost the export
+        // itself: it goes out without meta properties instead.
+        void metaPropertiesApi
+            .exportSet()
+            .catch(() => undefined)
+            .then((metaSet) =>
+                exportBaseAsJson(
+                    stateRefForComponentStore.current,
+                    viewport,
+                    readBackdropConfig(),
+                    legendPresetsRef.current,
+                    metaSet
+                )
+            )
         setShowBaseFullModal(false)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [readBackdropConfig])
@@ -694,6 +743,15 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             const newLocalId = generateUUID()
             const store: ComponentStore = {}
             Object.entries(parsed.components).forEach(([id, comp]) => {
+                // Backstop for the filter in beginBaseImport: this path sets
+                // the store directly, skipping addToLocalComponentStore's
+                // shared-base image guard.
+                if (
+                    isPersistedRef.current &&
+                    comp.componentType === IMAGE_COMPONENT
+                ) {
+                    return
+                }
                 store[id] = { ...comp, baseId: newLocalId }
             })
             stateRefForComponentStore.current = store
@@ -704,6 +762,38 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             // resolve; there is nothing here to collide with.
             writeLegendPresetsLocal(newLocalId, parsed.legendPresets)
             replacePresets(parsed.legendPresets)
+
+            // The anchor goes with the canvas, for the same reason the legend
+            // does: the records' x/y were measured against the FILE's anchor,
+            // and the new local id has none until something writes one. Before
+            // this, the import looked right only until the next load, which
+            // found no anchor and drew it over the timezone city. A file with
+            // no anchor keeps the current one, which is at least where the
+            // user was. Local only: a shared base's anchor is the server's.
+            if (!isPersistedRef.current) {
+                const anchor =
+                    parsed.mapAnchor ?? readBackdropConfig().mapAnchor
+                if (parsed.mapAnchor) setMapAnchor(parsed.mapAnchor)
+                // Written explicitly: setMapAnchor persists under the id it was
+                // created with, which is the old one until the re-render.
+                if (anchor) writeAnchorConfig(newLocalId, { mapAnchor: anchor })
+
+                // Meta properties replace the current ones wholesale, like the
+                // legend. Component ids are kept as the file has them, so every
+                // value still names its object. The hook re-reads the sidecar
+                // when the id rotates below.
+                writeMetaLocal(newLocalId, {
+                    properties: parsed.metaProperties.properties.map((p) => ({
+                        ...p,
+                        baseId: newLocalId,
+                    })),
+                    values: parsed.metaProperties.values.map((v) => ({
+                        ...v,
+                        baseId: newLocalId,
+                    })),
+                })
+            }
+
             // Rotate localBaseId without the id-change effect wiping the store.
             skipComponentStoreResetRef.current = true
             setLocalBaseId(newLocalId)
@@ -712,7 +802,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
 
             if (parsed.viewport) restoreImportedViewport(parsed.viewport)
         },
-        [isPersisted, restoreImportedViewport]
+        [isPersisted, restoreImportedViewport, readBackdropConfig, setMapAnchor]
     )
 
     // Merge the imported base into the current canvas: re-key every id to a
@@ -812,6 +902,13 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 })
             })
             if (batch.length > 0) recordBatchToHistoryLog(batch)
+
+            // Meta properties follow the re-keyed objects. A property with the
+            // same name and type as one already here is reused; see
+            // mergeMetaSets. Not part of the undo batch, like the legend.
+            await metaPropertiesApi
+                .mergeIncoming(parsed.metaProperties, idMap)
+                .catch((e) => console.error('[import] meta merge failed', e))
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [baseId]
@@ -821,10 +918,17 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const text = await openBaseFilePicker()
         if (text == null) return // cancelled
         try {
-            const parsed = parseImportedBase(text)
+            const raw = parseImportedBase(text)
+            // Shared bases don't take images yet; drop them up front so the
+            // chooser can say how many were left out.
+            const parsed = isPersistedRef.current ? excludeImages(raw) : raw
             if (Object.keys(parsed.components).length === 0) {
                 pendingImportRef.current = null
-                setImportError('This file has no readable canvas elements.')
+                setImportError(
+                    parsed.excludedImages > 0
+                        ? "This file only has images. Shared canvases don't support images yet."
+                        : 'This file has no readable canvas elements.'
+                )
             } else {
                 pendingImportRef.current = parsed
                 setImportError(null)
@@ -865,7 +969,10 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         if (rejectIfWontFit(parsed.components)) return // stay open, show error
         setShowImportChooser(false)
         pendingImportRef.current = null
-        importAsNewCanvas(parsed)
+        // Blobs first, so image elements find their asset when they mount.
+        void restoreImageAssets(parsed.assets).then(() =>
+            importAsNewCanvas(parsed)
+        )
     }, [importAsNewCanvas, rejectIfWontFit])
 
     const handleImportMerge = useCallback(() => {
@@ -882,7 +989,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         if (rejectIfWontFit(projected)) return // stay open, show error
         setShowImportChooser(false)
         pendingImportRef.current = null
-        void mergeImportedBase(parsed)
+        void restoreImageAssets(parsed.assets).then(() =>
+            mergeImportedBase(parsed)
+        )
     }, [mergeImportedBase, rejectIfWontFit])
 
     const handleImportChooserClose = useCallback(() => {
@@ -912,9 +1021,16 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     // MAP_ANCHOR_KEY_PREFIX is matched *additively* alongside the viewport
     // prefixes — all three share the same savedAt/TTL shape. Take care here:
     // broadening this match incorrectly would evict every base's saved camera.
+    //
+    // Except the CURRENT local base's anchor, which never expires by age: it is
+    // the georeference of the elements on screen, not a cache (see
+    // baseTypes/anchorStorage.ts for how losing it moved a canvas to Kolkata).
     useEffect(() => {
         try {
             const now = Date.now()
+            const protectedAnchorIds = new Set<string>([localBaseId])
+            const remembered = localStorage.getItem(LOCAL_BASE_ID_KEY)
+            if (remembered) protectedAnchorIds.add(remembered)
             for (let i = localStorage.length - 1; i >= 0; i--) {
                 const key = localStorage.key(i)
                 if (
@@ -928,17 +1044,24 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                     const parsed = JSON.parse(
                         localStorage.getItem(key) ?? 'null'
                     )
-                    if (
-                        !parsed?.savedAt ||
-                        now - parsed.savedAt > VIEWPORT_TTL_MS
-                    ) {
-                        localStorage.removeItem(key)
-                    }
+                    const expired = key.startsWith(MAP_ANCHOR_KEY_PREFIX)
+                        ? isAnchorKeyExpired(
+                              key,
+                              parsed?.savedAt,
+                              now,
+                              protectedAnchorIds
+                          )
+                        : !parsed?.savedAt ||
+                          now - parsed.savedAt > VIEWPORT_TTL_MS
+                    if (expired) localStorage.removeItem(key)
                 } catch (_) {
                     localStorage.removeItem(key)
                 }
             }
         } catch (_) {}
+        // Mount-only housekeeping; `localBaseId` is read once, as the base
+        // being opened.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     // Reset component store whenever the base changes (persisted mode only).
@@ -1001,6 +1124,8 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 const baseComponentStore: ComponentStore = { ...componentStore }
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 getComponentsForBaseData.components.forEach((item: any) => {
+                    // Shared bases never render images (local-only for now).
+                    if (item.componentType === IMAGE_COMPONENT) return
                     baseComponentStore[item.id] = item as ComponentRecord
                 })
                 setComponentStore(baseComponentStore)
@@ -1375,6 +1500,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         ) {
             return
         }
+
+        // Images are local-only for now. Covers every add path (drop is
+        // refused upstream with a notice; this catches import-merge and paste
+        // on a shared base) so an image row never reaches the DB.
+        if (isPersistedRef.current && type === IMAGE_COMPONENT) return
 
         // Strip transient grouping coords — not part of DB schema
         const {
@@ -1890,30 +2020,46 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         // Generate a fresh UUID for each component's id so re-sharing from '/'
         // never hits a "duplicate key" uniqueness violation.
         const allEntries = Object.entries(stateRefForComponentStore.current)
+        const componentIdMap = new Map<string, string>()
         const componentsForDB = allEntries
             // Skip corrupt/partial store entries (no componentType). These come
             // from undo/redo restore paths and would abort the whole bulk
             // insert with a NOT NULL violation on componentType.
             .filter(([, comp]) => (comp as ComponentRecord)?.componentType)
-            .map(([, comp]) => ({
-                // Allowlist, not a spread: a ComponentRecord carries
-                // client-only fields (isDummy, relativeX/Y) that Hasura has no
-                // column for, and it rejects the whole batch on the first one.
-                ...toComponentColumns(
-                    stripTypename(comp) as Record<string, unknown>
-                ),
-                id: generateUUID(),
-                baseId: serverBaseId,
-                // Re-point the binding at this base's copy of the preset. A
-                // record whose preset somehow did not come across is unbound
-                // rather than left pointing at a foreign row — it keeps its
-                // styling and simply loses its caption, which is the same
-                // outcome as deleting the preset.
-                legendPresetId:
-                    presetIdMap.get(
-                        (comp as ComponentRecord)?.legendPresetId ?? ''
-                    ) ?? null,
-            }))
+            // Images are local-only: their bytes live in this browser's
+            // IndexedDB, so a shared row would point at nothing. They stay in
+            // the local draft. Once uploads land (see
+            // .claude/context/meta-properties.md), rows with a hosted url can
+            // be let through.
+            .filter(
+                ([, comp]) =>
+                    (comp as ComponentRecord).componentType !== IMAGE_COMPONENT
+            )
+            .map(([key, comp]) => {
+                // Remembered so meta values can follow their objects to the
+                // shared copy (metaPropertiesApi.persistToBase below).
+                const newId = generateUUID()
+                componentIdMap.set((comp as ComponentRecord).id ?? key, newId)
+                return {
+                    // Allowlist, not a spread: a ComponentRecord carries
+                    // client-only fields (isDummy, relativeX/Y) that Hasura has no
+                    // column for, and it rejects the whole batch on the first one.
+                    ...toComponentColumns(
+                        stripTypename(comp) as Record<string, unknown>
+                    ),
+                    id: newId,
+                    baseId: serverBaseId,
+                    // Re-point the binding at this base's copy of the preset. A
+                    // record whose preset somehow did not come across is unbound
+                    // rather than left pointing at a foreign row — it keeps its
+                    // styling and simply loses its caption, which is the same
+                    // outcome as deleting the preset.
+                    legendPresetId:
+                        presetIdMap.get(
+                            (comp as ComponentRecord)?.legendPresetId ?? ''
+                        ) ?? null,
+                }
+            })
 
         const skipped = allEntries.filter(
             ([, comp]) => !(comp as ComponentRecord)?.componentType
@@ -1932,6 +2078,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 variables: { objects: componentsForDB },
             })
         }
+
+        // Meta properties go AFTER the components, because each value names
+        // its object. Definitions are re-minted and values re-pointed through
+        // componentIdMap; image properties stay behind (no hosting yet).
+        await metaPropertiesApi.persistToBase(serverBaseId, componentIdMap)
 
         // Mint a new local base ID so the '/' session continues independently
         // from the now-shared base. Components keep their visual state; only the
@@ -1954,6 +2105,19 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             // re-minted ones above belong to the shared copy, and the two
             // diverge from here exactly as the component ids do.
             writeLegendPresetsLocal(newLocalId, legendPresetsRef.current)
+            // Meta properties too, on the ORIGINAL ids: the '/' session keeps
+            // its component ids, so every value still names its object.
+            const localMeta = metaPropertiesApi.readLocalSet()
+            writeMetaLocal(newLocalId, {
+                properties: localMeta.properties.map((p) => ({
+                    ...p,
+                    baseId: newLocalId,
+                })),
+                values: localMeta.values.map((v) => ({
+                    ...v,
+                    baseId: newLocalId,
+                })),
+            })
             const scene = twoJSInstanceRef.current?.scene
             if (scene) {
                 writeViewport(newLocalId, isMobile, {
@@ -2673,6 +2837,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         isPersisted,
         persistBase,
         shareBase,
+        showCanvasNotice,
         backgroundBaseId,
         isPencilMode,
         isArrowDrawMode,
@@ -2715,6 +2880,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         deleteLegendPreset,
         applyLegendPresetToSelection,
         legendPresetCounts,
+        meta: metaPropertiesApi,
         reorderSelected,
         fitToContent,
         componentStore,
@@ -2827,6 +2993,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                     <ElementPropertiesToolbar />
                     <PresetChips />
                     <LegendPanel />
+                    <MetaPropertiesPanel />
                     <Canvas
                         pointerToggle={pointerToggle}
                         isPencilMode={isPencilMode}
@@ -2898,8 +3065,15 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 error={importError}
                 total={pendingImportRef.current?.total}
                 skipped={pendingImportRef.current?.skipped}
+                excludedImages={pendingImportRef.current?.excludedImages}
                 onOpenAsNew={handleImportOpenAsNew}
                 onMerge={handleImportMerge}
+            />
+            <Toast
+                open={canvasNotice !== null}
+                onClose={dismissCanvasNotice}
+                message={canvasNotice ?? ''}
+                duration={4000}
             />
             <Toast
                 open={showPerfWarning}

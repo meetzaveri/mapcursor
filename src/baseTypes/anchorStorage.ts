@@ -1,12 +1,21 @@
 // Per-base map-anchor persistence.
 //
 // Mirrors the viewport-key pattern (`mapcursor_viewport_<baseId>`): one key per
-// base, a `savedAt` stamp, and the shared TTL sweep in base.tsx.
+// base and a `savedAt` stamp. But an anchor is NOT a cache like the camera. It
+// is the georeference every element's x/y was measured against, so losing it
+// moves the whole drawing to wherever the fallback lands (the timezone city).
 //
-// The anchor is the georeference every element's x/y was measured against, so an
-// unreadable entry must never throw a base open. Anything missing, expired or
-// malformed reads back as `null`, and the backdrop falls back to a timezone
-// guess the user can see is wrong and correct.
+// That is why reading never expires an anchor by age, and the TTL sweep in
+// base.tsx skips the CURRENT local base's anchor (see isAnchorKeyExpired). It
+// used to do neither: the anchor's `savedAt` is stamped once, when the place is
+// picked, while the draft's timestamp renews on every save, so a canvas still
+// being edited a month after it was placed lost its anchor and was redrawn
+// over the browser's timezone city, with no prompt to correct it (the start-
+// location prompt only opens on an empty canvas).
+//
+// An unreadable entry must still never throw a base open: anything missing or
+// malformed reads back as `null`, and the backdrop falls back to the timezone
+// guess.
 
 import { MAP_ANCHOR_KEY_PREFIX, VIEWPORT_TTL_MS } from '../constants/misc'
 import type { MapAnchor, MapBackdropConfig } from './types'
@@ -19,7 +28,7 @@ function keyFor(baseId: string): string {
     return `${MAP_ANCHOR_KEY_PREFIX}${baseId}`
 }
 
-function isMapAnchor(value: unknown): value is MapAnchor {
+export function isMapAnchor(value: unknown): value is MapAnchor {
     if (!value || typeof value !== 'object') return false
     const anchor = value as Partial<MapAnchor>
     return (
@@ -31,7 +40,10 @@ function isMapAnchor(value: unknown): value is MapAnchor {
     )
 }
 
-/** Read a base's persisted anchor. Never throws. */
+/**
+ * Read a base's persisted anchor. Never throws, and never expires it by age:
+ * the base being opened is exactly the one whose anchor must survive.
+ */
 export function readAnchorConfig(baseId: string): MapBackdropConfig {
     const fallback: MapBackdropConfig = { mapAnchor: null }
     if (!baseId) return fallback
@@ -41,11 +53,6 @@ export function readAnchorConfig(baseId: string): MapBackdropConfig {
         if (!raw) return fallback
 
         const parsed = JSON.parse(raw) as Partial<StoredConfig>
-        if (!parsed.savedAt || Date.now() - parsed.savedAt > VIEWPORT_TTL_MS) {
-            localStorage.removeItem(keyFor(baseId))
-            return fallback
-        }
-
         return {
             mapAnchor: isMapAnchor(parsed.mapAnchor) ? parsed.mapAnchor : null,
         }
@@ -77,4 +84,25 @@ export function writeAnchorConfig(
     } catch {
         // Quota / private mode — the anchor still applies for this session.
     }
+}
+
+/**
+ * May the TTL sweep remove this anchor key?
+ *
+ * Only an anchor that is old AND not protected. `protectedBaseIds` holds the
+ * current local base's id(s): its anchor stays for as long as the canvas does,
+ * however long ago the place was picked. Anchors of other ids (a local canvas
+ * since rotated away by share/import/clear, or a shared base visited once) are
+ * housekeeping and still expire. A key with no `savedAt` is treated as old.
+ */
+export function isAnchorKeyExpired(
+    key: string,
+    savedAt: number | undefined,
+    now: number,
+    protectedBaseIds: ReadonlySet<string>
+): boolean {
+    if (!key.startsWith(MAP_ANCHOR_KEY_PREFIX)) return false
+    const baseId = key.slice(MAP_ANCHOR_KEY_PREFIX.length)
+    if (protectedBaseIds.has(baseId)) return false
+    return !savedAt || now - savedAt > VIEWPORT_TTL_MS
 }

@@ -8,12 +8,8 @@ import { scheduleRender } from '../../utils/renderScheduler'
 import {
     componentTypes,
     FONTS_LOADED_EVENT,
-    TEXT_RESIST_CHANGED_EVENT,
 } from '../../constants/misc'
-import {
-    computeCounterScale,
-    resolveLabelResist,
-} from '../../utils/counterScale'
+import { circleLabelScale } from '../../utils/counterScale'
 import {
     buildCircleLabel,
     circleLabelColorOf,
@@ -55,13 +51,9 @@ function Circle(props: ElementProps): ReactElement {
     // A radius map is BORDERLESS (see CIRCLE_DEFAULTS): the disc itself is the
     // mark, and the factory paints a zero-width ring. So there is no stroke to
     // counter-scale here, unlike area/route — the geometry stays world-glued so
-    // a 5km radius stays 5km, and the only thing that resists zoom is the
-    // LABEL, at its own rate under the user's "Zoom resistant" switch. Held in
-    // a ref because the switch reaches us by event, not by prop —
-    // ElementRenderWrapper freezes props at mount.
-    const labelResistRef = useRef<number>(
-        resolveLabelResist(props.itemData ?? props)
-    )
+    // a 5km radius stays 5km. Its LABEL is not zoom-resistant either: it holds
+    // the scale of the zoom it was drawn at and then follows the map (see
+    // circleLabelScale). A circle offers no "Zoom resistant" switch.
 
     useEffect(() => {
         const prevX = props.x
@@ -125,11 +117,8 @@ function Circle(props: ElementProps): ReactElement {
                 width: props.width || circle.width || 100,
             })
             labelRef.current = label
-            if (label && initialScale) {
-                label.scale = computeCounterScale(
-                    initialScale,
-                    labelResistRef.current
-                )
+            if (label) {
+                label.scale = circleLabelScale(record, initialScale)
             }
 
             // The SVG node only exists after a render. Batch the render
@@ -222,9 +211,10 @@ function Circle(props: ElementProps): ReactElement {
 
     // The disc keeps marking the same ground at every zoom — nothing about it
     // counter-scales, because it is borderless and its geometry is the data.
-    // Its LABEL is a caption, so it rides its own resist to hold a
-    // near-constant screen size. Reads the scale off the event each fire — no
-    // stale closure (see CLAUDE.md).
+    // A new circle's label holds a fixed scale, so this is a no-op for it; a
+    // circle drawn before `labelCameraScale` existed still resists at
+    // TEXT_RESIST and needs the per-zoom update. Reads the scale off the event
+    // each fire — no stale closure (see CLAUDE.md).
     useEffect(() => {
         const onZoom = (e: Event): void => {
             const group = groupRef.current
@@ -233,7 +223,7 @@ function Circle(props: ElementProps): ReactElement {
             if (!scale) return
             const label = labelRef.current ?? getCircleLabelGroup(group)
             if (!label) return
-            label.scale = computeCounterScale(scale, labelResistRef.current)
+            label.scale = circleLabelScale(group.elementData ?? props, scale)
             scheduleRender(two)
         }
         window.addEventListener('zoomChanged', onZoom as EventListener)
@@ -241,36 +231,6 @@ function Circle(props: ElementProps): ReactElement {
             window.removeEventListener('zoomChanged', onZoom as EventListener)
         }
     }, [two])
-
-    // The "Zoom resistant" switch (and undo/redo of it) reaches us here rather
-    // than through props — a column write never re-renders a frozen-prop
-    // element. Re-scale against the CURRENT camera immediately so the label
-    // snaps to its new model on click instead of waiting for the next zoom
-    // gesture. Filtered by id: every circle on the base hears this event.
-    useEffect(() => {
-        const onResistChanged = ((
-            e: CustomEvent<{ id: string; resist: number }>
-        ): void => {
-            if (e.detail?.id !== props.id) return
-            labelResistRef.current = e.detail.resist
-            const group = groupRef.current
-            if (!group) return
-            const label = labelRef.current ?? getCircleLabelGroup(group)
-            if (!label) return
-            const scale =
-                (zuiInBase as ShapeLike)?.zui?.scale ?? two?.scene?.scale ?? 1
-            label.scale = computeCounterScale(scale, labelResistRef.current)
-            scheduleRender(two)
-        }) as EventListener
-        window.addEventListener(TEXT_RESIST_CHANGED_EVENT, onResistChanged)
-        return (): void => {
-            window.removeEventListener(
-                TEXT_RESIST_CHANGED_EVENT,
-                onResistChanged
-            )
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.id, two])
 
     useEffect(() => {
         const group = groupRef.current

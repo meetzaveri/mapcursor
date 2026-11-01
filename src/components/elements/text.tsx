@@ -26,6 +26,7 @@ import {
 import { computeCounterScale, resolveResist } from '../../utils/counterScale'
 import { readProperties, setProperties } from '../../utils/geometry'
 import { isPanMode } from '../../utils/drawModeUtils'
+import { pathHitsSelectionChrome } from '../../utils/canvasChrome'
 import { svgTextScreenRect } from '../../utils/svgTextRect'
 import { clampTextSizeOnScreen } from '../../utils/textResize'
 
@@ -695,10 +696,9 @@ function Text(props: ElementProps): ReactElement {
             const isOnGroup = path.some(
                 (el: EventTarget) => (el as HTMLElement)?.id === group.id
             )
-            const isOnToolbar = path.some(
-                (el: EventTarget) =>
-                    (el as HTMLElement)?.id === 'floating-toolbar'
-            )
+            // The properties toolbar and the meta properties panel edit this
+            // text; clicking into them is not clicking away.
+            const isOnToolbar = pathHitsSelectionChrome(path)
             const isOnMobileTrigger =
                 mobileTriggerRef.current &&
                 path.includes(mobileTriggerRef.current)

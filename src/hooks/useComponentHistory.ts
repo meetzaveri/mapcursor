@@ -20,6 +20,7 @@ import {
     applyShapeText,
     pollUntilElement,
 } from '../utils/canvasUtils'
+import { applyStrokeDashes } from '../utils/strokeDashes'
 import { lineHeightFor } from '../utils/textLayout'
 import {
     buildCircleLabel,
@@ -39,7 +40,6 @@ import {
 import {
     DRAFT_STORAGE_KEY,
     isStandaloneTextType,
-    TEXT_RESIST,
     TEXT_RESIST_CHANGED_EVENT,
 } from '../constants/misc'
 import { toComponentColumns } from '../utils/componentColumns'
@@ -51,6 +51,10 @@ import {
     replaceProperties,
 } from '../utils/geometry'
 import type { ComponentRecord, ComponentStore } from '../types/base'
+import type {
+    MetaHistoryDirection,
+    MetaHistoryOp,
+} from './useMetaProperties'
 import {
     VERTEX_PATH_TYPES,
     VERTEX_PATH_REVERTED_EVENT,
@@ -108,8 +112,24 @@ interface BatchEntry {
     timestamp?: number
 }
 
+/**
+ * A meta property edit (hooks/useMetaProperties.ts). Each op carries both
+ * sides, so undo and redo need no capture step. Replayed through
+ * `applyMetaHistoryRef`, since the meta hook is composed after this one.
+ */
+interface MetaEntry {
+    action: 'META'
+    ops: MetaHistoryOp[]
+    timestamp?: number
+}
+
 export type HistoryEntry =
-    AddEntry | DeleteEntry | UpdateVerticesEntry | UpdateBulkEntry | BatchEntry
+    | AddEntry
+    | DeleteEntry
+    | UpdateVerticesEntry
+    | UpdateBulkEntry
+    | BatchEntry
+    | MetaEntry
 
 // ---- hook options ----
 
@@ -135,6 +155,14 @@ export interface ComponentHistoryOptions {
     selectedComponent: ShapeLike | null
     selectedGroupRef: MutableRefObject<ShapeLike | null>
     stripTypename: (input: unknown) => unknown
+    /**
+     * Replays a `META` entry. Set by base.tsx once useMetaProperties exists
+     * (it is composed after this hook, and needs `recordToHistoryLog`).
+     */
+    applyMetaHistoryRef?: MutableRefObject<
+        | ((ops: MetaHistoryOp[], direction: MetaHistoryDirection) => Promise<void>)
+        | null
+    >
 }
 
 export interface ComponentHistoryApi {
@@ -215,6 +243,14 @@ function applyPropertyToTwoJSGroup(
                   )
                 : value
             if (meta) meta.linewidth = value
+            // The dash pattern is sized from the width (utils/strokeDashes).
+            if (isStrokeScaled(group.elementData)) {
+                applyStrokeDashes(
+                    shape,
+                    group.elementData?.strokeType,
+                    group.parent?.scale ?? 1
+                )
+            }
             break
         case 'width':
         case 'height':
@@ -245,29 +281,39 @@ function applyPropertyToTwoJSGroup(
             }
             break
         case 'strokeType':
-            shape.dashes = strokeTypeToDashes(value as string | null)
-            if (!value || value === 'solid') {
-                clearDashesOnTwoJSShape(shape)
+            if (isStrokeScaled(group.elementData)) {
+                applyStrokeDashes(
+                    shape,
+                    value as string | null,
+                    group.parent?.scale ?? 1
+                )
+            } else {
+                shape.dashes = strokeTypeToDashes(value as string | null)
+                if (!value || value === 'solid') {
+                    clearDashesOnTwoJSShape(shape)
+                }
             }
             if (meta) meta.strokeType = value
             break
         case 'zoomResistant': {
-            // The label counter-scale switch, for map text and the map
-            // circle alike. It has no Two.js field of its own — the element
-            // component owns the scaled node (a text's group, a circle's
-            // label sub-group) and the selection outline — so mirror it onto
-            // elementData (what resolveLabelResist and the group-overlay
-            // copies read) and let the component re-scale itself against the
+            // The text counter-scale switch. It has no Two.js field of its
+            // own — the element component owns the scaled node and the
+            // selection outline — so mirror it onto elementData (what
+            // resolveResist and the group-overlay copies read) and let the component re-scale itself against the
             // live camera. Covers undo and redo alike: applyBulkProps routes
             // every reverted key through here.
             const resistType = group.elementData?.componentType
-            if (resistType !== 'text' && resistType !== 'circle') break
+            if (resistType !== 'text') break
             group.elementData.zoomResistant = value
+            // resolveResist, the same reader applyProperty used, so a record
+            // with its own properties.resist reverts to that and not to the
+            // TEXT_RESIST default. The fontSize the switch rescaled rides the
+            // same bulk entry and is reverted by the `metadata` case.
             window.dispatchEvent(
                 new CustomEvent(TEXT_RESIST_CHANGED_EVENT, {
                     detail: {
                         id: group.elementData.id,
-                        resist: value === false ? 0 : TEXT_RESIST,
+                        resist: resolveResist(group.elementData),
                     },
                 })
             )
@@ -387,6 +433,7 @@ export function useComponentHistory({
     selectedComponent,
     selectedGroupRef,
     stripTypename,
+    applyMetaHistoryRef,
 }: ComponentHistoryOptions): ComponentHistoryApi {
     const [historyLog, setHistoryLog] = useState<HistoryEntry[]>([])
     const historyLogRef = useRef<HistoryEntry[]>([])
@@ -1107,6 +1154,8 @@ export function useComponentHistory({
                 lastEntry.prevProps,
                 lastEntry.syncDefaults
             )
+        } else if (lastEntry.action === 'META') {
+            void applyMetaHistoryRef?.current?.(lastEntry.ops, 'undo')
         }
 
         const updatedBucket = [...bucketLogRef.current, enrichedForRedo]
@@ -1145,6 +1194,8 @@ export function useComponentHistory({
                 entry.nextProps ?? entry.prevProps,
                 entry.syncDefaults
             )
+        } else if (entry.action === 'META') {
+            void applyMetaHistoryRef?.current?.(entry.ops, 'redo')
         }
 
         // Push the original-shape entry back into historyLog without going

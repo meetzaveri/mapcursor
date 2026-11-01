@@ -15,7 +15,17 @@
 // exactly the property a regression here would break.
 
 import { test, expect } from './helpers/test.js'
-import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
+import {
+    baseRow,
+    GQL_MOCK_RESPONSES,
+    pointAt,
+    triggerUndoKeyboard,
+} from './helpers/index.js'
+// Plain constants, safe to import in Node (CLAUDE.md).
+import {
+    SELECTION_HANDLE_FILL,
+    selectionHandleRadiusPx,
+} from '../../src/utils/selectionTheme.ts'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 // Santa Clara County, at the default anchor zoom.
@@ -117,6 +127,33 @@ const sizes = (page, labels) =>
         })
         return out
     }, labels)
+
+/**
+ * The selection handles drawn on screen right now: white, round, non-zero,
+ * inside a selection-chrome overlay that is not faded out. Screen centre and
+ * diameter in CSS px.
+ */
+const visibleHandleDots = (page) =>
+    page.evaluate((fill) => {
+        const shown = (el) => {
+            for (let n = el; n && n.tagName !== 'svg'; n = n.parentElement) {
+                const o = parseFloat(window.getComputedStyle(n).opacity || '1')
+                if (o === 0) return false
+            }
+            return true
+        }
+        return Array.from(
+            document.querySelectorAll('[data-mc-selection-chrome] path')
+        )
+            .filter((el) => el.getAttribute('fill') === fill && shown(el))
+            .map((el) => el.getBoundingClientRect())
+            .filter((r) => r.width > 0 && Math.abs(r.width - r.height) < 1)
+            .map((r) => ({
+                cx: r.x + r.width / 2,
+                cy: r.y + r.height / 2,
+                size: r.width,
+            }))
+    }, SELECTION_HANDLE_FILL)
 
 /**
  * Drive the camera to a scale, then measure. Setting scene.scale + dispatching
@@ -254,10 +291,12 @@ test('toggling one label re-scales only that label, with no zoom', async ({
     const CAMERA = Math.pow(2, -5)
     const before = await sizesAt(page, CAMERA, labels)
 
-    // What applyProperty dispatches when the switch is turned off. Going
-    // through the event (rather than clicking) is deliberate: this is the
-    // frozen-props path the feature hinges on, and it is what undo/redo
-    // replays too.
+    // The resist half of what applyProperty does when the switch is turned
+    // off, on its own. Going through the bare event (rather than clicking) is
+    // deliberate: this is the frozen-props path the feature hinges on, and it
+    // is what undo/redo replays too. The real switch ALSO rescales fontSize so
+    // the label does not jump — that is the next test; here only the event is
+    // fired, so the label collapsing proves the event reached it.
     await page.evaluate((id) => {
         window.dispatchEvent(
             new CustomEvent('textResistChanged', {
@@ -279,4 +318,95 @@ test('toggling one label re-scales only that label, with no zoom', async ({
         after[RESISTANT_LABEL],
         `the untouched label moved from ${before[RESISTANT_LABEL]}px to ${after[RESISTANT_LABEL]}px — the toggle is leaking across records`
     ).toBeCloseTo(before[RESISTANT_LABEL], 1)
+})
+
+test('the Zoom resistant switch keeps the label exactly as it looked, zoomed far out', async ({
+    page,
+}) => {
+    // The bug: at z8 turning the switch off dropped the label to world scale
+    // (18 units × camera 0.004 ≈ 0.07px) — too small even to click, so the
+    // user had to zoom to city level to find it again. The switch now
+    // rescales fontSize so the on-screen size is unchanged when it flips.
+    await openMapBase(page, [geoTextRecord(RESISTANT_ID, RESISTANT_LABEL, null)])
+    const label = page.locator(`text=${RESISTANT_LABEL}`).first()
+    await label.waitFor({ timeout: 15_000 })
+
+    const CAMERA = 0.004
+    const before = (await sizesAt(page, CAMERA, [RESISTANT_LABEL]))[
+        RESISTANT_LABEL
+    ]
+    expect(before).toBeGreaterThan(MIN_LEGIBLE_PX)
+
+    const box = await label.boundingBox()
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    const toggle = page.locator('#floating-toolbar #zoom-resist-toggle')
+    await expect(toggle).toBeVisible()
+
+    // OFF: same size on screen, and still big enough to grab.
+    await toggle.click()
+    const off = (await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]
+    expect(
+        off,
+        `turning the switch off moved the label from ${before}px to ${off}px`
+    ).toBeCloseTo(before, 0)
+
+    // ...and its selection handles are still full-size and still work. The
+    // legacy selector capped each dot at 3x its base radius in LOCAL units,
+    // which at camera 0.004 (resistance off) rendered at ~0.06px — the text
+    // could no longer be resized.
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await page.waitForTimeout(200)
+    const dots = await visibleHandleDots(page)
+    expect(dots, 'expected four visible corner handles').toHaveLength(4)
+    const expectedDiameter = selectionHandleRadiusPx() * 2
+    for (const d of dots) {
+        expect(
+            Math.abs(d.size - expectedDiameter),
+            `a handle rendered at ${d.size}px`
+        ).toBeLessThanOrEqual(3)
+    }
+    const corner = dots.reduce((a, b) => (b.cx + b.cy > a.cx + a.cy ? b : a))
+    await page.mouse.move(corner.cx, corner.cy)
+    await page.mouse.down()
+    await page.mouse.move(corner.cx + 30, corner.cy + 20, { steps: 6 })
+    await page.mouse.up()
+    await page.waitForTimeout(200)
+    const resized = (await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]
+    expect(
+        resized,
+        `dragging a corner handle did not resize the text (${off}px → ${resized}px)`
+    ).toBeGreaterThan(off * 1.1)
+    // Back to the pre-resize size, so the rest of the test measures the toggle.
+    await triggerUndoKeyboard(page)
+    await page.waitForTimeout(300)
+    expect((await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]).toBeCloseTo(
+        off,
+        0
+    )
+
+    // From here on it scales with the map: zooming in 2x doubles it.
+    const zoomedIn = (await sizesAt(page, CAMERA * 2, [RESISTANT_LABEL]))[
+        RESISTANT_LABEL
+    ]
+    expect(zoomedIn / off).toBeCloseTo(2, 1)
+    await sizesAt(page, CAMERA, [RESISTANT_LABEL])
+
+    // ON again: no jump the other way either.
+    await toggle.click()
+    const on = (await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]
+    expect(on, `turning it back on moved the label to ${on}px`).toBeCloseTo(
+        before,
+        0
+    )
+
+    // One undo reverts one toggle — the switch AND the size together, so the
+    // label is unchanged on screen and still scales with the map.
+    await triggerUndoKeyboard(page)
+    await page.waitForTimeout(300)
+    const undone = (await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]
+    expect(undone).toBeCloseTo(before, 0)
+    const undoneZoomed = (await sizesAt(page, CAMERA * 2, [RESISTANT_LABEL]))[
+        RESISTANT_LABEL
+    ]
+    expect(undoneZoomed / undone).toBeCloseTo(2, 1)
 })

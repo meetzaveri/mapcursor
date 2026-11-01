@@ -18,9 +18,10 @@
 //
 // Reference: the standalone prototype in point_two.js.
 
-import { DEFAULT_RESIST, TEXT_RESIST } from '../constants/misc'
+import { DEFAULT_RESIST, IMAGE_RESIST, TEXT_RESIST } from '../constants/misc'
 import { CIRCLE_LABEL_FLAG } from '../factory/circleLabel'
 import { readProperties } from './geometry'
+import { applyStrokeDashes } from './strokeDashes'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
@@ -44,11 +45,20 @@ export function computeCounterScale(
  * resist constant because the two are tuned for different jobs — a pin is
  * chrome, a caption is content.
  */
-const GROUP_SCALED_TYPES: ReadonlySet<string> = new Set(['point', 'text'])
+// image is in the set but runs at IMAGE_RESIST = 0, so its counter-scale is 1:
+// a photo dropped on a map is glued to the ground and grows and shrinks with
+// the zoom like the geography under it. It has no "Zoom resistant" switch
+// (the column is read for text only).
+const GROUP_SCALED_TYPES: ReadonlySet<string> = new Set([
+    'point',
+    'text',
+    'image',
+])
 const STROKE_SCALED_TYPES: ReadonlySet<string> = new Set(['area', 'route'])
 
 /** The default resist for a type, when the record carries no `metadata.resist`. */
 function defaultResistFor(type: string): number {
+    if (type === 'image') return IMAGE_RESIST
     return type === 'text' ? TEXT_RESIST : DEFAULT_RESIST
 }
 
@@ -63,7 +73,7 @@ function defaultResistFor(type: string): number {
  * matter what was stored. The `zoomResistant` column is read here for **text
  * only**, because for text the body and the label are the same thing. A circle
  * has no body to resist with — it is borderless and its geometry is the data,
- * so only its label counter-scales; that is `resolveLabelResist` below.
+ * so only its label carries a scale of its own; that is `circleLabelScale`.
  */
 export function resolveResist(item: ShapeLike): number {
     const type = item?.componentType
@@ -73,16 +83,33 @@ export function resolveResist(item: ShapeLike): number {
 }
 
 /**
- * The resist exponent for a LABEL — the user-facing "Zoom resistant" switch.
+ * The scale of a circle's LABEL sub-group at camera `zuiScale`.
  *
- * The single place the `zoomResistant` column is read for a circle, so a live
- * element and the detached copy in a group overlay can never disagree. `false`
- * means "scale with the map" (resist 0); absent/null/true means zoom-resistant
- * at TEXT_RESIST, which is the right constant here because a circle's label is
- * a caption over geography, exactly the job TEXT_RESIST was tuned for.
+ * A radius map's label is NOT zoom-resistant: it is a name written on the
+ * ground, so it grows and shrinks with the map like the disc it sits in. It is
+ * still sized for the zoom it was drawn at — `properties.labelCameraScale` is
+ * the camera scale stamped on the record when the circle was drawn (newCanvas,
+ * draw-shape mouseup), and the label holds a FIXED scale of `1 / that`. So an
+ * `M` label comes out at the ladder's 18px on screen at that moment, and from
+ * then on follows the geography. Without the stamp, an 18-unit label drawn at
+ * z8 (camera ≈ 0.004) would render at a fraction of a pixel.
+ *
+ * A circle drawn before the stamp existed has none, and keeps the old
+ * caption model (TEXT_RESIST) so the maps already out there don't change.
+ *
+ * There is no "Zoom resistant" switch for a radius map, and the
+ * `zoomResistant` column is ignored here. Kept as the single reader so a live
+ * element and the detached copy in a group overlay can never disagree.
  */
-export function resolveLabelResist(item: ShapeLike): number {
-    return item?.zoomResistant === false ? 0 : TEXT_RESIST
+export function circleLabelScale(
+    item: ShapeLike,
+    zuiScale: number | undefined
+): number {
+    const camera = readProperties(item).labelCameraScale
+    if (typeof camera === 'number' && Number.isFinite(camera) && camera > 0) {
+        return 1 / camera
+    }
+    return computeCounterScale(zuiScale ?? 1, TEXT_RESIST)
 }
 
 /**
@@ -94,8 +121,8 @@ export function resolveLabelResist(item: ShapeLike): number {
  * band at z18 and disappears at z4.
  *
  * A circle is NOT in this set: it is borderless (see CIRCLE_DEFAULTS), so there
- * is no stroke to hold steady — its disc is the data and its label resists on
- * its own, via resolveLabelResist.
+ * is no stroke to hold steady — its disc is the data and its label is scaled on
+ * its own, via circleLabelScale.
  *
  * This used to be split — pencil was offered on the whiteboard too, so
  * `objectClass` decided per record whether a given one was drawn on a map. With
@@ -131,8 +158,8 @@ export function applyCounterScaleToCopy(
     if (!copy || !zuiScale) return
     const type = item?.componentType
     // A circle comes through here with nothing to stroke-scale: it is
-    // borderless, but its LABEL still rides its own resist, and a grouped copy
-    // has no element component to do that for it.
+    // borderless, but its LABEL still has its own scale (circleLabelScale),
+    // and a grouped copy has no element component to set it.
     const isCircle = type === 'circle'
     if (!GROUP_SCALED_TYPES.has(type) && !isStrokeScaled(item) && !isCircle) {
         return
@@ -146,10 +173,10 @@ export function applyCounterScaleToCopy(
     }
 
     const base = item?.linewidth ?? 2
-    const labelFactor = computeCounterScale(zuiScale, resolveLabelResist(item))
+    const labelFactor = circleLabelScale(item, zuiScale)
     copy.children?.forEach((child: ShapeLike) => {
-        // A circle's label is a sub-group, not a stroke — it scales as a whole
-        // and at its OWN resist. Without this branch it would fall into the
+        // A circle's label is a sub-group, not a stroke — it scales as a whole,
+        // by circleLabelScale. Without this branch it would fall into the
         // stroke arm below (a Two.Text has a numeric `linewidth`), so a grouped
         // circle's name would be mis-styled and would stay world-sized for as
         // long as the selection lasted.
@@ -162,6 +189,11 @@ export function applyCounterScaleToCopy(
         if (isCircle) return
         if (typeof child?.linewidth === 'number') {
             child.linewidth = base * factor
+            // The live element re-derives its dash pattern from that width on
+            // every zoom; the copy has to as well (utils/strokeDashes).
+            if (typeof child?.value !== 'string') {
+                applyStrokeDashes(child, item?.strokeType, zuiScale)
+            }
         }
     })
 }

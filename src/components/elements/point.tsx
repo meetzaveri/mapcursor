@@ -15,6 +15,7 @@ import { computeCounterScale, resolveResist } from '../../utils/counterScale'
 import { capCenterOffset } from '../../utils/fontMetrics'
 import { setProperties } from '../../utils/geometry'
 import { isPanMode } from '../../utils/drawModeUtils'
+import { pathHitsSelectionChrome } from '../../utils/canvasChrome'
 import {
     FONTS_LOADED_EVENT,
     POINT_LABEL_COLOR,
@@ -176,9 +177,9 @@ function Point(props: ElementProps): ReactElement {
             const onSelf = path.some(
                 (el) => (el as HTMLElement)?.id === group.id
             )
-            const onToolbar = path.some(
-                (el) => (el as HTMLElement)?.id === 'floating-toolbar'
-            )
+            // The properties toolbar and the meta properties panel edit this
+            // point; clicking into them is not clicking away.
+            const onToolbar = pathHitsSelectionChrome(path)
             // The label editor is an overlay on <body>, not a child of the
             // group, so typing in it would otherwise read as clicking away.
             const onLabelEditor = path.some(

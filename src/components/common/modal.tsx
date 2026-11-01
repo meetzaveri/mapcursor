@@ -97,8 +97,22 @@ export default function Modal(props: ModalProps): ReactElement {
 
         if (current) {
             current.addEventListener('transitionend', transitionEnd)
+            // A transition interrupted before it got going (closed during the
+            // opening fade) fires transitioncancel, not transitionend.
+            current.addEventListener('transitioncancel', transitionEnd)
             current.addEventListener('click', clickHandler)
             window.addEventListener('keyup', keyHandler)
+        }
+
+        // Closing normally unmounts on the backdrop's transitionend. If the
+        // modal is closed while its opening fade has barely started, the
+        // browser may run no closing transition at all, so no event arrives
+        // and the backdrop stays mounted: invisible, covering the page and
+        // swallowing every click. Longer than any transition here (≤ 350ms
+        // + 150ms delay), so it only ever finishes a close that stalled.
+        let unmountFallback: number | null = null
+        if (!open && active) {
+            unmountFallback = window.setTimeout(() => setActive(false), 700)
         }
 
         if (open) {
@@ -111,8 +125,10 @@ export default function Modal(props: ModalProps): ReactElement {
         return (): void => {
             if (current) {
                 current.removeEventListener('transitionend', transitionEnd)
+                current.removeEventListener('transitioncancel', transitionEnd)
                 current.removeEventListener('click', clickHandler)
             }
+            if (unmountFallback) window.clearTimeout(unmountFallback)
             window.removeEventListener('keyup', keyHandler)
         }
         // `active` MUST be a dependency even though the body only reads `open`.

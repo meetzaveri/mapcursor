@@ -1,5 +1,15 @@
 export const offsetHeight = 0
 export const GROUP_COMPONENT = 'groupobject'
+// Standalone image element. Local-only until shared bases host images; see
+// .claude/context/meta-properties.md.
+export const IMAGE_COMPONENT = 'image'
+
+// Fired on window by an image element once its bitmap has painted or turned
+// out to be missing ({ id }). useImageDrop listens to drop its loader.
+export const IMAGE_SETTLED_EVENT = 'imageNodeSettled'
+// Fired on window by the toolbar's Image tool with the picked files
+// ({ files }). The canvas places them at the viewport centre.
+export const INSERT_IMAGE_FILES_EVENT = 'insertImageFiles'
 
 // Default canvas text font (single source of truth). Kept in sync with the
 // `--font-sketch` var in App.css and the Tailwind `sketch` token. Every
@@ -63,15 +73,24 @@ export const VIEWPORT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 // Per-base map anchor — the georeference surface (0,0) is pinned to. A sidecar
 // key deliberately kept OUT of the draft blob, so the draft's size guard and
-// rescue path are unaffected by it. Shares the viewport TTL and its sweep.
+// rescue path are unaffected by it. It is swept on the viewport TTL, EXCEPT the
+// current local base's anchor, which never expires by age: it is what the
+// elements on screen are measured from, not a cache (baseTypes/anchorStorage.ts).
 export const MAP_ANCHOR_KEY_PREFIX = 'mapcursor_map_anchor_'
 
 // Per-base legend presets, for a canvas that has not been persisted yet.
 // A sidecar like the anchor, and out of the draft blob for the same reason —
-// but deliberately NOT part of the viewport TTL sweep: the camera and the
-// anchor are caches that can be rebuilt, a legend is authored content. It is
+// but deliberately NOT part of the viewport TTL sweep: the camera is a cache
+// that can be rebuilt, a legend is authored content. It is
 // dropped only when its base is persisted (persistBase rotates it) or cleared.
 export const LEGEND_PRESETS_KEY_PREFIX = 'mapcursor_legend_presets_'
+
+// Per-base meta properties (definitions + values), for a canvas that has not
+// been persisted yet. A sidecar like the legend, out of the draft blob and out
+// of the TTL sweep for the same reason: it is authored content. Image values
+// hold an ImageAssetRef only; the bytes are in IndexedDB (utils/assetStore.ts).
+// See .claude/context/meta-properties.md.
+export const META_PROPERTIES_KEY_PREFIX = 'mapcursor_meta_'
 
 // The legend preset ARMED per element type — what the next mark drawn with
 // that tool will wear. UI state, not content, so it is one flat key rather
@@ -146,17 +165,19 @@ export const DEFAULT_RESIST = 0.9
 // geography model. Per-record `properties.resist` overrides it.
 export const TEXT_RESIST = 0.9
 
+// Image counter-scale: none. An image is glued to the map and scales with it,
+// like the geography under it (apparent ∝ scale^1). Per-record
+// `properties.resist` still overrides it.
+export const IMAGE_RESIST = 0
+
 // The user-facing on/off switch for the above is the `zoomResistant` column,
 // not metadata: `false` means resist 0, absent/true means TEXT_RESIST. It is
-// read by the LABEL readers only — `resolveLabelResist` in utils/counterScale.ts
-// (a circle's label) and `resolveResist`'s text arm (a text's whole group).
-// Point, area, route, pencil and circle keep the numeric properties.resist and ignore
-// the column, and so does a circle's STROKE: a circle resists at two different
-// rates, and reading the column for its ring would make the switch delete the
-// ring at low zoom.
+// read by `resolveResist`'s text arm (a text's whole group) only. Every other
+// type ignores the column — a circle's label scales with the map (see
+// `circleLabelScale` in utils/counterScale.ts).
 //
 // Fired when that switch is toggled from the properties panel or reverted by
-// undo, for text and circle alike. ElementRenderWrapper freezes each element's
+// undo, for text. ElementRenderWrapper freezes each element's
 // props at mount, so a column write never reaches the component through React —
 // this is the same escape hatch `standaloneTextReverted` uses.
 export const TEXT_RESIST_CHANGED_EVENT = 'textResistChanged'
