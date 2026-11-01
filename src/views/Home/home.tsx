@@ -1,8 +1,6 @@
 import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import LogoSVG from '../../assets/mapcursor-logo-original.svg'
-import TwitterLogoSVG from '../../assets/twitter_logo.svg'
-import GithubLogoSVG from '../../assets/github_logo.svg'
+import LogoSVG from '../../assets/favicon-indigo-bg.svg'
 import RightArrowWhiteSVG from '../../assets/right_arrow_white.svg'
 import Button from '../../components/common/button'
 import routes from '../../routes'
@@ -23,7 +21,7 @@ const HomePage: React.FC = () => {
                     <img
                         src={LogoSVG}
                         alt="Mapcursor"
-                        className="w-6 h-auto lg:w-8 2xl:w-10"
+                        className="w-7 h-7 lg:w-8 lg:h-8 2xl:w-10 2xl:h-10"
                     />
                     <div className="pl-2 text-ink text-base lg:text-xl 2xl:text-2xl font-bold font-display">
                         mapcursor
@@ -40,25 +38,6 @@ const HomePage: React.FC = () => {
                     >
                         Use cases
                     </Link>
-                    <div className="flex items-center">
-                        <a href="https://twitter.com/craftbase_org">
-                            <img
-                                className="w-5 h-5"
-                                src={TwitterLogoSVG}
-                                alt="Twitter"
-                            />
-                        </a>
-                        <a
-                            className="pl-2"
-                            href="https://github.com/craftbase-org"
-                        >
-                            <img
-                                className="w-6 h-6"
-                                src={GithubLogoSVG}
-                                alt="GitHub"
-                            />
-                        </a>
-                    </div>
                     <Button
                         intent="primary"
                         size="medium"
@@ -129,8 +108,14 @@ const HomePage: React.FC = () => {
                             Tools
                         </div>
                         <h2 className="mt-2 text-2xl desktop:text-3xl font-bold text-ink tracking-tight font-display">
-                            Put your data on the map
+                            Sketch the map you need
                         </h2>
+                        <p className="mt-3 max-w-2xl text-sm desktop:text-base text-ink-mid leading-relaxed">
+                            Pick a tool, set up a legend and draw a small map
+                            for one job. A road trip you want to remember. A
+                            cluster map of a neighborhood. A marathon route you
+                            are planning.
+                        </p>
                     </div>
                     <div className="flex flex-col gap-6 desktop:gap-8">
                         {TOOLS.map((tool) => (
@@ -170,22 +155,6 @@ const HomePage: React.FC = () => {
             <footer className="w-full px-10 2xl:px-20 bg-sidebar border-t border-border-panel h-20 flex items-center justify-between">
                 <div className="text-sm big-desktop:text-base text-ink-mid">
                     © 2026 Mapcursor. All rights reserved.
-                </div>
-                <div className="flex items-center">
-                    <a href="https://twitter.com/craftbase_org">
-                        <img
-                            className="w-6 h-6"
-                            src={TwitterLogoSVG}
-                            alt="Twitter"
-                        />
-                    </a>
-                    <a className="pl-2" href="https://github.com/craftbase-org">
-                        <img
-                            className="w-7 h-7"
-                            src={GithubLogoSVG}
-                            alt="GitHub"
-                        />
-                    </a>
                 </div>
             </footer>
         </div>
