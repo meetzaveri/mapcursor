@@ -286,6 +286,7 @@ test.describe('sharing a map stamps its geography on the base row', () => {
                 Array.from(
                     document.querySelectorAll('.modal-portal button')
                 ).some((b) => (b.textContent || '').includes('Skip, use')),
+            undefined,
             { timeout: 20_000 }
         )
         await page.getByRole('button', { name: /Skip, use/ }).click()

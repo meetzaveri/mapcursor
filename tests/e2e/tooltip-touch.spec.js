@@ -25,10 +25,13 @@ test.describe('touch', () => {
 
     test('tapping a tool never leaves a tooltip behind', async ({ page }) => {
         await setupLocalBase(page)
-        const pencil = page.locator('[aria-label="Pencil"]').first()
-        await pencil.waitFor()
+        // On mobile, Pencil and Eraser share one "Draw" group button
+        // (sidebar/mobileToolGroups.ts); Pencil itself only appears in the
+        // secondary toolbar once the group is open.
+        const draw = page.locator('[aria-label="Draw"]').first()
+        await draw.waitFor()
 
-        await pencil.tap()
+        await draw.tap()
         expect(
             await openTooltips(page),
             'a finger opened a hover hint'

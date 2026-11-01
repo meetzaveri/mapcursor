@@ -37,26 +37,42 @@ const handlePointerEvents = (page) =>
 test.describe('clicking a route on its vertices', () => {
     test.beforeEach(async ({ page }) => {
         await setupLocalBase(page)
-        await page.waitForFunction(() => !!window.__mcMap?.map, {
+        // Options are waitForFunction's THIRD argument; passed second they
+        // become the page function's argument and the 5s default applies.
+        await page.waitForFunction(() => !!window.__mcMap?.map, undefined, {
             timeout: 30_000,
         })
         // Wait on the ROADS being queryable rather than on `areTilesLoaded()`,
         // which flickers false while the map settles and made this flaky.
+        //
+        // The road source is discovered from the style, as the app does it
+        // (src/baseTypes/roadSchema.ts, which can't be imported in here): the
+        // first layer reading a known road source-layer names the source.
+        // Hard-coding CARTO's old `carto`/`transportation` pair broke when
+        // CARTO moved to Protomaps tiles (`roads`).
         await page.waitForFunction(
             () => {
                 const map = window.__mcMap?.map
-                if (!map || !map.isStyleLoaded() || !map.getSource('carto'))
-                    return false
-                try {
-                    return (
-                        map.querySourceFeatures('carto', {
-                            sourceLayer: 'transportation',
-                        }).length > 0
-                    )
-                } catch {
-                    return false
+                if (!map || !map.isStyleLoaded()) return false
+                for (const sourceLayer of ['roads', 'transportation']) {
+                    const layer = map
+                        .getLayersOrder()
+                        .map((id) => map.getLayer(id))
+                        .find((l) => l?.sourceLayer === sourceLayer && l.source)
+                    if (!layer) continue
+                    try {
+                        return (
+                            map.querySourceFeatures(layer.source, {
+                                sourceLayer,
+                            }).length > 0
+                        )
+                    } catch {
+                        return false
+                    }
                 }
+                return false
             },
+            undefined,
             { timeout: 30_000 }
         )
     })

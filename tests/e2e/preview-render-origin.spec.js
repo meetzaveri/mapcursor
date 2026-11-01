@@ -40,7 +40,9 @@ test('preview geometry stays small however far the camera is from the anchor', a
     page,
 }) => {
     await setupLocalBase(page)
-    await page.waitForFunction(() => !!window.__mcMap?.map, { timeout: 30_000 })
+    await page.waitForFunction(() => !!window.__mcMap?.map, undefined, {
+        timeout: 30_000,
+    })
     const box = await getCanvasBox(page)
     const cx = box.width / 2
     const cy = box.height / 2
@@ -81,6 +83,7 @@ test('preview geometry stays small however far the camera is from the anchor', a
         () =>
             window.__mcMap.map.isStyleLoaded() &&
             window.__mcMap.map.areTilesLoaded(),
+        undefined,
         { timeout: 30_000 }
     )
 
