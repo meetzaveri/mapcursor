@@ -10,7 +10,7 @@
 // menu + share and that is the whole width. On mobile the same list is a menu
 // entry that opens `legendPanelModal`; both render `LegendList`.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { useBaseContext } from '../../views/Base/baseContext'
@@ -23,7 +23,10 @@ import ApplyPresetButton from './applyPresetButton'
 import { LEGEND_TYPE_LABELS } from '../../types/legend'
 import type { LegendPreset } from '../../types/legend'
 import type { LegendPresetInput } from '../../hooks/useLegendPresets'
-import { readSelectedPresetTarget } from '../../utils/legendPresetTarget'
+import {
+    readSelectedPresetTarget,
+    readSelectedTypeLabel,
+} from '../../utils/legendPresetTarget'
 
 /** Top of the panel: 8px margin + the 46px search shell + an 8px gap. */
 const PANEL_TOP = 62
@@ -37,7 +40,15 @@ interface LegendListProps {
     onCreate: () => void
     onEdit: (preset: LegendPreset) => void
     onDelete: (id: string) => void
+    /**
+     * Mobile modal only. With a mark selected, tapping a row of another type
+     * blurs it and says why it can't be applied, instead of doing nothing.
+     */
+    blockMismatches?: boolean
 }
+
+/** How long the "Cannot be applied" notice stays on a row. */
+const MISMATCH_NOTICE_MS = 2500
 
 /**
  * The rows themselves, shared by the desktop panel and the mobile modal.
@@ -56,9 +67,33 @@ export function LegendList({
     onCreate,
     onEdit,
     onDelete,
+    blockMismatches = false,
 }: LegendListProps): ReactElement {
     const { selectedComponent, applyLegendPresetToSelection } = useBaseContext()
     const selection = readSelectedPresetTarget(selectedComponent)
+    const selectedType = blockMismatches
+        ? readSelectedTypeLabel(selectedComponent)
+        : null
+
+    // The row currently showing "Cannot be applied to …", if any.
+    const [blockedId, setBlockedId] = useState<string | null>(null)
+    useEffect(() => {
+        if (!blockedId) return
+        const timer = window.setTimeout(
+            () => setBlockedId(null),
+            MISMATCH_NOTICE_MS
+        )
+        return (): void => window.clearTimeout(timer)
+    }, [blockedId])
+
+    /** A row of another type than the selection: it cannot be acted on. */
+    const isMismatch = (preset: LegendPreset): boolean =>
+        !!selectedType && preset.elementType !== selectedType.componentType
+
+    const onRowTap = (preset: LegendPreset): void => {
+        if (!isMismatch(preset)) return
+        setBlockedId((current) => (current === preset.id ? null : preset.id))
+    }
 
     if (presets.length === 0) {
         return (
@@ -84,6 +119,8 @@ export function LegendList({
             <ul className="max-h-72 overflow-y-auto">
                 {presets.map((preset) => {
                     const count = counts[preset.id] ?? 0
+                    const isBlocked = blockedId === preset.id
+                    const mismatched = isMismatch(preset)
                     // Same row as the wizard's review card — swatch, then a
                     // min-w-0 text block — so a preset reads the same way in
                     // the list it lands in as it did on the page it was made
@@ -94,18 +131,39 @@ export function LegendList({
                         <li
                             key={preset.id}
                             data-preset-id={preset.id}
-                            className="group flex items-center gap-3 px-2 py-2 text-left
+                            onClick={(): void => onRowTap(preset)}
+                            aria-disabled={mismatched || undefined}
+                            className="group relative flex items-center gap-3 px-2 py-2 text-left
                                 border-b border-border-panel last:border-b-0"
                         >
-                            <PresetPreview
-                                elementType={preset.elementType}
-                                preset={preset}
-                                size={28}
-                            />
+                            {isBlocked && selectedType && (
+                                <div
+                                    role="status"
+                                    className="absolute inset-0 z-10 flex items-center justify-center
+                                        px-3 text-xs font-medium text-ink pointer-events-none"
+                                >
+                                    Cannot be applied to {selectedType.label}
+                                </div>
+                            )}
+                            <span
+                                className={`shrink-0 flex transition ${
+                                    isBlocked ? 'blur-[2px] opacity-40' : ''
+                                }`}
+                            >
+                                <PresetPreview
+                                    elementType={preset.elementType}
+                                    preset={preset}
+                                    size={28}
+                                />
+                            </span>
                             {/* flex-1 is the whole justification story: it
                                 pushes the actions to the far edge, where the
                                 wizard's card simply has nothing. */}
-                            <div className="min-w-0 flex-1">
+                            <div
+                                className={`min-w-0 flex-1 transition ${
+                                    isBlocked ? 'blur-[2px] opacity-40' : ''
+                                }`}
+                            >
                                 <div className="text-xs text-ink truncate">
                                     {preset.name}
                                 </div>
@@ -120,71 +178,85 @@ export function LegendList({
                                 unreachable by keyboard. Collapsed to zero
                                 WIDTH, not just faded: an invisible-but-sized
                                 strip would truncate the name even at rest. */}
-                            <div
-                                className="flex items-center gap-1 shrink-0 overflow-hidden
+                            {/* Not rendered at all on a mismatched row: with a
+                                mark of another type selected, the row is
+                                blocked outright (no Apply, Edit or Delete), and
+                                any tap on it shows the notice instead. */}
+                            {!mismatched && (
+                                <div
+                                    className="flex items-center gap-1 shrink-0 overflow-hidden
                                     max-w-0 opacity-0
                                     group-hover:max-w-40 group-hover:opacity-100
                                     focus-within:max-w-40 focus-within:opacity-100
                                     transition-[max-width,opacity] duration-150"
-                            >
-                                {selection?.elementType ===
-                                    preset.elementType && (
-                                    <ApplyPresetButton
-                                        presetName={preset.name}
-                                        isApplied={
-                                            selection.boundId === preset.id
-                                        }
-                                        onApply={(): void =>
-                                            applyLegendPresetToSelection(preset)
-                                        }
-                                    />
-                                )}
-                                <Tooltip label="Edit preset" placement="left">
-                                    <button
-                                        type="button"
-                                        aria-label={`Edit ${preset.name}`}
-                                        onClick={(): void => onEdit(preset)}
-                                        className="w-6 h-6 flex items-center justify-center
-                                            rounded text-ink-muted hover:bg-sidebar"
+                                >
+                                    {selection?.elementType ===
+                                        preset.elementType && (
+                                        <ApplyPresetButton
+                                            presetName={preset.name}
+                                            isApplied={
+                                                selection.boundId === preset.id
+                                            }
+                                            onApply={(): void =>
+                                                applyLegendPresetToSelection(
+                                                    preset
+                                                )
+                                            }
+                                        />
+                                    )}
+                                    <Tooltip
+                                        label="Edit preset"
+                                        placement="left"
                                     >
-                                        <svg
-                                            width="12"
-                                            height="12"
-                                            viewBox="0 0 16 16"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="1.6"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                        >
-                                            <path d="M11.5 2.5l2 2L6 12l-3 1 1-3z" />
-                                        </svg>
-                                    </button>
-                                </Tooltip>
-                                <Tooltip label="Delete preset" placement="left">
-                                    <button
-                                        type="button"
-                                        aria-label={`Delete ${preset.name}`}
-                                        onClick={(): void =>
-                                            onDelete(preset.id)
-                                        }
-                                        className="w-6 h-6 flex items-center justify-center
+                                        <button
+                                            type="button"
+                                            aria-label={`Edit ${preset.name}`}
+                                            onClick={(): void => onEdit(preset)}
+                                            className="w-6 h-6 flex items-center justify-center
                                             rounded text-ink-muted hover:bg-sidebar"
-                                    >
-                                        <svg
-                                            width="12"
-                                            height="12"
-                                            viewBox="0 0 16 16"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="1.6"
-                                            strokeLinecap="round"
                                         >
-                                            <path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 9h5l.5-9" />
-                                        </svg>
-                                    </button>
-                                </Tooltip>
-                            </div>
+                                            <svg
+                                                width="12"
+                                                height="12"
+                                                viewBox="0 0 16 16"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.6"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                            >
+                                                <path d="M11.5 2.5l2 2L6 12l-3 1 1-3z" />
+                                            </svg>
+                                        </button>
+                                    </Tooltip>
+                                    <Tooltip
+                                        label="Delete preset"
+                                        placement="left"
+                                    >
+                                        <button
+                                            type="button"
+                                            aria-label={`Delete ${preset.name}`}
+                                            onClick={(): void =>
+                                                onDelete(preset.id)
+                                            }
+                                            className="w-6 h-6 flex items-center justify-center
+                                            rounded text-ink-muted hover:bg-sidebar"
+                                        >
+                                            <svg
+                                                width="12"
+                                                height="12"
+                                                viewBox="0 0 16 16"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.6"
+                                                strokeLinecap="round"
+                                            >
+                                                <path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 9h5l.5-9" />
+                                            </svg>
+                                        </button>
+                                    </Tooltip>
+                                </div>
+                            )}
                         </li>
                     )
                 })}

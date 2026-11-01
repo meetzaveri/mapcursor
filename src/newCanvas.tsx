@@ -30,6 +30,7 @@ import type { MapAnchor } from './baseTypes/types'
 
 import {
     GROUP_COMPONENT,
+    IMAGE_COMPONENT,
     componentTypes,
     RUBBER_MODE_KEY,
     VIEWPORT_KEY_PREFIX,
@@ -148,9 +149,11 @@ import { installRenderOrigin } from './canvas/renderOrigin'
 import { E2E_HOOKS } from './utils/e2eHooks'
 import { SELECTION_CHROME_ATTR } from './utils/svgExportShared'
 import { computeCounterScale } from './utils/counterScale'
+import { applyStrokeDashes } from './utils/strokeDashes'
 import { MAP_ZOOM_LIMITS } from './baseTypes/zoomLimits'
 import { lngLatToSurface, scaleForMapZoom } from './baseTypes/mercator'
 import { useCanvasClipboard } from './hooks/useCanvasClipboard'
+import { useImageDrop } from './hooks/useImageDrop'
 import type { HistoryEntry } from './hooks/useComponentHistory'
 import { exportSelectionAsSvg } from './utils/exportSelectionAsSvg'
 import CanvasContextMenu from './components/canvasContextMenu'
@@ -1335,10 +1338,24 @@ function addZUI(
     domElement.addEventListener('mousedown', mousedown, false)
     domElement.addEventListener('mousemove', hoverDetectMove, false)
     domElement.addEventListener('dblclick', dblclick, false)
+    // Wheel listens on window, not the SVG. Safari only delivers wheel events
+    // to the page inside regions it knows have a wheel listener, and for SVG
+    // that region is built from painted content. The ink layer is transparent
+    // over the map, so a listener on the SVG almost never fired there and the
+    // wheel did nothing. A window listener makes the whole page a wheel
+    // region; the target filter keeps wheel over toolbars and panels out of
+    // the camera. (Same fix as craftbase.) Synthetic wheel events skip that
+    // region check, so Playwright's WebKit can't reproduce the bug.
+    //
     // Non-passive so the handler can preventDefault. The legacy `mousewheel`
     // alias is deliberately NOT bound: no current browser fires both, but one
     // that did would now double-apply the zoom.
-    domElement.addEventListener('wheel', mousewheel, { passive: false })
+    const canvasWheel = (e: WheelEvent) => {
+        if (e.target instanceof Node && domElement.contains(e.target)) {
+            mousewheel(e)
+        }
+    }
+    window.addEventListener('wheel', canvasWheel, { passive: false })
 
     domElement.addEventListener('touchstart', touchstart, { passive: false })
     domElement.addEventListener('touchmove', touchmove, { passive: false })
@@ -1832,16 +1849,41 @@ function addZUI(
         () => zui.scale || 1
     )
 
-    function componentIdAtPoint(x: number, y: number): string | null {
-        const el = document.elementFromPoint(x, y)
-        if (!el) return null
-
+    // Nearest component group at or above `el`.
+    function componentElementFor(el: Element): Element | null {
         let target: Element | null = el
         while (target && target !== document.body) {
-            const componentId =
-                target.getAttribute?.('data-component-id') ?? null
-            if (componentId) return componentId
+            if (target.getAttribute?.('data-component-id')) return target
             target = target.parentElement
+        }
+        return null
+    }
+
+    // Topmost component under the point. With `skipImages` (Shift held while
+    // erasing) it looks through the whole stack and returns the topmost
+    // non-image component, so a stroke is erasable whether it sits above or
+    // below an image, and the image itself is never hit. Ported from
+    // craftbase; image groups carry data-component-type (image.tsx).
+    function componentIdAtPoint(
+        x: number,
+        y: number,
+        skipImages: boolean
+    ): string | null {
+        const stack = skipImages
+            ? document.elementsFromPoint(x, y)
+            : [document.elementFromPoint(x, y)]
+        for (const el of stack) {
+            if (!el) continue
+            const component = componentElementFor(el)
+            if (!component) continue
+            if (
+                skipImages &&
+                component.getAttribute('data-component-type') ===
+                    IMAGE_COMPONENT
+            ) {
+                continue
+            }
+            return component.getAttribute('data-component-id')
         }
         return null
     }
@@ -1851,7 +1893,8 @@ function addZUI(
     // size gives a more forgiving catch area for thin strokes / small shapes.
     const ERASER_SAMPLE_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315]
 
-    function eraseElementAtPoint(x: number, y: number) {
+    // `keepImages`: Shift held — erase drawings but leave image elements.
+    function eraseElementAtPoint(x: number, y: number, keepImages: boolean) {
         const radius = getEraserRadius()
         const points: Array<[number, number]> =
             radius > 0
@@ -1869,7 +1912,7 @@ function addZUI(
 
         const componentIds = new Set<string>()
         for (const [px, py] of points) {
-            const id = componentIdAtPoint(px, py)
+            const id = componentIdAtPoint(px, py, keepImages)
             if (id && !pendingDeletionSet.has(id)) componentIds.add(id)
         }
         if (componentIds.size === 0) return
@@ -2478,13 +2521,21 @@ function addZUI(
                 pencilPath.cap = 'round'
                 pencilPath.join = 'round'
                 pencilPath.closed = false
+                // The live stroke wears the chosen stroke type too, sized the
+                // way the committed pencil will be (utils/strokeDashes) — it
+                // used to draw solid until mouseup.
+                applyStrokeDashes(
+                    pencilPath,
+                    defaultStrokeTypeValue,
+                    zui.scale || two.scene.scale || 1
+                )
                 pencilGroup.add(pencilPath)
                 break
             }
             case SCENARIO_RUBBER_MODE: {
                 domElement.addEventListener('mousemove', mousemove, false)
                 domElement.addEventListener('mouseup', mouseup, false)
-                eraseElementAtPoint(e.clientX, e.clientY)
+                eraseElementAtPoint(e.clientX, e.clientY, e.shiftKey)
                 {
                     const p = toSurface(e)
                     eraserTrail.addPoint(p.x, p.y)
@@ -2971,7 +3022,7 @@ function addZUI(
                 break
             }
             case SCENARIO_RUBBER_MODE: {
-                eraseElementAtPoint(e.clientX, e.clientY)
+                eraseElementAtPoint(e.clientX, e.clientY, e.shiftKey)
                 const p = toSurface(e)
                 eraserTrail.addPoint(p.x, p.y)
                 break
@@ -3440,6 +3491,18 @@ function addZUI(
                     }),
                     width: finalWidth,
                     height: finalHeight,
+                }
+                // A radius map's label is not zoom-resistant: it holds the
+                // scale of the zoom it was drawn at, then follows the map. Stamp
+                // that zoom now — at mouseup, not when the tool was picked, as
+                // the user may have zoomed in between (see circleLabelScale).
+                if (drawShapeType === 'circle') {
+                    Object.assign(
+                        finalShapeData,
+                        setProperties(finalShapeData, {
+                            labelCameraScale: two.scene.scale,
+                        })
+                    )
                 }
 
                 addToLocalComponentStore(
@@ -4614,6 +4677,9 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         recordBatchToHistoryLog,
         enableTextDrawMode,
         createTextAtSurface,
+        isPersisted,
+        showCanvasNotice,
+        meta,
     } = useBaseContext()
 
     // addZUI's post-draw resets funnel a 'pointer' through setPointerElement.
@@ -4701,6 +4767,21 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         recordBatchToHistoryLog,
         renderGroupRef,
         stateRefForComponentStore,
+        // Meta property values follow pasted objects onto their copies.
+        onPasted: (objectIdMap) => {
+            meta.copyValuesForPaste(objectIdMap).catch((e) =>
+                console.error('[paste] copying meta values failed', e)
+            )
+        },
+    })
+
+    useImageDrop({
+        twoJSInstance,
+        zuiInstanceRef,
+        baseId: props.baseId,
+        isPersisted,
+        addToLocalComponentStore,
+        showCanvasNotice,
     })
 
     useEffect(() => {

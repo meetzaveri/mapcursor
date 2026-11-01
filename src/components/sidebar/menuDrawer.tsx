@@ -11,6 +11,7 @@ import ShortcutsModal from './shortcutsModal'
 import SettingsModal from './settingsModal'
 import PlaceSearchModal from './placeSearchModal'
 import LegendPanelModal from '../legend/legendPanelModal'
+import LegendIcon from '../../icons/legendIcon'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import HelpIcon from '../../assets/help.svg?react'
 import SettingsIcon from '../../assets/settings.svg?react'
@@ -124,29 +125,6 @@ const UploadIcon = (): ReactElement => (
     </svg>
 )
 
-// Three swatches against three rules — a key, drawn the way a printed map
-// draws one. Inline like the others here rather than an asset, since it is one
-// shape used in one place.
-const LegendIcon = (): ReactElement => (
-    <svg
-        width="14"
-        height="14"
-        viewBox="0 0 14 14"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-    >
-        <circle cx="3" cy="3" r="1.6" fill="currentColor" />
-        <circle cx="3" cy="7" r="1.6" fill="currentColor" />
-        <circle cx="3" cy="11" r="1.6" fill="currentColor" />
-        <path
-            d="M6.75 3H12.5M6.75 7H12.5M6.75 11H12.5"
-            stroke="currentColor"
-            strokeWidth="1.1"
-            strokeLinecap="round"
-        />
-    </svg>
-)
-
 const SearchIcon = (): ReactElement => (
     <svg
         width="14"
@@ -185,6 +163,7 @@ const MenuDrawer = (): ReactElement => {
         captureBackdrop,
         goToPlace,
         legendPresets,
+        meta,
     } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
     // Search lives in the top bar on desktop; on a phone that row is full, so
@@ -259,12 +238,20 @@ const MenuDrawer = (): ReactElement => {
                   ty: scene.translation.y,
               }
             : { scale: 1, tx: 0, ty: 0 }
-        exportBaseAsJson(
-            stateRefForComponentStore.current,
-            viewport,
-            readBackdropConfig(),
-            legendPresets
-        )
+        // A failed meta fetch (shared base, offline) must not cost the export
+        // itself: it goes out without meta properties instead.
+        void meta
+            .exportSet()
+            .catch(() => undefined)
+            .then((metaSet) =>
+                exportBaseAsJson(
+                    stateRefForComponentStore.current,
+                    viewport,
+                    readBackdropConfig(),
+                    legendPresets,
+                    metaSet
+                )
+            )
         setShowExportSubmenu(false)
         setShowMenu(false)
     }
@@ -374,6 +361,35 @@ const MenuDrawer = (): ReactElement => {
                             </div>
                             <ExternalIcon />
                         </a>
+
+                        <Link
+                            to={routes.useCases}
+                            className="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-ink-mid
+                                hover:bg-sidebar rounded cursor-pointer no-underline
+                                transition-colors ease-in-out duration-150"
+                            onClick={(): void => setShowMenu(false)}
+                        >
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 14 14"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path
+                                    d="M1.5 3.5l3.5-1.5 4 1.5 3.5-1.5v8.5l-3.5 1.5-4-1.5-3.5 1.5z"
+                                    stroke="currentColor"
+                                    strokeWidth="1.1"
+                                    strokeLinejoin="round"
+                                />
+                                <path
+                                    d="M5 2v8.5M9 3.5V12"
+                                    stroke="currentColor"
+                                    strokeWidth="1.1"
+                                />
+                            </svg>
+                            <span>Use cases</span>
+                        </Link>
 
                         <Link
                             to={routes.support}

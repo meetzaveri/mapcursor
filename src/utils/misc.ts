@@ -1,4 +1,5 @@
 import type { RandomUsername } from '../types/base'
+import { isInSelectionChrome } from './canvasChrome'
 
 // True on macOS/iOS, where ⌘ (metaKey) is the primary shortcut modifier; Ctrl
 // elsewhere. Prefer the modern userAgentData.platform, fall back to the legacy
@@ -97,6 +98,16 @@ export const elementOnBlurHandler = (
     }
 
     const related = e?.relatedTarget as HTMLElement | null
+    // Focus moving into the meta properties panel (or a dialog it opened) is
+    // editing the selection, not leaving it: keep the selection box up.
+    if (
+        related &&
+        related.id !== 'floating-toolbar' &&
+        related.dataset?.parent !== 'floating-toolbar' &&
+        isInSelectionChrome(related)
+    ) {
+        return
+    }
     if (
         related?.id === 'floating-toolbar' ||
         related?.dataset?.parent === 'floating-toolbar'

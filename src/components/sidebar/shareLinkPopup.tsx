@@ -9,6 +9,15 @@ import { useMediaQueryUtils } from '../../constants/exportHooks'
 import { baseUrl } from '../../utils/baseRoutes'
 import { trackEvent } from '../../utils/analytics'
 import { SHARE_BUTTON_ID } from './shapesToolbarId'
+import ShareImagesNote from './shareImagesNote'
+import { IMAGE_COMPONENT } from '../../constants/misc'
+import { RIGHT_MARGIN } from '../../hooks/useTopRightOffset'
+
+// The share row in primary.tsx sits `right-1rem` with `px-2`, so the button's
+// natural right edge is 24px in. On mobile it is pulled out to RIGHT_MARGIN so
+// it lines up with the other right-edge buttons (styling, legend, meta
+// properties) in one column.
+const SHARE_ROW_INSET_PX = 24
 
 const ShareLinkPopup = (): ReactElement => {
     const refNode = useRef<HTMLDivElement | null>(null)
@@ -22,6 +31,7 @@ const ShareLinkPopup = (): ReactElement => {
         baseId,
         backdropReady,
         stateRefForComponentStore,
+        meta,
     } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
 
@@ -31,10 +41,22 @@ const ShareLinkPopup = (): ReactElement => {
     // components on the base while backgroundBaseId is still null — which
     // wrongly showed "Nothing to share yet" until the user touched the canvas.
     // Mirror persistBase's filter (entries without componentType are skipped
-    // there) so the two stay consistent.
-    const hasComponents = Object.values(stateRefForComponentStore.current).some(
-        (c) => c?.componentType
+    // there) so the two stay consistent. Images are dropped from the shared
+    // copy too (local-only), so they don't count as shareable on their own.
+    const storeValues = Object.values(stateRefForComponentStore.current)
+    const hasComponents = storeValues.some(
+        (c) => c?.componentType && c.componentType !== IMAGE_COMPONENT
     )
+    const hasImages = storeValues.some(
+        (c) => c?.componentType === IMAGE_COMPONENT
+    )
+    // `image` meta properties are left behind on share, with their photos.
+    // Only a local canvas can have them (a shared one refuses to create them).
+    const imagePropertyNames = isPersisted
+        ? []
+        : meta.metaProperties
+              .filter((p) => p.type === 'image')
+              .map((p) => p.name)
 
     useEffect(() => {
         const handleClick = (e: MouseEvent): void => {
@@ -123,21 +145,33 @@ const ShareLinkPopup = (): ReactElement => {
 
     return (
         <>
-            <div className="relative " ref={refNode} style={{ right: '-9px' }}>
+            <div
+                className="relative "
+                ref={refNode}
+                style={{
+                    right: `${isMobile ? -SHARE_ROW_INSET_PX + RIGHT_MARGIN : -9}px`,
+                }}
+            >
                 <div
                     id={SHARE_BUTTON_ID}
-                    className="px-1 py-1 border-border-panel border  flex items-center justify-center rounded-md bg-card-bg text-ink font-semibold"
+                    className={`border-border-panel border flex items-center justify-center bg-card-bg text-ink font-semibold ${
+                        // Mobile: 40px square, the size of every other button
+                        // in the right-edge column (legend, meta properties).
+                        isMobile
+                            ? 'w-10 h-10 rounded-lg shadow-panel'
+                            : 'px-1 py-1 rounded-md'
+                    }`}
                     style={{
                         cursor: backdropReady ? 'pointer' : 'progress',
                         opacity: backdropReady ? 1 : 0.6,
                     }}
-                    title={
-                        backdropReady ? 'Share' : 'Preparing the map\u2026'
-                    }
+                    title={backdropReady ? 'Share' : 'Preparing the map\u2026'}
                     onClick={backdropReady ? handleShareClick : undefined}
                 >
                     {/* <div className="pr-2 text-white">Share</div>{' '} */}
-                    <div className="px-2 py-2 hover:bg-sidebar rounded-md">
+                    <div
+                        className={`hover:bg-sidebar rounded-md ${isMobile ? 'p-0' : 'px-2 py-2'}`}
+                    >
                         <ShareIcon
                             width={20}
                             height={20}
@@ -215,6 +249,10 @@ const ShareLinkPopup = (): ReactElement => {
                             <h2 className="text-lg font-semibold mb-3 font-display">
                                 Share this canvas
                             </h2>
+                            <ShareImagesNote
+                                hasImageElements={hasImages}
+                                imagePropertyNames={imagePropertyNames}
+                            />
                             <p className="text-sm text-ink-mid mb-2">
                                 We'll generate a unique canvas link so you can
                                 share your work with others.
@@ -258,6 +296,12 @@ const ShareLinkPopup = (): ReactElement => {
                                 Before you share, please create something on the
                                 canvas to make it shareable.
                             </p>
+                            {hasImages && (
+                                <p className="text-sm text-ink-mid mb-4">
+                                    Images can't be shared yet, so a canvas with
+                                    only images has nothing to share.
+                                </p>
+                            )}
                             <div className="flex justify-end">
                                 <Button
                                     intent="primary"

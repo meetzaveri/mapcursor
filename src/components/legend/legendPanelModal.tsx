@@ -9,6 +9,7 @@ import type { ReactElement } from 'react'
 
 import Modal from '../common/modal'
 import { useBaseContext } from '../../views/Base/baseContext'
+import { useMediaQueryUtils } from '../../constants/exportHooks'
 import { LegendList, useLegendWizard } from './legendPanel'
 import LegendPresetWizard from './legendPresetWizard'
 
@@ -24,6 +25,7 @@ export default function LegendPanelModal({
     const { legendPresets, legendPresetCounts, deleteLegendPreset } =
         useBaseContext()
     const wizard = useLegendWizard()
+    const { isMobile } = useMediaQueryUtils()
 
     return (
         <>
@@ -49,6 +51,7 @@ export default function LegendPanelModal({
                             onCreate={wizard.openCreate}
                             onEdit={wizard.openEdit}
                             onDelete={deleteLegendPreset}
+                            blockMismatches={isMobile}
                         />
                     </div>
                 </div>

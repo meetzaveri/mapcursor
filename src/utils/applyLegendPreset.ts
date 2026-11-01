@@ -1,5 +1,6 @@
 import { strokeTypeToDashes, clearDashesOnTwoJSShape, strokeToAreaFill } from './misc'
 import { computeCounterScale, isStrokeScaled, resolveResist } from './counterScale'
+import { applyStrokeDashes } from './strokeDashes'
 import { presetStylePatch } from '../types/legend'
 import type { LegendPreset } from '../types/legend'
 import type { ComponentRecord } from '../types/base'
@@ -79,10 +80,26 @@ function paintPresetKey(
                   )
                 : (value as number)
             if (elementData) elementData.linewidth = value
+            // The dash pattern is sized from the width (utils/strokeDashes).
+            if (isStrokeScaled(elementData)) {
+                applyStrokeDashes(
+                    shape,
+                    elementData?.strokeType,
+                    two?.scene?.scale ?? 1
+                )
+            }
             break
         case 'strokeType':
-            shape.dashes = strokeTypeToDashes(value as string | null)
-            if (!value || value === 'solid') clearDashesOnTwoJSShape(shape)
+            if (isStrokeScaled(elementData)) {
+                applyStrokeDashes(
+                    shape,
+                    value as string | null,
+                    two?.scene?.scale ?? 1
+                )
+            } else {
+                shape.dashes = strokeTypeToDashes(value as string | null)
+                if (!value || value === 'solid') clearDashesOnTwoJSShape(shape)
+            }
             if (elementData) elementData.strokeType = value
             break
         default:

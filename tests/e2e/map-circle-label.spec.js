@@ -5,13 +5,13 @@
 // craftbase's inner text: the whiteboard model grows the shape to fit what you
 // type, and a circle's size IS its radius.
 //
-// So the label is the POINT's model — a counter-scaled Two.Text sub-group
-// parked in the circle's group, stored in `metadata`, which never touches the
-// geometry. What these tests protect, in order of how badly each has gone
-// wrong before: the radius is untouched by naming, the wrap is stable across
-// the whole zoom range, the label is the only part of a circle that resists
-// zoom (the disc is borderless), and undo puts the name back on screen and not
-// just in the store.
+// So the label follows the POINT's model — a Two.Text sub-group parked in the
+// circle's group, stored in `metadata`, which never touches the geometry. What
+// these tests protect, in order of how badly each has gone wrong before: the
+// radius is untouched by naming, the wrap is stable across the whole zoom
+// range, the label scales with the map like the disc (it is not
+// zoom-resistant), and undo puts the name back on screen and not just in the
+// store.
 
 import { test, expect } from './helpers/test.js'
 import {
@@ -270,7 +270,7 @@ test.describe('the map circle label', () => {
         expect(lines.length).toBe(editorLines)
     })
 
-    test('the label resists zoom; the borderless disc has nothing to', async ({
+    test('the label scales with the map; the borderless disc has no stroke', async ({
         page,
     }) => {
         await openMapBase(page)
@@ -282,30 +282,16 @@ test.describe('the map circle label', () => {
         await setZoom(page, 0.25)
         const zoomedOut = await readCircle(page)
 
-        // The label counter-scales by 1/scale^resist at resist 0.9 while the
-        // switch is on. Checked loosely: the point is that it is counter-scaled
-        // at all, not the exact exponent.
-        const expected = 1 / Math.pow(0.25, 0.9)
-        expect(zoomedOut.labelScale / at1.labelScale).toBeCloseTo(expected, 1)
+        // Not zoom-resistant: the label holds 1 / (camera it was drawn at),
+        // and it was drawn at scale 1 — so it stays at 1 and shrinks with the
+        // map, like the disc it names (see circleLabelScale).
+        expect(at1.labelScale).toBeCloseTo(1, 5)
+        expect(zoomedOut.labelScale).toBeCloseTo(1, 5)
         // The disc is the only other thing in the group, and it is borderless —
         // its geometry marks the ground, so nothing about it scales.
         expect(at1.ringLinewidth).toBe(0)
         expect(zoomedOut.ringLinewidth).toBe(0)
 
-        // Turning the switch off drops the LABEL to resist 0. It is the only
-        // reader of the column on a circle, so there is nothing else for it to
-        // reach.
-        await page.evaluate((id) => {
-            window.dispatchEvent(
-                new CustomEvent('textResistChanged', {
-                    detail: { id, resist: 0 },
-                })
-            )
-        }, at1.id)
-        await setZoom(page, 0.25)
-        const offAtQuarter = await readCircle(page)
-        expect(offAtQuarter.labelScale).toBeCloseTo(1, 2)
-        expect(offAtQuarter.ringLinewidth).toBe(0)
     })
 
     test('the Radius Map panel restyles the label off the point ladder', async ({
@@ -397,7 +383,7 @@ test.describe('the map circle label', () => {
             .toBe('#000')
     })
 
-    test('the panel carries a Zoom resistant switch, and it only moves the label', async ({
+    test('the panel offers no Zoom resistant switch for a circle', async ({
         page,
     }) => {
         await openMapBase(page)
@@ -407,20 +393,9 @@ test.describe('the map circle label', () => {
         await page.mouse.click(centre.x, centre.y)
         await page.waitForSelector('#floating-toolbar [data-section="fill"]')
 
-        const toggle = page.locator('#floating-toolbar #zoom-resist-toggle')
-        await expect(toggle).toBeVisible()
-
-        const at1 = await readCircle(page)
-        await toggle.click()
-        await setZoom(page, 0.25)
-
-        const off = await readCircle(page)
-        // Label now scales with the geography…
-        expect(off.labelScale).toBeCloseTo(1, 2)
-        // …and the disc is untouched: it is borderless, so the switch has
-        // nothing else on this element to reach.
-        expect(at1.ringLinewidth).toBe(0)
-        expect(off.ringLinewidth).toBe(0)
+        await expect(
+            page.locator('#floating-toolbar #zoom-resist-toggle')
+        ).toHaveCount(0)
     })
 
     test('undo puts the name back on screen, not just in the store', async ({

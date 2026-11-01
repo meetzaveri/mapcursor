@@ -22,6 +22,7 @@ import {
 } from '../utils/timezoneCities'
 import { makeLngLatToSurface, surfaceUnitsPerMeter } from './mercator'
 import { setRoadSource, type RoadSnapshot } from './roadSource'
+import { findRoadSource } from './roadSchema'
 import { addLandLayers } from './landPaint'
 import type { RoadPolyline } from '../utils/roadGraph'
 
@@ -170,12 +171,7 @@ function syncMapToZui(handle: MapHandle, camera: CameraChangeEvent): void {
     map.jumpTo({ center: desiredCenter, zoom: targetZoom })
 }
 
-
 // ── Roads, for snap-to-road route drawing ────────────────────────────────────
-
-/** The vector source id in the Positron style, and the layer roads live in. */
-const ROAD_SOURCE_ID = 'carto'
-const ROAD_SOURCE_LAYER = 'transportation'
 
 /**
  * Below this map zoom the tileset carries only the arterial network — minor
@@ -185,23 +181,6 @@ const ROAD_SOURCE_LAYER = 'transportation'
  * honest answer.
  */
 export const MIN_ROAD_SNAP_ZOOM = 12
-
-/**
- * OMT `transportation` classes that are not roads a route can be drawn along.
- *
- * Rail and aerialway are the ones that actually bite: they cross the road
- * network constantly, share no junctions with it, and would happily capture a
- * cursor that strayed over a level crossing. Ferries are excluded for the same
- * reason. Paths and tracks are deliberately KEPT — a walking route down a
- * footpath is exactly the thing this feature is for.
- */
-const NON_ROAD_CLASSES = new Set([
-    'rail',
-    'transit',
-    'aerialway',
-    'ferry',
-    'raceway',
-])
 
 /**
  * Cap on how much geometry one rebuild will take. A screenful of dense city at
@@ -231,13 +210,17 @@ function readRoadSnapshot(handle: MapHandle): RoadSnapshot | null {
 
     const mapZoom = map.getZoom()
     if (!Number.isFinite(mapZoom) || mapZoom < MIN_ROAD_SNAP_ZOOM) return null
-    if (!map.getSource(ROAD_SOURCE_ID)) return null
+    // The road source is discovered from the style, not hard-coded: CARTO
+    // renamed it when it moved to Protomaps tiles. See roadSchema.ts.
+    const road = findRoadSource(map)
+    if (!road) return null
+    const { sourceId, schema } = road
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let features: any[]
     try {
-        features = map.querySourceFeatures(ROAD_SOURCE_ID, {
-            sourceLayer: ROAD_SOURCE_LAYER,
+        features = map.querySourceFeatures(sourceId, {
+            sourceLayer: schema.sourceLayer,
         })
     } catch (err) {
         console.error('Road source query failed', err)
@@ -256,8 +239,9 @@ function readRoadSnapshot(handle: MapHandle): RoadSnapshot | null {
 
     for (const feature of features) {
         if (polylines.length >= MAX_ROAD_POLYLINES) break
-        const roadClass = String(feature?.properties?.class ?? '')
-        if (NON_ROAD_CLASSES.has(roadClass)) continue
+        const props = feature?.properties ?? {}
+        if (schema.isExcluded(props)) continue
+        const roadClass = schema.roadClass(props)
         const geometry = feature?.geometry
         if (!geometry) continue
         if (geometry.type === 'LineString') {
@@ -285,11 +269,19 @@ export const mapBackdrop = {
         // real choice arrives later via setAnchor (the host persists it).
         _ctx: MapBackdropMountContext
     ): Promise<MapBackdropHandle> {
-        const [{ default: maplibregl }] = await Promise.all([
+        // maplibre v6 ships ESM-only with named exports (no default export),
+        // so take the module namespace itself.
+        const [maplibregl, , { default: workerUrl }] = await Promise.all([
             import('maplibre-gl'),
             // Bundled into this lazy chunk so it lands after first paint.
             import('maplibre-gl/dist/maplibre-gl.css'),
+            // v6 resolves its worker relative to its own module URL, which
+            // Vite's dep pre-bundling relocates, so the default URL 404s and
+            // no tiles render. Hand it a Vite-managed URL instead. The worker
+            // file is self-contained, so emitting it as a plain asset works.
+            import('maplibre-gl/dist/maplibre-gl-worker.mjs?url'),
         ])
+        maplibregl.setWorkerUrl(workerUrl)
 
         const mapEl = document.createElement('div')
         mapEl.id = MAP_CONTAINER_ID

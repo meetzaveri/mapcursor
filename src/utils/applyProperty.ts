@@ -7,16 +7,19 @@ import { getShapeTextNodes } from './canvasUtils'
 import { getPointCircle, getPointLabelNode } from '../factory/point'
 import { POINT_LABEL_SIZES } from '../constants/misc'
 import { capCenterOffset } from '../utils/fontMetrics'
-import { setProperties } from './geometry'
+import { readProperties, setProperties } from './geometry'
+import { lineHeightFor } from './textLayout'
+import { rescaleTextSizeForResist } from './textResistToggle'
+import { applyStrokeDashes } from './strokeDashes'
 import { LEGEND_STYLE_KEYS } from '../types/legend'
 import {
-    TEXT_RESIST,
     TEXT_RESIST_CHANGED_EVENT,
+    TEXT_SELECTOR_REFRESH_EVENT,
 } from '../constants/misc'
 import {
+    circleLabelScale,
     computeCounterScale,
     isStrokeScaled,
-    resolveLabelResist,
     resolveResist,
 } from './counterScale'
 import {
@@ -189,31 +192,70 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
         if (!id) return
 
         // Zoom-resistance is a real column, so this is a plain scalar write —
-        // no metadata merge. The type gate matters: only the two types with a
-        // LABEL read the column (a text's whole group, a circle's label
-        // sub-group), and letting it onto another componentType would put a
+        // no metadata merge. The type gate matters: only text reads the
+        // column, and letting it onto another componentType would put a
         // value on a row that ignores it and then ship that value into every
         // export and every share insert.
         if (propertyKey === 'zoomResistant') {
             const textGroup = selectedComponent?.group?.data
-            const resistType = textGroup?.elementData?.componentType
-            if (resistType !== 'text' && resistType !== 'circle') return
-            if (textGroup.elementData) {
-                textGroup.elementData.zoomResistant = value
-            }
-            updateComponentBulkPropertiesInLocalStore(id, {
+            const elementData = textGroup?.elementData
+            if (!elementData || elementData.componentType !== 'text') return
+
+            // Flipping resist alone makes the label jump by camera^-resist —
+            // turned off at z8 it shrank to a fraction of a pixel. So rescale
+            // fontSize by the ratio of the two counter-scales: at the camera
+            // the switch is flipped under, the label looks exactly as it did.
+            // See utils/textResistToggle.ts.
+            const fromResist = resolveResist(elementData)
+            const toResist = resolveResist({
+                ...elementData,
                 zoomResistant: value,
             })
-            // The element component owns the scaled node (a text's group, a
-            // circle's label sub-group) and the selection outline — it is the
-            // only place that knows the live camera and holds the selector
-            // instance. Filtered by id on the far side, so the other labels on
-            // this base are untouched.
+            const nodes = getShapeTextNodes(textGroup)
+            const currentSize =
+                (nodes[0]?.size as number | undefined) ||
+                (readProperties(elementData).fontSize as number | undefined) ||
+                36
+            const nextSize = rescaleTextSizeForResist(
+                currentSize,
+                twoJSInstance?.scene?.scale || 1,
+                fromResist,
+                toResist
+            )
+
+            // Same node update as a toolbar size change (base.tsx
+            // handleTextSizeChange): size every line and re-stack the block.
+            const lineH = lineHeightFor(nextSize)
+            nodes.forEach((node, i) => {
+                node.size = nextSize
+                node.leading = nextSize
+                node.translation.set(0, (i - (nodes.length - 1) / 2) * lineH)
+            })
+            const patch = setProperties(elementData, { fontSize: nextSize })
+            if (patch.metadata) elementData.metadata = patch.metadata
+            elementData.zoomResistant = value
+
+            // One bulk write, so one undo step restores both the switch and
+            // the size (useComponentHistory reverts each key).
+            updateComponentBulkPropertiesInLocalStore(id, {
+                ...patch,
+                zoomResistant: value,
+            })
+            // The element component owns the scaled node (the text's group)
+            // and the selection outline — it is the only place that knows the
+            // live camera and holds the selector instance. Filtered by id on
+            // the far side, so the other labels on this base are untouched.
             window.dispatchEvent(
                 new CustomEvent(TEXT_RESIST_CHANGED_EVENT, {
-                    detail: { id, resist: value ? TEXT_RESIST : 0 },
+                    detail: { id, resist: toResist },
                 })
             )
+            window.dispatchEvent(
+                new CustomEvent(TEXT_SELECTOR_REFRESH_EVENT, {
+                    detail: { id },
+                })
+            )
+            twoJSInstance?.update()
             return
         }
 
@@ -365,14 +407,14 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
                 width: elementData.width ?? 100,
             })
             // buildCircleLabel reuses the sub-group and leaves its transform
-            // alone, so re-seed the counter-scale from the live camera. This is
-            // the same value the zoomChanged listener would compute, so it is
-            // idempotent for an existing label — and it is the only thing that
-            // scales a sub-group created after mount.
+            // alone, so re-seed its scale. This is the same value the
+            // zoomChanged listener would compute, so it is idempotent for an
+            // existing label — and it is the only thing that scales a
+            // sub-group created after mount.
             if (rebuilt) {
-                rebuilt.scale = computeCounterScale(
-                    twoJSInstance?.scene?.scale ?? 1,
-                    resolveLabelResist(elementData)
+                rebuilt.scale = circleLabelScale(
+                    elementData,
+                    twoJSInstance?.scene?.scale ?? 1
                 )
             }
             twoJSInstance?.update()
@@ -489,14 +531,31 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
                           resolveResist(elementData)
                       )
                     : value
+                // A map stroke's dash pattern is sized from its width, so a
+                // wider stroke needs wider gaps (utils/strokeDashes).
+                if (isStrokeScaled(elementData)) {
+                    applyStrokeDashes(
+                        shapeData,
+                        elementData?.strokeType,
+                        twoJSInstance?.scene?.scale ?? 1
+                    )
+                }
             }
             if (elementData) elementData.linewidth = value
             updateComponentBulkPropertiesInLocalStore(id, { linewidth: value })
         } else if (propertyKey === 'strokeType') {
             const dbValue = value === 'solid' ? 'solid' : value
             if (shapeData) {
-                shapeData.dashes = strokeTypeToDashes(value)
-                if (value === 'solid') clearDashesOnTwoJSShape(shapeData)
+                if (isStrokeScaled(elementData)) {
+                    applyStrokeDashes(
+                        shapeData,
+                        value,
+                        twoJSInstance?.scene?.scale ?? 1
+                    )
+                } else {
+                    shapeData.dashes = strokeTypeToDashes(value)
+                    if (value === 'solid') clearDashesOnTwoJSShape(shapeData)
+                }
             }
             if (elementData) elementData.strokeType = dbValue
             updateComponentBulkPropertiesInLocalStore(id, {

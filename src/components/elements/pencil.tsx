@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { useImmer } from 'use-immer'
 
-import { strokeTypeToDashes } from '../../utils/misc'
+import { applyStrokeDashes } from '../../utils/strokeDashes'
 import getEditComponents from '../utils/editWrapper'
 import PencilFactory from '../../factory/pencil'
 import { readOpacity } from '../../utils/canvasUtils'
@@ -65,14 +65,13 @@ function Pencil(props: ElementProps): ReactElement {
             pathRef.current = shapeRef
             // Seed the stroke counter-scale from the current camera so a geo
             // stroke is legible before the first zoom event fires.
+            const initialScale = two?.scene?.scale || 1
             if (geoResist) {
-                const initialScale = two?.scene?.scale
-                if (initialScale) {
-                    shapeRef.linewidth =
-                        baseLinewidth *
-                        computeCounterScale(initialScale, resist)
-                }
+                shapeRef.linewidth =
+                    baseLinewidth * computeCounterScale(initialScale, resist)
             }
+            // Sized on screen from the width just set; see utils/strokeDashes.
+            applyStrokeDashes(shapeRef, props.strokeType, initialScale)
             getEditComponents(two, group, 4)
 
             if (path) {
@@ -137,13 +136,15 @@ function Pencil(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.x, props.y, props.fill, props.width, props.height])
 
+    // Only the stroke itself: dashing every group child also dashed the
+    // selection chrome getEditComponents adds to the group.
     useEffect(() => {
-        if (internalState?.group?.data) {
-            const dashes = strokeTypeToDashes(props.strokeType)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            internalState.group.data.children.forEach((child: any) => {
-                child.dashes = dashes
-            })
+        if (pathRef.current) {
+            applyStrokeDashes(
+                pathRef.current,
+                props.strokeType,
+                two?.scene?.scale || 1
+            )
             scheduleRender(two)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,6 +164,11 @@ function Pencil(props: ElementProps): ReactElement {
             // panel); fall back to the mount-time base.
             const base = group.elementData?.linewidth ?? baseLinewidth
             path.linewidth = base * computeCounterScale(scale, resist)
+            applyStrokeDashes(
+                path,
+                group.elementData?.strokeType ?? props.strokeType,
+                scale
+            )
             two.update()
         }
         window.addEventListener('zoomChanged', onZoom as EventListener)

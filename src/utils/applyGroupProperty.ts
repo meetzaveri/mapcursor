@@ -1,5 +1,7 @@
 import type { MutableRefObject } from 'react'
 import { strokeTypeToDashes, clearDashesOnTwoJSShape } from './misc'
+import { isStrokeScaled } from './counterScale'
+import { applyStrokeDashes } from './strokeDashes'
 import {
     applyShapeText,
     layoutStandaloneText,
@@ -128,6 +130,7 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
         'text',
         'text',
         'pencil',
+        'image',
     ]),
     // rectangle, diamond AND circle all carry text the same way (see
     // applyShapeText / the *-with-text components), so a group text edit
@@ -287,6 +290,21 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
             updateComponentBulkPropertiesInLocalStore(id, bulkObj, true)
         }
 
+        // A map stroke's dash pattern is sized on screen from its width
+        // (utils/strokeDashes), so it is re-derived on its STROKE path only —
+        // the first child, as the route/area factories and pencil.tsx place it.
+        // Not every leaf: the rest are vertex handles and selection chrome.
+        const cameraScale = twoJSInstance?.scene?.scale ?? 1
+        const redashStroke = (
+            node: ShapeLike,
+            strokeType: string | null | undefined
+        ): void => {
+            const leaf = node?.children?.[0]
+            if (leaf && typeof leaf.value !== 'string') {
+                applyStrokeDashes(leaf, strokeType, cameraScale)
+            }
+        }
+
         children.forEach((child) => {
             const type = child?.componentType
             if (!type || !acceptSet.has(type)) return
@@ -295,6 +313,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
 
             const sceneEl = findSceneElement(twoJSInstance, id)
             const coreObj = findVisibleCoreObject(selectedGroup, id)
+            const strokeScaled = isStrokeScaled(child)
 
             if (
                 propertyKey === 'fill' ||
@@ -335,6 +354,11 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     sceneEl.elementData[propertyKey] = value
                 child[propertyKey] = value
 
+                if (propertyKey === 'linewidth' && strokeScaled) {
+                    redashStroke(sceneEl, child.strokeType)
+                    redashStroke(coreObj, child.strokeType)
+                }
+
                 // A radius map reads as ONE mark: its stroke column follows
                 // its fill, from creation onward. Mirror it here too, or the
                 // same edit means two different things depending on whether
@@ -367,10 +391,15 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
 
             if (propertyKey === 'strokeType') {
                 const dbValue = value === 'solid' ? 'solid' : value
-                const dashes = strokeTypeToDashes(value)
-                const clearSolid = value === 'solid'
-                applyDashesToLeaves(sceneEl, dashes, clearSolid)
-                applyDashesToLeaves(coreObj, dashes, clearSolid)
+                if (strokeScaled) {
+                    redashStroke(sceneEl, value)
+                    redashStroke(coreObj, value)
+                } else {
+                    const dashes = strokeTypeToDashes(value)
+                    const clearSolid = value === 'solid'
+                    applyDashesToLeaves(sceneEl, dashes, clearSolid)
+                    applyDashesToLeaves(coreObj, dashes, clearSolid)
+                }
                 if (sceneEl?.elementData)
                     sceneEl.elementData.strokeType = dbValue
                 child.strokeType = dbValue

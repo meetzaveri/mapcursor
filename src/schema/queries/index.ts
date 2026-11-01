@@ -7,6 +7,12 @@ import type {
     GetComponentsForBaseQueryVariables,
     GetBaseComponentCountQuery,
     GetBaseComponentCountQueryVariables,
+    GetMetaValuesForObjectQuery,
+    GetMetaValuesForObjectQueryVariables,
+    GetMetaValuesForObjectsQuery,
+    GetMetaValuesForObjectsQueryVariables,
+    GetMetaValuesForBaseQuery,
+    GetMetaValuesForBaseQueryVariables,
 } from '../generated'
 
 export const GET_COMPONENT_TYPES: TypedDocumentNode<
@@ -63,6 +69,21 @@ export const GET_COMPONENTS_FOR_BASE_QUERY: TypedDocumentNode<
             position
             createdBy
         }
+        # The base's meta property DEFINITIONS (the "columns"). Small, and
+        # needed by the panel the instant an object is selected, so they ride
+        # this query like the legend. The per-object VALUES do not: they are
+        # fetched on selection by GET_META_VALUES_FOR_OBJECT.
+        metaProperties: meta_property(
+            where: { baseId: { _eq: $baseId } }
+            order_by: { position: asc }
+        ) {
+            id
+            baseId
+            name
+            type
+            position
+            createdBy
+        }
         components: components_component(
             where: { baseId: { _eq: $baseId } }
             order_by: { position: asc }
@@ -103,6 +124,74 @@ export const GET_BASE_COMPONENT_COUNT_QUERY: TypedDocumentNode<
             aggregate {
                 count
             }
+        }
+    }
+`
+
+/**
+ * One object's meta values, fetched when it is selected. `baseId` is in the
+ * filter as well as `objectId` so a value can only ever be read in the base it
+ * was written in, which is the same pairing the orphan sweep matches on.
+ */
+export const GET_META_VALUES_FOR_OBJECT: TypedDocumentNode<
+    GetMetaValuesForObjectQuery,
+    GetMetaValuesForObjectQueryVariables
+> = gql`
+    query getMetaValuesForObject($baseId: uuid!, $objectId: uuid!) {
+        metaValues: meta_propertyValue(
+            where: {
+                baseId: { _eq: $baseId }
+                objectId: { _eq: $objectId }
+            }
+        ) {
+            id
+            baseId
+            propertyId
+            objectId
+            objectType
+            value
+            createdBy
+        }
+    }
+`
+
+/** The values on a set of objects (paste copies them onto the new objects). */
+export const GET_META_VALUES_FOR_OBJECTS: TypedDocumentNode<
+    GetMetaValuesForObjectsQuery,
+    GetMetaValuesForObjectsQueryVariables
+> = gql`
+    query getMetaValuesForObjects($baseId: uuid!, $objectIds: [uuid!]!) {
+        metaValues: meta_propertyValue(
+            where: {
+                baseId: { _eq: $baseId }
+                objectId: { _in: $objectIds }
+            }
+        ) {
+            id
+            baseId
+            propertyId
+            objectId
+            objectType
+            value
+            createdBy
+        }
+    }
+`
+
+/** Every value on a base (JSON export of a shared base). */
+export const GET_META_VALUES_FOR_BASE: TypedDocumentNode<
+    GetMetaValuesForBaseQuery,
+    GetMetaValuesForBaseQueryVariables
+> = gql`
+    query getMetaValuesForBase($baseId: uuid!) {
+        metaValues: meta_propertyValue(where: { baseId: { _eq: $baseId } }) {
+            id
+            baseId
+            propertyId
+            objectId
+            objectType
+            value
+            createdBy
         }
     }
 `

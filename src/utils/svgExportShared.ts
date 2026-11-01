@@ -5,6 +5,7 @@
 // loaded fonts, so without embedding, canvas text falls back to a system font.
 
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
+import { blobToDataUrl } from './assetStore'
 import avenirUrl from '../assets/fonts/AvenirLTProBook.otf'
 import frutigerUrl from '../assets/fonts/Frutiger.woff'
 
@@ -53,6 +54,10 @@ export const SVG_NS = 'http://www.w3.org/2000/svg'
 // attributes, so a custom data-* attribute survives subsequent re-renders.
 export const SELECTION_CHROME_ATTR = 'data-mc-selection-chrome'
 
+// DOM marker on an image's loading placeholder (utils/imagePendingNode.ts).
+// Declared here, not there, because that module imports SVG_NS from this one.
+export const IMAGE_PENDING_ATTR = 'data-mc-image-pending'
+
 /**
  * Tag a Two.js overlay object's rendered SVG node as selection chrome so export
  * flows can strip it. No-op until the object has been rendered at least once
@@ -68,6 +73,35 @@ export function markSelectionChrome(twoObject: any): void {
 export function stripSelectionChrome(root: Element): void {
     root.querySelectorAll(`[${SELECTION_CHROME_ATTR}]`).forEach((n) =>
         n.remove()
+    )
+}
+
+/**
+ * Make image elements survive an export clone. Ported from craftbase's
+ * inlineImageHrefs.
+ *
+ * Images paint via `<image href="blob:...">` (utils/imageNode.ts). Blob URLs
+ * are tab-local, and an SVG rasterized through <img> can't load external
+ * resources at all, so each one is swapped for an inline data URL. Loading
+ * placeholders (utils/imagePendingNode.ts) are a spinner, not content, so they
+ * are dropped. Only `blob:` hrefs are touched: the map backdrop is injected as
+ * a data URL and is left alone. Failures leave the href as-is (that image just
+ * won't show); the rest of the export still succeeds.
+ */
+export async function prepareImagesForExport(root: Element): Promise<void> {
+    root.querySelectorAll(`[${IMAGE_PENDING_ATTR}]`).forEach((n) => n.remove())
+    const nodes = Array.from(root.querySelectorAll('image'))
+    await Promise.all(
+        nodes.map(async (node) => {
+            const href = node.getAttribute('href')
+            if (!href?.startsWith('blob:')) return
+            try {
+                const blob = await (await fetch(href)).blob()
+                node.setAttribute('href', await blobToDataUrl(blob))
+            } catch {
+                // Leave it; the rest of the export still succeeds.
+            }
+        })
     )
 }
 

@@ -1,4 +1,4 @@
-import { isLegendPresetType } from '../types/legend'
+import { LEGEND_TYPE_LABELS, isLegendPresetType } from '../types/legend'
 import type { LegendPresetType } from '../types/legend'
 import { readArmedPreset } from './armedLegendPreset'
 
@@ -50,4 +50,30 @@ export function readSelectedPresetTarget(
         boundId: elementData?.legendPresetId ?? null,
         isArmed: false,
     }
+}
+
+// Labels for selectable types that are not legend preset types, so a mismatch
+// message can still name what is selected.
+const OTHER_TYPE_LABELS: Record<string, string> = {
+    text: 'Text',
+    image: 'Image',
+    pencil: 'Pencil',
+}
+
+/**
+ * The selected mark's type and its display label, whatever the type. Null when
+ * nothing (or a group) is selected. Used to explain why a preset of another
+ * type cannot be applied.
+ */
+export function readSelectedTypeLabel(
+    selectedComponent: unknown
+): { componentType: string; label: string } | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const componentType = (selectedComponent as any)?.group?.data?.elementData
+        ?.componentType
+    if (typeof componentType !== 'string' || componentType === '') return null
+    const label = isLegendPresetType(componentType)
+        ? LEGEND_TYPE_LABELS[componentType]
+        : (OTHER_TYPE_LABELS[componentType] ?? componentType)
+    return { componentType, label }
 }

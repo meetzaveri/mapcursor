@@ -207,12 +207,19 @@ export default class Selector {
         this.area.linewidth = SELECTION_BOX_LINEWIDTH_PX / s
         if (this.showCircles && this.circle1) {
             // `base / s` is the local-unit radius that renders as `base` screen
-            // px. Cap at 3× base so circles don't obscure the bounding box at
-            // extreme zoom-out.
+            // px, so the dots are the same size on screen at every zoom — the
+            // same contract as canvas/selectionController.ts.
+            //
+            // Not capped. A `min(base / s, base * 3)` cap used to keep dots
+            // from covering a selection that is tiny on screen, but it binds
+            // whenever s < 1/3: map text with zoom resistance off has
+            // s = camera scale (~0.004 at z8), so its handles, their grab
+            // area and their outline all shrank to a fraction of a pixel and
+            // the text could not be resized. A grab dot that can't be seen or
+            // hit is worse than one that overlaps a small selection.
             const base = selectionHandleRadiusPx()
-            const radius = Math.min(base / s, base * 3)
-            const hitBase = selectionHandleHitRadiusPx()
-            const hitRadius = Math.min(hitBase / s, hitBase * 3)
+            const radius = base / s
+            const hitRadius = selectionHandleHitRadiusPx() / s
             ;[
                 this.hitCircle1,
                 this.hitCircle2,
@@ -221,10 +228,7 @@ export default class Selector {
             ].forEach((c: ShapeLike) => {
                 if (c) c.radius = hitRadius
             })
-            const linewidth = Math.min(
-                SELECTION_HANDLE_LINEWIDTH_PX / s,
-                SELECTION_HANDLE_LINEWIDTH_PX * 3
-            )
+            const linewidth = SELECTION_HANDLE_LINEWIDTH_PX / s
             this.circle1.radius = radius
             this.circle1.linewidth = linewidth
             this.circle2.radius = radius

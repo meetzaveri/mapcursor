@@ -150,6 +150,19 @@ async function pickChip(page, label) {
     await page.waitForTimeout(200)
 }
 
+/**
+ * Click a legend row's Edit or Delete. The actions are collapsed to zero
+ * width until the row is hovered or focused (legendPanel.tsx), so hover the
+ * row first, as a user would; Playwright won't click a zero-width button.
+ */
+async function clickRowAction(page, action, presetName) {
+    const button = page.getByRole('button', {
+        name: `${action} ${presetName}`,
+    })
+    await page.locator('li[data-preset-id]', { has: button }).hover()
+    await button.click()
+}
+
 test.describe('legend presets', () => {
     // --- Pure rules, asserted in Node ---------------------------------
 
@@ -250,9 +263,7 @@ test.describe('legend presets', () => {
         )
 
         // Re-open the preset from the legend and recolour it.
-        await page
-            .getByRole('button', { name: 'Edit Residential cluster' })
-            .click()
+        await clickRowAction(page, 'Edit', 'Residential cluster')
         const w = wizard(page)
         await w
             .locator('#legend-preset-name')
@@ -352,9 +363,7 @@ test.describe('legend presets', () => {
         await selectAt(page, box.x + 330, box.y + 250)
         await pickChip(page, 'Residential cluster')
 
-        await page
-            .getByRole('button', { name: 'Delete Residential cluster' })
-            .click()
+        await clickRowAction(page, 'Delete', 'Residential cluster')
 
         await expect
             .poll(async () => (await readAreas(page))[0].boundTo, {
@@ -512,9 +521,7 @@ test.describe('legend presets', () => {
         await clickToolbarButton(page, 'Area')
         await pickChip(page, 'Residential cluster')
 
-        await page
-            .getByRole('button', { name: 'Delete Residential cluster' })
-            .click()
+        await clickRowAction(page, 'Delete', 'Residential cluster')
         await page.waitForTimeout(300)
 
         // A stale armed id would reach the insert as a dangling FK.

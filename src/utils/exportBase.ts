@@ -1,7 +1,16 @@
 import type { ComponentStore } from '../types/base'
 import type { LegendPreset } from '../types/legend'
 import type { MapBackdropConfig } from '../baseTypes/types'
+import type { MetaPropertySet } from '../types/metaProperty'
+import { dropOrphanValues } from './metaPropertyStore'
 import { GROUP_COMPONENT } from '../constants/misc'
+import { exportImageAssets } from './assetStore'
+import {
+    collectAssetUses,
+    imageComponentSource,
+    metaSetSource,
+    usedAssetIds,
+} from './assetUses'
 import { version as appVersion } from '../../package.json'
 
 interface BaseViewport {
@@ -20,14 +29,19 @@ interface BaseViewport {
  * `metadata.geometry`, so `parseImportedBase` drops them by their own shape and
  * reports the count. Keep the version a MARKER, not a gate: a per-record check
  * fails softly and tells the user how many rows it skipped, where a version
- * check would reject a whole file that might be mostly importable.
+ * check would reject a whole file that might be mostly importable. 2.1 adds
+ * `assets`: image bytes live in IndexedDB, not in the records, so they are
+ * inlined (assetId → data URL) to keep the file self-contained. 2.1 also adds
+ * `metaProperties` ({ properties, values }); values whose object is not in the
+ * file are left out.
  */
-export function exportBaseAsJson(
+export async function exportBaseAsJson(
     componentStore: ComponentStore,
     viewport: BaseViewport,
     base?: MapBackdropConfig,
-    legendPresets: LegendPreset[] = []
-): void {
+    legendPresets: LegendPreset[] = [],
+    metaProperties?: MetaPropertySet
+): Promise<void> {
     // Same save-side filter as useLocalDraftPersistence.ts — drop transient
     // groups so they never leave the app.
     const components = Object.fromEntries(
@@ -36,8 +50,21 @@ export function exportBaseAsJson(
         )
     ) as ComponentStore
 
+    const meta = metaProperties
+        ? dropOrphanValues(metaProperties, new Set(Object.keys(components)))
+        : null
+    // The images THIS file references: its image elements and its meta
+    // values. Not localAssetSources, which scans every sidecar on the device
+    // and would put other canvases' photos into this file.
+    const uses =
+        collectAssetUses([
+            imageComponentSource(components),
+            ...(meta ? [metaSetSource(meta)] : []),
+        ]) ?? []
+    const assets = await exportImageAssets(usedAssetIds(uses))
+
     const payload = {
-        formatVersion: '2.0',
+        formatVersion: '2.1',
         app: 'mapcursor',
         appVersion,
         exportedAt: Date.now(),
@@ -50,6 +77,9 @@ export function exportBaseAsJson(
         // intact; a merge re-keys both sides together (see mergeImportedBase).
         legendPresets,
         components,
+        ...(meta &&
+            meta.properties.length > 0 && { metaProperties: meta }),
+        ...(Object.keys(assets).length > 0 && { assets }),
     }
     downloadJson(JSON.stringify(payload, null, 2))
 }

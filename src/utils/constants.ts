@@ -13,6 +13,7 @@ import PanIcon from '../assets/pan.svg?react'
 import PinIcon from '../wireframeAssets/pin.svg?react'
 import PolygonIcon from '../wireframeAssets/polygon.svg?react'
 import PolylineIcon from '../wireframeAssets/polyline.svg?react'
+import ImageIcon from '../wireframeAssets/image.svg?react'
 
 type SvgComponent = FunctionComponent<SVGProps<SVGSVGElement>>
 
@@ -243,6 +244,17 @@ export const staticPrimaryElementData: PrimarySection[] = [
                 elementIcon: TextIcon,
                 hasDrawer: false,
                 noAction: false,
+                drawerData: [],
+            },
+            {
+                // One-shot action, not a mode: opens the file picker and
+                // inserts the picked images at the viewport centre. Local
+                // canvases only (hidden on shared ones, see shapesToolbar).
+                elementName: 'image',
+                elementDisplayName: 'Image',
+                elementIcon: ImageIcon,
+                hasDrawer: false,
+                noAction: true,
                 drawerData: [],
             },
             {

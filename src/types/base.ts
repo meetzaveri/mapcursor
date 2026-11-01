@@ -10,6 +10,7 @@ import type { MapBackdropConfig, MapAnchor } from '../baseTypes/types'
 import type { ServerBaseConfig } from '../baseTypes/serverConfig'
 import type { LegendPreset } from './legend'
 import type { LegendPresetInput } from '../hooks/useLegendPresets'
+import type { UseMetaPropertiesApi } from '../hooks/useMetaProperties'
 
 // --- DB shape (mirrors CLAUDE.md "Component schema (from DB)") ----------
 
@@ -174,6 +175,8 @@ export interface BaseContextValue {
     clearBase: () => void
     /** Open the file picker → parse → new-vs-merge chooser flow (P0 import). */
     beginBaseImport: () => void
+    /** Show a short self-dismissing notice at the bottom of the canvas. */
+    showCanvasNotice: (message: string) => void
 
     // Two.js handles
     twoJSInstance: Two | null
@@ -262,6 +265,12 @@ export interface BaseContextValue {
     applyLegendPresetToSelection: (preset: LegendPreset | null) => void
     /** How many elements currently carry each preset, keyed by preset id. */
     legendPresetCounts: Record<string, number>
+
+    // --- Meta properties -------------------------------------------------
+    // Base-wide definitions and per-object values (hooks/useMetaProperties).
+    // Writes are gated on persistence inside the hook; consumers never branch
+    // on it. See .claude/context/meta-properties.md.
+    meta: UseMetaPropertiesApi
 
     // Z-order of the currently-selected element. Bridged up from newCanvas via
     // a ref (the implementation lives there alongside reconcileZOrder); a no-op

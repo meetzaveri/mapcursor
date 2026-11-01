@@ -60,6 +60,11 @@ interface ShapeAdapter {
     // does on a corner, permanently. Set for the circle, which is a proximity
     // radius and so has no oval state to be dragged into.
     lockAspect?: boolean
+    // The width/height to PERSIST at the end of a resize, when that differs
+    // from getLocalSize. getLocalSize/applySize speak surface units (what the
+    // box and the drag math use); a counter-scaled group stores its size in
+    // its own local units. Absent → getLocalSize is persisted.
+    storedSize?: (shape: ShapeLike) => { width: number; height: number }
 }
 
 // Font spec for a single standalone text line node.
@@ -120,6 +125,33 @@ const TEXT_ADAPTER: ShapeAdapter = {
     minHeight: 20,
 }
 
+// An image's group may counter-scale (IMAGE_RESIST is 0 by default, so its
+// scale is normally 1, but a per-record resist can change that), so its on-map size is the frame's local size × group.scale. The adapter
+// converts at the boundary: the box and the drag math stay in surface units,
+// and the record keeps the LOCAL size, which is zoom-independent. No zoom hook
+// is needed: image.tsx sets group.scale and renders, and every render re-runs
+// syncToTarget (bound to Two's 'update' in _bindExternal).
+const groupScaleOf = (shape: ShapeLike): number => {
+    const scale = shape?.parent?.scale
+    return typeof scale === 'number' && scale > 0 ? scale : 1
+}
+
+const IMAGE_ADAPTER: ShapeAdapter = {
+    getLocalSize: (shape) => {
+        const k = groupScaleOf(shape)
+        return { width: shape.width * k, height: shape.height * k }
+    },
+    applySize: (shape, width, height) => {
+        const k = groupScaleOf(shape)
+        shape.width = width / k
+        shape.height = height / k
+    },
+    storedSize: (shape) => ({ width: shape.width, height: shape.height }),
+    resizable: true,
+    minWidth: 20,
+    minHeight: 20,
+}
+
 // A circle is drawn centre-out as a radius (see isRadialDraw in newCanvas), so
 // it is round by construction — resize has to keep it that way or the mark
 // stops meaning "everything within this distance".
@@ -133,6 +165,7 @@ const SHAPE_ADAPTERS: Record<string, ShapeAdapter> = {
     circle: CIRCLE_ADAPTER,
     diamond: DEFAULT_ADAPTER,
     newText: TEXT_ADAPTER,
+    image: IMAGE_ADAPTER,
 }
 
 // Handle dot diameter in *screen* px. Constant at every zoom, and the same
@@ -276,7 +309,8 @@ export default class SelectionController {
 
     ui!: ShapeLike
     box!: ShapeLike
-    endpoints!: ShapeLike
+    /** The four corner grab dots, clockwise from top-left. */
+    handles: ShapeLike[] = []
 
     private _halfW = 0
     private _halfH = 0
@@ -326,21 +360,35 @@ export default class SelectionController {
         box.stroke = getSelectionStroke()
         box.linewidth = SELECTION_BOX_LINEWIDTH_PX
 
+        // One Two.Circle per corner, each placed by its own translation — NOT
+        // a Two.Points over box.vertices. Two.js's SVG renderer draws a point
+        // as `M x y a r r 0 1 0 0.001 0`: an arc ending 0.001 units from its
+        // start, in the box's local space. Chrome rasterises path data in
+        // float32, so once a corner sits ~33k+ units from the centre (any
+        // element placed while zoomed far out) the 0.001 rounds away, the arc's
+        // endpoints coincide, and per the SVG spec the arc is not drawn: the
+        // box showed with no grab dots. A circle's own path stays at its
+        // radius, and Two.Circle is drawn with curves, not that arc.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const endpoints = new (Two as any).Points(box.vertices)
-        endpoints.size = handleScreenPx()
-        endpoints.fill = SELECTION_HANDLE_FILL
-        // Fixed in both themes, unlike the box: a grab dot is indigo wherever it
-        // appears — route and area vertices, group corners, text, this box.
-        endpoints.stroke = HANDLE_STROKE
-        endpoints.linewidth = SELECTION_HANDLE_LINEWIDTH_PX
+        const handleLayer = new (Two as any).Group()
+        this.handles = [0, 1, 2, 3].map(() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const dot = new (Two as any).Circle(0, 0, handleScreenPx() / 2)
+            dot.fill = SELECTION_HANDLE_FILL
+            // Fixed in both themes, unlike the box: a grab dot is indigo
+            // wherever it appears — route and area vertices, group corners,
+            // text, this box.
+            dot.stroke = HANDLE_STROKE
+            dot.linewidth = SELECTION_HANDLE_LINEWIDTH_PX
+            handleLayer.add(dot)
+            return dot
+        })
 
-        ui.add(box, endpoints)
+        ui.add(box, handleLayer)
         this.two.add(ui)
 
         this.ui = ui
         this.box = box
-        this.endpoints = endpoints
     }
 
     private _bindExternal(): void {
@@ -514,15 +562,11 @@ export default class SelectionController {
 
         const scale = this.zui.scale || 1
         this.box.linewidth = SELECTION_BOX_LINEWIDTH_PX / scale
-        // Two.Points render with sizeAttenuation=false, so `size` is already a
-        // screen-px value (the renderer divides out the scene scale). Set it
-        // directly — no /scale — else the dots inflate when zoomed out.
-        this.endpoints.size = handleScreenPx()
-        // `linewidth` gets no such treatment from the renderer: it is a world
-        // unit like any other stroke, so it thickens as you zoom in unless it
-        // is counter-scaled here — which is why a map circle's ring used to
-        // stop matching a route's at anything but 100%.
-        this.endpoints.linewidth = SELECTION_HANDLE_LINEWIDTH_PX / scale
+        // The dots are world-space circles inside a scaled scene, so both their
+        // radius and their outline are counter-scaled to stay constant on
+        // screen at every zoom.
+        const radius = handleScreenPx() / 2 / scale
+        const dotLinewidth = SELECTION_HANDLE_LINEWIDTH_PX / scale
 
         const { width, height } = this.currentAdapter.getLocalSize(
             this.currentShape
@@ -546,6 +590,22 @@ export default class SelectionController {
 
         this._halfW = (width + pad * 2) / 2
         this._halfH = (height + pad * 2) / 2
+
+        // Corners from the half extents, not box.vertices: the Rectangle only
+        // rewrites its vertices on its next render, so they would lag a frame.
+        const corners: readonly [number, number][] = [
+            [-this._halfW, -this._halfH],
+            [this._halfW, -this._halfH],
+            [this._halfW, this._halfH],
+            [-this._halfW, this._halfH],
+        ]
+        this.handles.forEach((dot, i) => {
+            const corner = corners[i]
+            if (!corner) return
+            dot.translation.set(corner[0], corner[1])
+            dot.radius = radius
+            dot.linewidth = dotLinewidth
+        })
     }
 
     // ---------- Hit testing ----------
@@ -1118,9 +1178,10 @@ export default class SelectionController {
             componentId &&
             this.currentAdapter
         ) {
-            const { width, height } = this.currentAdapter.getLocalSize(
-                this.currentShape
-            )
+            const { width, height } = (
+                this.currentAdapter.storedSize ??
+                this.currentAdapter.getLocalSize
+            )(this.currentShape)
             const elementData = this.currentGroup?.elementData
             // Dragging a corner anchors the opposite one, so a resize can move
             // the origin. That move goes through the GEOMETRY — the x/y columns

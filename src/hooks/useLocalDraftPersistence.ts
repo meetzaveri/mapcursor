@@ -15,6 +15,12 @@ import {
     measureStoredDraftUtf8Bytes,
     MAX_DRAFT_UTF8_BYTES,
 } from '../utils/baseSizeGuard'
+import { localAssetSources, pruneUnusedAssets } from '../utils/assetUses'
+import {
+    dropOrphanValues,
+    readMetaLocal,
+    writeMetaLocal,
+} from '../utils/metaPropertyStore'
 
 export interface LocalDraftPersistenceOptions {
     isPersisted: boolean
@@ -77,6 +83,13 @@ export function useLocalDraftPersistence({
     // the page — so it's only parsed if the user explicitly hits "Open anyway".
     const deferredRawDraftRef = useRef<string | null>(null)
     const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // Has the store held any element this session? An EMPTY store is ambiguous:
+    // it is the first render before the draft is restored, and the state while
+    // an over-budget draft waits unparsed behind the rescue modal — in both of
+    // which the stored draft must be left alone — but it is also "the user
+    // deleted the last element", which must clear it. Only the last case comes
+    // after the store has held something.
+    const hasHadContentRef = useRef(false)
 
     // Restore draft and background base ID from localStorage on mount (local mode only)
     useEffect(() => {
@@ -88,6 +101,10 @@ export function useLocalDraftPersistence({
             setBackgroundBaseId(savedBgBaseId)
         }
 
+        // The store whose images survive cleanup below. Stays `{}` when there
+        // is no draft (nothing references anything), becomes null when the
+        // draft is deferred unparsed (unknown contents: delete nothing).
+        let storeForCleanup: ComponentStore | null = {}
         try {
             const draft = localStorage.getItem(DRAFT_STORAGE_KEY)
             if (draft) {
@@ -99,6 +116,7 @@ export function useLocalDraftPersistence({
                 if (isRawDraftOverBudget(draft)) {
                     deferredRawDraftRef.current = draft
                     setShowBaseTooLargeModal(true)
+                    storeForCleanup = null
                 } else {
                     const parsed = JSON.parse(draft) as PersistedDraft
                     const age = Date.now() - (parsed.timestamp ?? 0)
@@ -112,6 +130,7 @@ export function useLocalDraftPersistence({
                         if (Object.keys(safeComponents).length > 0) {
                             setComponentStore(safeComponents)
                         }
+                        storeForCleanup = safeComponents
                     } else {
                         localStorage.removeItem(DRAFT_STORAGE_KEY)
                         localStorage.removeItem(BACKGROUND_BASE_STORAGE_KEY)
@@ -123,13 +142,35 @@ export function useLocalDraftPersistence({
             localStorage.removeItem(BACKGROUND_BASE_STORAGE_KEY)
         }
 
+        if (storeForCleanup) {
+            // Meta values outlive a deleted object so undo can restore it with
+            // its values. Nothing can be undone across a load, so values whose
+            // object is gone are dropped here. Runs before the image cleanup,
+            // so a dropped image value frees its bytes in the same pass.
+            const meta = readMetaLocal(localBaseId)
+            const pruned = dropOrphanValues(
+                meta,
+                new Set(Object.keys(storeForCleanup))
+            )
+            if (pruned !== meta) writeMetaLocal(localBaseId, pruned)
+
+            // Image cleanup happens here, on load, and never on delete: undo
+            // has to be able to bring a deleted image back within the session.
+            void pruneUnusedAssets(localAssetSources(storeForCleanup))
+        }
+
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     // Save draft to localStorage on changes (debounced, local mode only)
     useEffect(() => {
         if (isPersisted) return
-        if (Object.keys(componentStore).length === 0) return
+        if (Object.keys(componentStore).length > 0) {
+            hasHadContentRef.current = true
+        }
+        // Nothing has been loaded or drawn yet: there is nothing to write, and
+        // clearing here would delete a draft that is still being restored.
+        if (!hasHadContentRef.current) return
 
         const writeDraft = (): void => {
             try {
@@ -139,7 +180,14 @@ export function useLocalDraftPersistence({
                         ([, v]) => v?.componentType !== GROUP_COMPONENT
                     )
                 ) as ComponentStore
-                if (Object.keys(componentsToSave).length === 0) return
+                // The canvas had content and now has none: the user deleted
+                // the last element. Clear the draft, or the next load restores
+                // what they just removed.
+                if (Object.keys(componentsToSave).length === 0) {
+                    localStorage.removeItem(DRAFT_STORAGE_KEY)
+                    setDraftSizeBytes(0)
+                    return
+                }
                 localStorage.setItem(
                     DRAFT_STORAGE_KEY,
                     JSON.stringify({

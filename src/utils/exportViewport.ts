@@ -10,7 +10,12 @@
 // access to document fonts), stamp a screen-space watermark, then draw the SVG
 // onto a <canvas> and download it as PNG.
 
-import { SVG_NS, embedFonts, stripSelectionChrome } from './svgExportShared'
+import {
+    SVG_NS,
+    embedFonts,
+    prepareImagesForExport,
+    stripSelectionChrome,
+} from './svgExportShared'
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 
 // Light-theme fallbacks, used only if the live computed style can't be read.
@@ -55,6 +60,7 @@ export async function downloadViewportAsImage(
 
     // Don't bake the on-screen selection box/handles into the exported image.
     stripSelectionChrome(clone)
+    await prepareImagesForExport(clone)
 
     // A base that paints its own backdrop (the map) hands back a raster of the
     // live view; anything else returns null and we fall through to painting the
