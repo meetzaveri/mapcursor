@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import routes from '../../routes'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 
-const LAST_UPDATED = 'November 1, 2026'
+const LAST_UPDATED = 'November 8, 2026'
 
 const ChevronLeft = (): ReactNode => (
     <svg
@@ -91,9 +91,10 @@ const PrivacyPage: React.FC = () => {
                         One thing to note about maps. Every canvas is drawn on a
                         map, so a canvas always has to open somewhere on Earth.
                         We ask your browser for your location only when you tap
-                        &ldquo;Use my current location&rdquo;, never
-                        automatically. And when you share a canvas, the
-                        coordinate it is pinned to becomes public along with it.
+                        &ldquo;Use my current location&rdquo; or &ldquo;Locate
+                        me&rdquo;, never automatically. And when you share a
+                        canvas, the coordinate it is pinned to and the view you
+                        were looking at become public along with it.
                     </p>
                 </div>
 
@@ -201,15 +202,20 @@ const PrivacyPage: React.FC = () => {
                         <strong>
                             Your device location, only when you ask for it.
                         </strong>{' '}
-                        The map has a &ldquo;Use my current location&rdquo;
-                        button. We ask your browser for your position only if
-                        you tap it, and your browser will ask you to approve
-                        that separately. We use the coordinate once, to decide
-                        where the map is pinned. After that we don't read your
-                        location again. You can decline and nothing breaks. You
-                        stay on the timezone view and can search for any place
-                        instead. There is no background tracking and no location
-                        history.
+                        Two buttons use it: &ldquo;Use my current
+                        location&rdquo; when a new map opens, and &ldquo;Locate
+                        me&rdquo; next to the zoom controls. We ask your browser
+                        for your position only when you tap one of them, and
+                        your browser asks you to approve that separately. Each
+                        tap reads your position once, at that moment, to move
+                        the map there. On an empty map that also pins the map
+                        to that spot. We don't read your location between taps.
+                        You can decline and nothing breaks. You stay where you
+                        are and can search for any place instead. If you have
+                        blocked location for Mapcursor, &ldquo;Locate me&rdquo;
+                        doesn't ask again; it tells you where to turn location
+                        back on in your browser's site settings. There is no
+                        background tracking and no location history.
                     </p>
                     <p>
                         <strong>Where that pin is stored.</strong> The pin is a
@@ -225,11 +231,12 @@ const PrivacyPage: React.FC = () => {
                         anchored to. The other is the view you were looking at
                         when you shared. Both are needed so that someone opening
                         your link sees your drawing at the right place on Earth.
-                        Now consider the case where that pin came from
-                        &ldquo;Use my current location&rdquo;. Sharing then
-                        publishes a coordinate derived from where you were. If
-                        you don't want that, search for a nearby place first and
-                        share from there.
+                        Now consider the case where you used &ldquo;Use my
+                        current location&rdquo; or &ldquo;Locate me&rdquo;.
+                        The pin, or the view you were looking at, may then be
+                        where you were, and sharing publishes it. If you don't
+                        want that, search for a nearby place or move the map
+                        away first, and share from there.
                     </p>
                     <p>
                         <strong>Services we don't run.</strong> A few outside
@@ -323,15 +330,18 @@ const PrivacyPage: React.FC = () => {
                         <li>
                             Background or continuous location tracking. We ask
                             for your location only when you tap &ldquo;Use my
-                            current location&rdquo;, and only at that moment. We
-                            don't follow you after that. See{' '}
+                            current location&rdquo; or &ldquo;Locate me&rdquo;,
+                            and only at that moment. We don't follow you after
+                            that. See{' '}
                             <em>Maps and location</em> above.
                         </li>
                         <li>Device fingerprints or cross-site trackers</li>
                         <li>
-                            Analytics of any kind. We run no analytics or
-                            tracking scripts at all. If that ever changes, this
-                            page will say so before it does.
+                            Advertising profiles, or analytics tied to you. The
+                            only analytics are the aggregate, cookie-free Umami
+                            stats described under <em>Analytics</em> above, and
+                            we never join them to your in-app identity. If that
+                            ever changes, this page will say so before it does.
                         </li>
                         <li>
                             The contents of canvases you keep in local mode and

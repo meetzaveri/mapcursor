@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { useBaseContext } from '../views/Base/baseContext'
 import ZoomInIcon from '../assets/zoom-in.svg?react'
 import ZoomOutIcon from '../assets/zoom-out.svg?react'
+import LocateMeButton from './locateMeButton'
 
 type ZuiWrapperLike = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,6 +96,16 @@ const ZoomControls = (): ReactElement => {
                     aria-label="Zoom in"
                 />
             </button>
+            {/* Locate me only makes sense over a map. */}
+            {mapAnchor && (
+                <>
+                    <span className="w-px h-5 bg-border-panel mx-0.5" />
+                    <LocateMeButton
+                        className="w-7 h-7 flex items-center justify-center rounded text-ink-muted hover:bg-sidebar hover:text-ink transition-colors duration-150 disabled:cursor-wait"
+                        iconClassName="w-5 h-5"
+                    />
+                </>
+            )}
         </div>
     )
 }
