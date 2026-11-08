@@ -45,8 +45,21 @@ type MapLibreMap = any
  * the provider. Attribution ships inside the style's TileJSON — both CARTO's and
  * OSM's — so `attributionControl` surfaces it without our help.
  */
-export const BASEMAP_STYLE_URL =
+const POSITRON_STYLE_URL =
     'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+
+/**
+ * The key goes on the style URL only: CARTO puts it on the tile, sprite and
+ * glyph URLs inside the style it returns, so MapLibre needs no
+ * `transformRequest`. It ships in the client bundle like every `VITE_` var, so
+ * it is public. Restricting it by domain is CARTO's job, not ours. Unset falls
+ * back to the keyless endpoint, so a build without the var still has a map.
+ */
+const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY
+
+export const BASEMAP_STYLE_URL = CARTO_API_KEY
+    ? `${POSITRON_STYLE_URL}?key=${encodeURIComponent(CARTO_API_KEY)}`
+    : POSITRON_STYLE_URL
 
 /**
  * Water, pushed back toward being water.
@@ -174,13 +187,16 @@ function syncMapToZui(handle: MapHandle, camera: CameraChangeEvent): void {
 // ── Roads, for snap-to-road route drawing ────────────────────────────────────
 
 /**
- * Below this map zoom the tileset carries only the arterial network — minor
- * roads, service roads and paths simply are not in the tile, so snapping would
- * drag a route onto a main road a kilometre away and look broken rather than
- * absent. Refusing outright, and letting the caller draw straight, is the
- * honest answer.
+ * Below this map zoom routes draw straight.
+ *
+ * Zoomed out, the tiles carry fewer roads (z8 is highways and main roads
+ * only), and that is fine: at city-to-region scale those are the roads a route
+ * is drawn along. Snapping used to stop at z12, partly for that reason and
+ * partly because coarse tiles left the network in pieces. roadSnap.ts now
+ * welds to the tile grid (`roadWeldMeters`), which holds together down to z8.
+ * Past that the view is state-wide and a route is a sketch, not a road trace.
  */
-export const MIN_ROAD_SNAP_ZOOM = 12
+export const MIN_ROAD_SNAP_ZOOM = 8
 
 /**
  * Cap on how much geometry one rebuild will take. A screenful of dense city at
@@ -258,6 +274,7 @@ function readRoadSnapshot(handle: MapHandle): RoadSnapshot | null {
         polylines,
         unitsPerMeter: surfaceUnitsPerMeter(anchor),
         mapZoom,
+        latitude: map.getCenter().lat,
     }
 }
 

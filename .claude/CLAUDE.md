@@ -157,8 +157,8 @@ Top-level page views/routes.
       `placeSearchModal.tsx`, `mobileDeleteButton.tsx`, `mobileTextControls.tsx`,
       `shareLinkPopup.tsx`, `shortcutsModal.tsx`, `userDetailsPopup.tsx`
 - **`legend/`** — the legend presets UI (panel, wizard, chips, preview)
-- **`metaProperties/`** — the meta properties panel (mid-right card on
-  desktop, sheet on mobile), its add-property wizard, value fields and
+- **`metaProperties/`** — the meta properties panel (card under the
+  legend on desktop, sheet on mobile), its add-property wizard, value fields and
   dialogs. Clicks inside it don't deselect the object: `utils/canvasChrome.ts`
 - **`modals/`** — standalone modals (import, size limit, storage limit,
   permission error, map start location)

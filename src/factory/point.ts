@@ -4,7 +4,11 @@ import {
     POINT_RADIUS,
     POINT_LABEL_GAP,
     POINT_COLOR,
+    POINT_BORDER_COLOR,
+    POINT_BORDER_WIDTH,
     POINT_LABEL_COLOR,
+    POINT_SHADOW_LAYERS,
+    POINT_SHADOW_OFFSET_Y,
     POINT_LABEL_FONT_SIZE,
     DEFAULT_TEXT_FONT_FAMILY,
 } from '../constants/misc'
@@ -37,6 +41,13 @@ type ShapeLike = any
  * selector out from under a selected point.
  */
 export const POINT_CHROME_FLAG = '__mcPointChrome'
+
+/**
+ * Set on the shadow discs drawn behind the pin. They come before the circle in
+ * the group, so anything looking for "the pin" has to skip them, the same way
+ * it skips selection chrome. See getPointCircle.
+ */
+export const POINT_SHADOW_FLAG = '__mcPointShadow'
 
 /**
  * The colour a point's circle should render in.
@@ -85,7 +96,7 @@ export function pointLabelOf(record: ShapeLike): string {
 
 /**
  * (Re)build a point's visual into `group`, in place: a fixed-radius filled
- * circle with its label set `POINT_LABEL_GAP` clear of the circle's edge,
+ * circle with a white ring, and its label set `POINT_LABEL_GAP` clear of the circle's edge,
  * left-aligned and vertically centred on the circle.
  *
  * Rebuilding in place (rather than remounting the component) is what lets a
@@ -112,9 +123,27 @@ export function buildPointVisual(
         group.remove(child)
     })
 
+    // Shadow first, so it paints behind the pin. Outermost (faintest) layer
+    // first, so each inner layer stacks on top.
+    const ringOuter = POINT_RADIUS + POINT_BORDER_WIDTH / 2
+    POINT_SHADOW_LAYERS.forEach(({ spread, alpha }) => {
+        const shadow = new (Two as ShapeLike).Circle(
+            0,
+            POINT_SHADOW_OFFSET_Y,
+            ringOuter + spread
+        )
+        shadow.fill = `rgba(0,0,0,${alpha})`
+        shadow.noStroke()
+        shadow[POINT_SHADOW_FLAG] = true
+        group.add(shadow)
+    })
+
     const circle = new (Two as ShapeLike).Circle(0, 0, POINT_RADIUS)
     circle.fill = color
-    circle.noStroke()
+    // Fixed white ring, not the user's colour. Recolouring writes `fill` only,
+    // so it survives. See POINT_BORDER_COLOR.
+    circle.stroke = POINT_BORDER_COLOR
+    circle.linewidth = POINT_BORDER_WIDTH
     group.add(circle)
 
     const family = opts.fontFamily || DEFAULT_TEXT_FONT_FAMILY
@@ -147,11 +176,16 @@ export function buildPointVisual(
  * Not a fixed index: a rebuild leaves any selection chrome in place and appends
  * the new circle and label after it, so the chrome ends up at index 0 and a
  * plain `children[0]` would hand a recolour the overlay instead of the pin.
+ * The shadow discs sit before the pin too, so they are skipped the same way.
  */
 export function getPointCircle(group: ShapeLike): ShapeLike | null {
     const children = group?.children ?? []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return children.find((c: any) => !c?.[POINT_CHROME_FLAG]) ?? null
+    return (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        children.find(
+            (c: any) => !c?.[POINT_CHROME_FLAG] && !c?.[POINT_SHADOW_FLAG]
+        ) ?? null
+    )
 }
 
 /** The label node of a built point group (for in-place text edits). */

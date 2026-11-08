@@ -10,7 +10,7 @@ import EraserIcon from '../wireframeAssets/eraser.svg?react'
 
 import PanIcon from '../assets/pan.svg?react'
 
-import PinIcon from '../wireframeAssets/pin.svg?react'
+import PointIcon from '../wireframeAssets/point.svg?react'
 import PolygonIcon from '../wireframeAssets/polygon.svg?react'
 import PolylineIcon from '../wireframeAssets/polyline.svg?react'
 import ImageIcon from '../wireframeAssets/image.svg?react'
@@ -194,7 +194,7 @@ export const staticPrimaryElementData: PrimarySection[] = [
             {
                 elementName: 'point',
                 elementDisplayName: 'Point',
-                elementIcon: PinIcon,
+                elementIcon: PointIcon,
                 hasDrawer: false,
                 noAction: false,
                 drawerData: [],

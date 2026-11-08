@@ -16,8 +16,10 @@ export interface RoadSnapshot {
     polylines: RoadPolyline[]
     /** From `surfaceUnitsPerMeter(anchor)` — real-world tolerances need it. */
     unitsPerMeter: number
-    /** Live map zoom, so the snapper can refuse when road detail isn't loaded. */
+    /** Live map zoom: the coarser the tiles, the wider the snapper's weld. */
     mapZoom: number
+    /** Latitude of the view, for converting tile steps to metres. */
+    latitude: number
 }
 
 export type RoadSource = () => RoadSnapshot | null
@@ -30,8 +32,7 @@ export function setRoadSource(fn: RoadSource | null): void {
 
 /**
  * Read the roads on screen. `null` whenever snapping cannot work — no map
- * mounted, tiles still loading, or zoomed out past the level where the
- * tileset carries minor roads at all.
+ * mounted, tiles still loading, or zoomed out past MIN_ROAD_SNAP_ZOOM.
  */
 export function readRoads(): RoadSnapshot | null {
     if (!source) return null

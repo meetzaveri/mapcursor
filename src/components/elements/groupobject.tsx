@@ -60,6 +60,7 @@ import {
     getGroupFill,
     layoutStandaloneText,
     readOpacity,
+    groupOpacityOf,
     focusSvgElement,
 } from '../../utils/canvasUtils'
 
@@ -165,7 +166,7 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         two.scene.children.forEach((element: ShapeLike) => {
             if (!element.elementData) return
             if (!childrenIds.includes(element.elementData.id)) return
-            element.opacity = readOpacity(element.elementData)
+            element.opacity = groupOpacityOf(element.elementData)
         })
     }
 
@@ -286,7 +287,7 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     foundOriginalCount++
                     // Reveal the (now position-synced) original: restore its own
                     // group-level opacity — it was hidden at 0 under the overlay.
-                    element.opacity = readOpacity(element.elementData)
+                    element.opacity = groupOpacityOf(element.elementData)
                 }
             })
             two.update()

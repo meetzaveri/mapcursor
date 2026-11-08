@@ -17,6 +17,7 @@ import {
     buildRoadGraph,
     chooseSnap,
     componentOf,
+    roadWeldMeters,
     routeAlongRoads,
 } from '../../src/utils/roadGraph.ts'
 
@@ -234,7 +235,7 @@ test.describe('connectivity', () => {
         { roadClass: 'path', points: [pt(84, -40), pt(84, 40)] },
         // The street network. Every crossing is a SHARED VERTEX, which is how
         // OSM models a junction and how it survives into the tiles — see the
-        // mid-segment test below for what happens when it is not.
+        // mid-segment tests below for what happens when it is not.
         ...GRID_XS.map((x) => ({
             roadClass: 'secondary',
             points: GRID_YS.map((y) => pt(x, y)),
@@ -300,14 +301,13 @@ test.describe('connectivity', () => {
         expect(route(g, onStreet, bound)).not.toBeNull()
     })
 
-    test('a side road meeting mid-segment does NOT connect — known limit', () => {
-        // Junctions are reconstructed by welding coincident VERTICES, not by
-        // intersecting segments. OSM shares a node at every crossing and the
-        // tiles preserve it, so this is rare in practice — but where a tileset
-        // simplifies one away, the two roads stay separate components and a
-        // route will decline to cross rather than cut the corner. Declining is
-        // the safe failure (the caller draws straight); silently connecting
-        // roads that do not meet would put a route through a flyover.
+    test('a side road ending mid-segment is joined onto the through road', () => {
+        // Tiles simplify each road separately, so a through road can lose the
+        // vertex a side road ends on, and a road clipped at a tile edge ends
+        // mid-segment on the next tile's copy. Measured on real CARTO tiles of
+        // Gandhinagar, this broke one ring road in 36 places at z12. A dead
+        // end lying on (or within the weld of) another segment is therefore
+        // joined there, splitting that segment.
         const g = buildRoadGraph(
             [
                 // Through road: no vertex at y = 0.
@@ -317,7 +317,68 @@ test.describe('connectivity', () => {
             ],
             UNITS
         )
+        expect(g.componentSizes.length).toBe(1)
+        const path = route(
+            g,
+            chooseSnap(g, pt(0, -80), { radius: 5 }),
+            chooseSnap(g, pt(150, 0), { radius: 5 })
+        )
+        expect(path).not.toBeNull()
+        // Down the through road to the junction, then along the side road.
+        expect(pathLength(path)).toBeCloseTo(80 + 150, 6)
+    })
+
+    test('joins a dead end that stops just short of the other road', () => {
+        // A metre short: inside the 1.5 m weld, the tile-quantisation slop.
+        const g = buildRoadGraph(
+            [
+                { roadClass: 'primary', points: [pt(0, -100), pt(0, 100)] },
+                { roadClass: 'residential', points: [pt(1, 0), pt(200, 0)] },
+            ],
+            UNITS
+        )
+        expect(g.componentSizes.length).toBe(1)
+    })
+
+    test('does NOT join a dead end that stops well short of a road', () => {
+        // Ten metres short is a cul-de-sac beside a main road, not a junction.
+        const g = buildRoadGraph(
+            [
+                { roadClass: 'primary', points: [pt(0, -100), pt(0, 100)] },
+                { roadClass: 'residential', points: [pt(10, 0), pt(200, 0)] },
+            ],
+            UNITS
+        )
         expect(g.componentSizes.length).toBe(2)
+    })
+
+    test('does NOT join a road that passes over another mid-segment', () => {
+        // A flyover crosses the street under it with no shared node and no
+        // dead end at the crossing. Only dead ends are joined, so the two stay
+        // apart and no route can drop off the bridge.
+        const g = buildRoadGraph(
+            [
+                { roadClass: 'primary', points: [pt(0, -100), pt(0, 100)] },
+                { roadClass: 'trunk', points: [pt(-100, 0), pt(100, 0)] },
+            ],
+            UNITS
+        )
+        expect(g.componentSizes.length).toBe(2)
+    })
+
+    test('the weld widens with the tile grid as the map zooms out', () => {
+        // Detailed tiles keep the 1.5 m floor; coarse ones get twice the
+        // 4096-step grid, so z8 tiles (≈ 35 m per step at this latitude) still
+        // reconstruct their junctions.
+        const LAT = 23.2
+        expect(roadWeldMeters(16, LAT)).toBe(1.5)
+        expect(roadWeldMeters(11.8, LAT)).toBeCloseTo(8.8, 1)
+        expect(roadWeldMeters(8, LAT)).toBeCloseTo(70.3, 1)
+        // Each zoom level out doubles it, once past the floor.
+        expect(roadWeldMeters(9, LAT) / roadWeldMeters(10, LAT)).toBeCloseTo(
+            2,
+            6
+        )
     })
 
     test('returns null when nothing in the required component is in reach', () => {

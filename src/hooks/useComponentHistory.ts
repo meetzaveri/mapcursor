@@ -32,6 +32,7 @@ import {
 } from '../factory/circleLabel'
 import {
     buildPointVisual,
+    getPointCircle,
     pointColorOf,
     pointFontFamilyOf,
     pointFontSizeOf,
@@ -183,7 +184,12 @@ function applyPropertyToTwoJSGroup(
     name: string,
     value: unknown
 ): void {
-    const shape = group.children?.[0]
+    // A point's pin is not children[0]: its shadow discs and any selection
+    // chrome come first. getPointCircle skips both.
+    const shape =
+        group.elementData?.componentType === 'point'
+            ? getPointCircle(group)
+            : group.children?.[0]
     if (!shape) return
 
     // Multiline text (standalone or shape-with-text) is a stack of Two.Text
@@ -219,7 +225,10 @@ function applyPropertyToTwoJSGroup(
             if (meta) meta.fill = value
             break
         case 'stroke':
-            shape.stroke = value
+            // A point's ring is a fixed white (POINT_BORDER_COLOR), and its
+            // stroke column mirrors its fill, so painting the column would
+            // replace the ring with the pin colour.
+            if (meta?.componentType !== 'point') shape.stroke = value
             if (meta) meta.stroke = value
             // An area's fill is a light shade of its stroke and is never
             // persisted, so reverting the stroke has to re-derive it — without

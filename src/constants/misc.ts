@@ -260,6 +260,28 @@ export const POINT_LABEL_GAP = 5
 export const POINT_COLOR = '#FF5630'
 export const POINT_LABEL_COLOR = '#000'
 
+// A white ring around every pin, so it separates from the basemap and from
+// other pins or ink of a similar colour. Fixed by design like the label, and
+// not stored on the record: a point's `stroke` column mirrors its fill (see
+// applyProperty), so it cannot also describe the ring. Width is in surface
+// units, and the stroke is centred on the circle's edge, so the pin's visual
+// radius is POINT_RADIUS + POINT_BORDER_WIDTH / 2.
+export const POINT_BORDER_COLOR = '#fff'
+export const POINT_BORDER_WIDTH = 2
+
+// A soft shadow under the ring, so a pin still separates from a pale basemap
+// at a distance, where the white ring alone blends into it. Drawn as stacked
+// translucent discs behind the pin (spread = how far past the ring's outer
+// edge, in surface units), not an SVG filter. Discs are plain geometry: they
+// survive every rebuild and both exports, and they scale with the pin.
+// Nudged down slightly so it reads as a shadow, not a halo.
+export const POINT_SHADOW_LAYERS: readonly { spread: number; alpha: number }[] =
+    [
+        { spread: 2.5, alpha: 0.08 },
+        { spread: 1.25, alpha: 0.16 },
+    ]
+export const POINT_SHADOW_OFFSET_Y = 0.75
+
 // The map circle's label ink — the DEFAULT, not a fixed value: unlike a point's
 // (a 10px pin whose name hangs outside it), a circle's label sits inside a
 // filled ring the user colours, so it needs its own control. Matches

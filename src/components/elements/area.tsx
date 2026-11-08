@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { useBaseContext } from '../../views/Base/baseContext'
 
 import AreaFactory from '../../factory/area'
+import { readOpacity } from '../../utils/canvasUtils'
 import { computeCounterScale, resolveResist } from '../../utils/counterScale'
 import { applyStrokeDashes } from '../../utils/strokeDashes'
 import {
@@ -77,11 +78,15 @@ function Area(props: ElementProps): ReactElement {
             const parentGroup = props.parentGroup
             path.translation.x = props.properties.x
             path.translation.y = props.properties.y
+            path.opacity = readOpacity(props)
             parentGroup.add(path)
             two.update()
         } else {
             groupRef.current = group
             shapeRef.current = path
+            // Group-level, like applyProperty: dims outline and fill together.
+            // The vertex handles in the group are opacity 0, so they stay hidden.
+            group.opacity = readOpacity(props)
 
             // Seed the stroke-width counter-scale from the current camera so the
             // border is legible before the first zoom event fires. Only linewidth

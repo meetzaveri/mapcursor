@@ -17,6 +17,7 @@ import {
     buildRoadGraph,
     chooseSnap,
     componentOf,
+    roadWeldMeters,
     routeAlongRoads,
     snapCandidates,
     type Pt,
@@ -111,6 +112,7 @@ function ensureGraph(): RoadGraph | null {
 
     graph = buildRoadGraph(snapshot.polylines, {
         unitsPerMeter: snapshot.unitsPerMeter,
+        weldMeters: roadWeldMeters(snapshot.mapZoom, snapshot.latitude),
     })
     builtAt = now
     return graph

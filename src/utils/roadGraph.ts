@@ -133,11 +133,37 @@ export interface BuildOptions {
      * route can cross; weld too loose and roads passing over each other on a
      * bridge fuse into a junction that does not exist. A metre and a half clears
      * the quantisation and stays well under any real road separation.
+     *
+     * That holds for detailed tiles only. Zoomed out, the tile grid is coarser
+     * (about 38 m per step at z8), so the caller passes a wider value — see
+     * `roadWeldMeters` below. It is also how far a dead end may be
+     * joined onto another road's segment (see `joinDeadEnds`).
      */
     weldMeters?: number
 }
 
 const DEFAULT_WELD_METERS = 1.5
+
+/**
+ * How close two road vertices (or a dead end and a road) must be to count as
+ * joined, for tiles read at `mapZoom`.
+ *
+ * Tile vertices sit on a 4096-step grid per tile, so the grid step in metres
+ * doubles with every zoom level out: about 0.5 m at z15, 4.4 m at z11, 38 m at
+ * z8. Two copies of one junction can disagree by a step or so, hence twice
+ * that, with DEFAULT_WELD_METERS as the floor for detailed tiles. Measured on
+ * Gandhinagar's ring road: a fixed 1.5 m left z8–z11 broken into pieces (no
+ * route at all), and this value let every zoom from z8 to z13 route round it.
+ * At z8 the 75 m it allows is a quarter of a screen pixel.
+ */
+export function roadWeldMeters(mapZoom: number, latitude: number): number {
+    const tileZoom = Math.max(0, Math.floor(mapZoom))
+    const stepMeters =
+        (40075016.686 * Math.cos((latitude * Math.PI) / 180)) /
+        2 ** tileZoom /
+        4096
+    return Math.max(DEFAULT_WELD_METERS, stepMeters * 2)
+}
 /** Spatial index cell, in metres. Roughly a city block. */
 const GRID_CELL_METERS = 80
 
@@ -218,6 +244,12 @@ export function buildRoadGraph(
         }
     }
 
+    joinDeadEnds(
+        { nodes, edgeA, edgeB, edgeLen, edgeClass, seenEdges },
+        weld,
+        cellSize
+    )
+
     const outEdges: number[][] = Array.from({ length: nodes.length }, () => [])
     const grid = new Map<string, number[]>()
     for (let e = 0; e < edgeA.length; e++) {
@@ -288,6 +320,167 @@ export function buildRoadGraph(
         nodeComponent,
         componentSizes,
         largestComponent,
+    }
+}
+
+interface EdgeLists {
+    nodes: Pt[]
+    edgeA: number[]
+    edgeB: number[]
+    edgeLen: number[]
+    edgeClass: string[]
+    seenEdges: Set<string>
+}
+
+/**
+ * Join each dead end that stops within `tolerance` of ANOTHER road's segment
+ * onto that segment, splitting it there.
+ *
+ * Vertex welding only finds a junction when both roads carry the shared vertex.
+ * Tiles break that in two ways. Simplification drops vertices per road, so at a
+ * T-junction the through road can lose the very vertex the side road ends on.
+ * And a road clipped at a tile edge ends wherever the clip cut it, which is
+ * mid-segment on the neighbouring tile's copy. Either way the end sits a few
+ * metres from the other road, not on one of its vertices, and the network
+ * splits there. Measured on Gandhinagar's outer ring road: 36 such breaks
+ * along one curve at z12 (all within 3 m) and 15 at z11 (within 7 m), enough
+ * to send every route through the city instead of round it.
+ *
+ * Only dead ends are joined, never two roads that merely pass close: a node
+ * with two or more edges is a road carrying on, and joining it is how a bridge
+ * would fuse with the street under it.
+ */
+function joinDeadEnds(
+    lists: EdgeLists,
+    tolerance: number,
+    cellSize: number
+): void {
+    const { nodes, edgeA, edgeB, edgeLen, edgeClass, seenEdges } = lists
+    if (tolerance <= 0 || edgeA.length === 0) return
+
+    const degree = new Array<number>(nodes.length).fill(0)
+    for (let e = 0; e < edgeA.length; e++) {
+        degree[edgeA[e]!]!++
+        degree[edgeB[e]!]!++
+    }
+
+    // A throwaway index over the edges as they stand, at the graph's own cell
+    // size: at least four tolerances wide, so one ring of neighbouring cells
+    // covers every reach, and block-sized, so an edge lands in one or two
+    // cells. Keys are numeric for speed. Two cells sharing a key only adds
+    // candidates, which the distance test then rejects.
+    const cell = Math.max(cellSize, tolerance, 1)
+    const key = (cx: number, cy: number): number => cx * 1_000_003 + cy
+    const index = new Map<number, number[]>()
+    const indexEdge = (e: number): void => {
+        const a = nodes[edgeA[e]!]!
+        const b = nodes[edgeB[e]!]!
+        const x0 = Math.floor(Math.min(a.x, b.x) / cell)
+        const x1 = Math.floor(Math.max(a.x, b.x) / cell)
+        const y0 = Math.floor(Math.min(a.y, b.y) / cell)
+        const y1 = Math.floor(Math.max(a.y, b.y) / cell)
+        for (let cx = x0; cx <= x1; cx++) {
+            for (let cy = y0; cy <= y1; cy++) {
+                const k = key(cx, cy)
+                const bucket = index.get(k)
+                if (bucket) bucket.push(e)
+                else index.set(k, [e])
+            }
+        }
+    }
+    for (let e = 0; e < edgeA.length; e++) indexEdge(e)
+
+    const addEdge = (a: number, b: number, roadClass: string): void => {
+        const key = a < b ? `${a}-${b}` : `${b}-${a}`
+        if (a === b || seenEdges.has(key)) return
+        seenEdges.add(key)
+        const pa = nodes[a]!
+        const pb = nodes[b]!
+        edgeA.push(a)
+        edgeB.push(b)
+        edgeLen.push(Math.hypot(pb.x - pa.x, pb.y - pa.y))
+        edgeClass.push(roadClass)
+        degree[a]!++
+        degree[b]!++
+        indexEdge(edgeA.length - 1)
+    }
+
+    // Which dead end last examined each edge, so an edge listed in several
+    // neighbouring cells is measured once. Cheaper than a Set per dead end.
+    const seenBy: number[] = []
+
+    const deadEnds: number[] = []
+    for (let n = 0; n < nodes.length; n++) if (degree[n] === 1) deadEnds.push(n)
+
+    for (const n of deadEnds) {
+        if (degree[n] !== 1) continue // already joined by an earlier split
+        const p = nodes[n]!
+        const cx = Math.floor(p.x / cell)
+        const cy = Math.floor(p.y / cell)
+
+        let best = -1
+        let bestT = 0
+        let bestDist = tolerance
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (const e of index.get(key(cx + dx, cy + dy)) ?? []) {
+                    if (seenBy[e] === n) continue
+                    seenBy[e] = n
+                    if (edgeA[e] === n || edgeB[e] === n) continue
+                    const a = nodes[edgeA[e]!]!
+                    const b = nodes[edgeB[e]!]!
+                    const vx = b.x - a.x
+                    const vy = b.y - a.y
+                    const len2 = vx * vx + vy * vy
+                    let t =
+                        len2 > 0
+                            ? ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2
+                            : 0
+                    t = Math.max(0, Math.min(1, t))
+                    const d = Math.hypot(
+                        p.x - (a.x + t * vx),
+                        p.y - (a.y + t * vy)
+                    )
+                    if (d <= bestDist) {
+                        best = e
+                        bestT = t
+                        bestDist = d
+                    }
+                }
+            }
+        }
+        if (best === -1) continue
+
+        const roadClass = edgeClass[best]!
+        const a = edgeA[best]!
+        const b = edgeB[best]!
+        const pa = nodes[a]!
+        const pb = nodes[b]!
+        const q = {
+            x: pa.x + bestT * (pb.x - pa.x),
+            y: pa.y + bestT * (pb.y - pa.y),
+        }
+        // Landing on (or within tolerance of) an existing vertex: just connect
+        // to it. Otherwise split the segment at the foot of the perpendicular.
+        let target: number
+        if (Math.hypot(q.x - pa.x, q.y - pa.y) <= tolerance) target = a
+        else if (Math.hypot(q.x - pb.x, q.y - pb.y) <= tolerance) target = b
+        else {
+            target = nodes.length
+            nodes.push(q)
+            degree.push(0)
+            // Reuse `best` for a→q and append q→b. The old key is dropped so a
+            // later identical a–b segment is not mistaken for this one.
+            seenEdges.delete(a < b ? `${a}-${b}` : `${b}-${a}`)
+            seenEdges.add(a < target ? `${a}-${target}` : `${target}-${a}`)
+            edgeB[best] = target
+            edgeLen[best] = Math.hypot(q.x - pa.x, q.y - pa.y)
+            degree[b]!--
+            degree[target]!++
+            indexEdge(best)
+            addEdge(target, b, roadClass)
+        }
+        addEdge(n, target, edgeClass[best]!)
     }
 }
 

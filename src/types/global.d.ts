@@ -10,6 +10,7 @@ interface ImportMetaEnv {
     readonly VITE_HASURA_ADMIN_SECRET: string
     readonly VITE_SENTRY_DSN?: string
     readonly VITE_GRAPHQL_ERROR_POLICY?: string
+    readonly VITE_CARTO_API_KEY?: string
     readonly MODE: string
 }
 

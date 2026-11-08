@@ -4,3 +4,4 @@ VITE_WS_GRAPHQL_ENDPOINT=ws://localhost:8080/v1/graphql
 VITE_GRAPHQL_ENDPOINT=http://localhost:8080/v1/graphql
 VITE_GRAPHQL_ERROR_POLICY=all
 MODE='local'
+VITE_CARTO_API_KEY=your_carto_basemaps_key
