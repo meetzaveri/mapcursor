@@ -266,9 +266,10 @@ points. Stripping stays consistent with image elements.
 - **When:** `useSelectedMetaObject` — exactly one selected point / route /
   area / radius map / geo-text (read from `selectedComponent`, like the
   properties toolbar). Hidden for groups, pencil, images and tool modes.
-- **Desktop:** a card at the middle of the right edge, same chrome as the
-  legend. `useMidRightPlacement` keeps it below the legend (a ResizeObserver
-  follows the legend collapsing or growing) and caps its height; it scrolls.
+- **Desktop:** a card on the right edge, tucked 8px under the legend (the
+  same gap the legend keeps under the place search), same chrome as the
+  legend. `useUnderLegendPlacement` follows the legend collapsing or growing
+  (a ResizeObserver) and caps the card's height; it scrolls.
 - **Mobile:** a button at the middle of the right edge (same style as the
   element-properties button) opens the same body in a sheet (Modal).
 - **List:** one row per property on the object, in property order. Click a

@@ -29,7 +29,7 @@ import {
 } from '../../utils/legendPresetTarget'
 
 /** Top of the panel: 8px margin + the 46px search shell + an 8px gap. */
-const PANEL_TOP = 62
+export const LEGEND_PANEL_TOP = 62
 const PANEL_WIDTH = 260
 
 export const LEGEND_PANEL_ID = 'mc-legend-panel'
@@ -323,7 +323,7 @@ export default function LegendPanel(): ReactElement | null {
                 id={LEGEND_PANEL_ID}
                 className="fixed"
                 style={{
-                    top: `${PANEL_TOP}px`,
+                    top: `${LEGEND_PANEL_TOP}px`,
                     // The screen's right edge, NOT the search field's. The
                     // panel used to take the measured offset that keeps the
                     // place search clear of the share button, which lined the

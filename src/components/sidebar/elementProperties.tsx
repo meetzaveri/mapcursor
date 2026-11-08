@@ -4,6 +4,7 @@ import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import ColorPicker from '../utils/colorPicker'
 import OpacitySlider from '../utils/opacitySlider'
+import { visibleSections } from './visibleSections'
 import {
     SectionLabel,
     StrokeTypeRow,
@@ -84,17 +85,17 @@ const SETS = {
     TEXT: ['textColor', 'textSize', 'textFont', 'zoomResist', 'opacity'],
     // Placed map objects: stroke-centric. Area's fill is auto-derived from its
     // stroke, so no fill control — but its outline still takes width/type like
-    // a route. A point is a filled circle plus a label whose colour is fixed by
+    // a route, and opacity dims the whole area (outline and fill together). A point is a filled circle plus a label whose colour is fixed by
     // design, so what is editable is the pin's fill and the label's size and
     // font. Both text controls run off the point's own ladder/record — see
     // applyProperty.
     POINT: ['fill', 'textSize', 'textFont'],
-    AREA: ['stroke', 'strokeWidth', 'strokeType'],
+    AREA: ['stroke', 'strokeWidth', 'strokeType', 'opacity'],
     ROUTE: ['stroke', 'strokeWidth', 'strokeType'],
     // A circle keeps fill (it is a filled mark, unlike an area whose fill is
-    // derived) but drops opacity — a circle is created half-transparent so the
-    // basemap reads through it, and that is the behaviour, not a knob. Omitting
-    // the section IS how the control is hidden, same as for point/area/route.
+    // derived) and opacity. It is created half-transparent so the basemap reads
+    // through it, and opacity changes how much shows through. It dims the disc
+    // only, never the label (see circle.tsx and applyProperty).
     //
     // It drops every STROKE control too, because a radius map is borderless:
     // the mark is the translucent disc, so an outline colour, a width and a
@@ -107,7 +108,7 @@ const SETS = {
     // Colour is a real control here, unlike a point's fixed ink: a point's
     // name hangs OUTSIDE a 10px pin, while a circle's sits inside a filled
     // disc the user colours, so black is not always readable.
-    CIRCLE: ['fill', 'textColor', 'textSize', 'textFont'],
+    CIRCLE: ['fill', 'textColor', 'textSize', 'textFont', 'opacity'],
     // Bitmap: nothing to stroke or fill, only dim. Ported from craftbase.
     IMAGE: ['opacity'],
     // GROUP: union of every property — toolbar shows them all when a group is
@@ -495,6 +496,7 @@ const ElementPropertiesToolbar = () => {
         selectedComponent,
         selectedGroup,
         currentElement,
+        componentStore,
         applyProperty,
         applyGroupProperty,
         reorderSelected,
@@ -607,7 +609,16 @@ const ElementPropertiesToolbar = () => {
     // fixed panel doesn't sit under it mid-interaction; it returns on release.
     if (isElementDragging) return null
 
-    const sections = SETS[setKey as keyof typeof SETS]
+    // Read the selection's row from the store, not elementData, so the panel
+    // updates when a circle's label is set or cleared. See visibleSections.
+    const selectedId: string | undefined =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (selectedComponent as any)?.group?.data?.elementData?.id
+    const sections = visibleSections(
+        setKey,
+        SETS[setKey as keyof typeof SETS],
+        selectedId ? componentStore?.[selectedId] : null
+    )
     // Reorder controls apply to an actually-selected element (single shape or
     // group). Hidden in pencil mode (armed pencil has no selection to reorder)
     // and in the default/armed-tool panels where nothing is selected yet.

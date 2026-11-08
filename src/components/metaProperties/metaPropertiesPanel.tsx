@@ -1,17 +1,11 @@
-import {
-    useCallback,
-    useEffect,
-    useLayoutEffect,
-    useRef,
-    useState,
-} from 'react'
-import type { ReactElement, RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import type { ReactElement } from 'react'
 
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import { RIGHT_MARGIN } from '../../hooks/useTopRightOffset'
 import Modal from '../common/modal'
-import { LEGEND_PANEL_ID } from '../legend/legendPanel'
+import { LEGEND_PANEL_ID, LEGEND_PANEL_TOP } from '../legend/legendPanel'
 import { META_PANEL_DIALOG_ATTR, META_PANEL_ID } from '../../utils/canvasChrome'
 import {
     META_OBJECT_LABELS,
@@ -30,35 +24,36 @@ import {
 } from './metaDialogs'
 import type { MetaProperty } from '../../types/metaProperty'
 
-// The meta properties panel: a floating card at the middle of the right edge,
-// shown while exactly one point / route / area / radius map / geo-text is
-// selected. Lists that object's properties (editable in place) and adds new
+// The meta properties panel: a floating card on the right edge, tucked under
+// the legend, shown while exactly one point / route / area / radius map /
+// geo-text is selected. Lists that object's properties (editable in place) and adds new
 // ones through a two-step wizard. On mobile the same body opens in a sheet
 // from a button in the right-edge column under Share (MobileSideActions).
 // See .claude/context/meta-properties.md.
 
 const PANEL_WIDTH = 260
+// The same 8px the legend keeps under the place search, so the right edge
+// stacks search → legend → meta at one rhythm.
 const GAP = 8
 // Room kept clear at the bottom for the help button and map attribution.
 const BOTTOM_CLEARANCE = 64
 
 /**
- * Vertically centred, but never over the legend (whose height changes as it
- * collapses or grows), and never past the bottom of the screen.
+ * Directly under the legend, one GAP below it, following it as it collapses or
+ * grows, and never past the bottom of the screen. With no legend on screen it
+ * takes the legend's own top, so it sits where the legend would.
  */
-function useMidRightPlacement(panelRef: RefObject<HTMLDivElement | null>): {
+function useUnderLegendPlacement(): {
     top: number
     maxHeight: number
 } {
     const [placement, setPlacement] = useState({ top: 120, maxHeight: 400 })
 
     const measure = useCallback((): void => {
-        const legendBottom =
-            document.getElementById(LEGEND_PANEL_ID)?.getBoundingClientRect()
-                .bottom ?? 0
-        const height = panelRef.current?.offsetHeight ?? 0
-        const centred = (window.innerHeight - height) / 2
-        const top = Math.max(centred, legendBottom + GAP, GAP)
+        const legendRect = document
+            .getElementById(LEGEND_PANEL_ID)
+            ?.getBoundingClientRect()
+        const top = legendRect ? legendRect.bottom + GAP : LEGEND_PANEL_TOP
         const maxHeight = Math.max(
             window.innerHeight - top - BOTTOM_CLEARANCE,
             160
@@ -66,20 +61,19 @@ function useMidRightPlacement(panelRef: RefObject<HTMLDivElement | null>): {
         setPlacement((p) =>
             p.top === top && p.maxHeight === maxHeight ? p : { top, maxHeight }
         )
-    }, [panelRef])
+    }, [])
 
     useLayoutEffect(() => {
         measure()
         const observer = new ResizeObserver(measure)
         const legend = document.getElementById(LEGEND_PANEL_ID)
         if (legend) observer.observe(legend)
-        if (panelRef.current) observer.observe(panelRef.current)
         window.addEventListener('resize', measure)
         return (): void => {
             observer.disconnect()
             window.removeEventListener('resize', measure)
         }
-    }, [measure, panelRef])
+    }, [measure])
 
     return placement
 }
@@ -249,12 +243,10 @@ function DesktopPanel({
 }: {
     target: SelectedMetaObject
 }): ReactElement {
-    const panelRef = useRef<HTMLDivElement | null>(null)
-    const { top, maxHeight } = useMidRightPlacement(panelRef)
+    const { top, maxHeight } = useUnderLegendPlacement()
     return (
         <div
             id={META_PANEL_ID}
-            ref={panelRef}
             className="fixed"
             style={{
                 top: `${top}px`,

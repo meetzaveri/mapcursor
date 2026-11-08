@@ -418,8 +418,12 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                 // overlay); we only normalise its leaf/text to 1 so the value
                 // reveal sets later is exact. The visible overlay copy is dimmed
                 // at its own group level so the user sees the change live.
+                //
+                // A radius map is the exception: its opacity lives on the
+                // disc (its leaf), and revealMembers restores its group to 1
+                // (groupOpacityOf), so the value is staged on the leaf here.
                 const sceneLeaf = sceneEl?.children?.[0]
-                if (sceneLeaf) sceneLeaf.opacity = 1
+                if (sceneLeaf) sceneLeaf.opacity = type === 'circle' ? value : 1
                 findTextNodesInside(sceneEl).forEach((t) => (t.opacity = 1))
                 if (coreObj) {
                     coreObj.opacity = value

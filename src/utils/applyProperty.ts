@@ -570,11 +570,18 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             // The group's own opacity always repaints, and it uniformly dims the
             // shape plus any embedded text-layer nodes in one shot.
             const groupObj = selectedComponent?.group?.data
-            if (groupObj) groupObj.opacity = value
+            if (isCircle) {
+                // A radius map dims its DISC only: a half-transparent label
+                // over a basemap is unreadable. Mirrors circle.tsx and the
+                // undo path in useComponentHistory. The disc is the leaf, so
+                // it gets the write and the group stays at 1.
+                if (groupObj) groupObj.opacity = 1
+                if (shapeData) shapeData.opacity = value
+            } else if (groupObj) groupObj.opacity = value
             // Neutralize any leaf/text opacity so it doesn't compound with the
             // group's (e.g. shapes mounted before this change carried leaf-level
             // opacity).
-            if (shapeData) shapeData.opacity = 1
+            if (shapeData && !isCircle) shapeData.opacity = 1
             getShapeTextNodes(selectedComponent?.group?.data).forEach(
                 (n) => (n.opacity = 1)
             )

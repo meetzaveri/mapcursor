@@ -84,6 +84,20 @@ export function readOpacity(
     return 1
 }
 
+/**
+ * The opacity an element's top-level GROUP should paint at. For most types
+ * that is the element's opacity. A radius map is the exception: its opacity
+ * lives on the disc (see circle.tsx), so its group stays at 1. Otherwise the
+ * label would dim and the disc would get the value twice (0.5 × 0.5).
+ */
+export function groupOpacityOf(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    record: any
+): number {
+    if (record?.componentType === 'circle') return 1
+    return readOpacity(record)
+}
+
 // Convert a mouse event's client coords to Two.js surface coords via ZUI.
 export function clientToSurface(
     zui: ZUILike,

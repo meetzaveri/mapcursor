@@ -9,6 +9,7 @@ import PointFactory, {
     pointFontSizeOf,
     pointLabelOf,
     POINT_CHROME_FLAG,
+    getPointCircle,
 } from '../../factory/point'
 import getEditComponents from '../utils/editWrapper'
 import { computeCounterScale, resolveResist } from '../../utils/counterScale'
@@ -214,7 +215,7 @@ function Point(props: ElementProps): ReactElement {
             // in a text field.
             if (isPanMode()) return
             const labelNode = getPointLabelNode(group)
-            const circleNode = group.children?.[0]
+            const circleNode = getPointCircle(group)
             const circleElem = circleNode?._renderer?.elem as
                 | SVGGraphicsElement
                 | undefined

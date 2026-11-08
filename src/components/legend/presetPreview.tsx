@@ -2,6 +2,13 @@ import type { ReactElement } from 'react'
 
 import { strokeToAreaFill, strokeTypeToDashes } from '../../utils/misc'
 import { presetStylePatch } from '../../types/legend'
+import {
+    POINT_BORDER_COLOR,
+    POINT_BORDER_WIDTH,
+    POINT_RADIUS,
+    POINT_SHADOW_LAYERS,
+    POINT_SHADOW_OFFSET_Y,
+} from '../../constants/misc'
 import type { LegendPreset, LegendPresetType } from '../../types/legend'
 
 // What a preset will look like on the map, drawn as plain SVG.
@@ -69,9 +76,29 @@ export default function PresetPreview({
     let mark: ReactElement
     switch (elementType) {
         case 'point':
-            // A pin: the filled disc the canvas draws, at the swatch's scale.
+            // The pin exactly as buildPointVisual draws it, from the same
+            // constants: shadow discs, then the disc with its white ring. At
+            // 1 surface unit per viewBox unit the shadow's 11.5 radius fits.
             mark = (
-                <circle cx={20} cy={20} r={8} fill={fill ?? stroke} stroke="none" />
+                <g>
+                    {POINT_SHADOW_LAYERS.map(({ spread, alpha }) => (
+                        <circle
+                            key={spread}
+                            cx={20}
+                            cy={20 + POINT_SHADOW_OFFSET_Y}
+                            r={POINT_RADIUS + POINT_BORDER_WIDTH / 2 + spread}
+                            fill={`rgba(0,0,0,${alpha})`}
+                        />
+                    ))}
+                    <circle
+                        cx={20}
+                        cy={20}
+                        r={POINT_RADIUS}
+                        fill={fill ?? stroke}
+                        stroke={POINT_BORDER_COLOR}
+                        strokeWidth={POINT_BORDER_WIDTH}
+                    />
+                </g>
             )
             break
         case 'area':
