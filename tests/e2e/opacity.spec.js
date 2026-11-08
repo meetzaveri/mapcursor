@@ -5,10 +5,11 @@
 // load-bearing rather than fussy — a default of 0 would make every later
 // element invisible with no way to see what you were editing.
 //
-// A circle omits the section entirely. It is created half-transparent so the
-// basemap reads through it, and that is the behaviour, not a knob — omitting
-// the section from its property set IS how the control is hidden, the same
-// mechanism used for point/area/route.
+// A circle (radius map) and an area carry the control too. A circle is created
+// half-transparent so the basemap reads through it, and its slider changes how
+// much; it dims the disc only, never its label (see map-circle.spec.js). A
+// point and a route omit the section: leaving it out of their property set IS
+// how the control is hidden.
 
 import { test, expect } from './helpers/test.js'
 import {
@@ -83,7 +84,7 @@ test.describe('opacity', () => {
             .toBeCloseTo(0.5, 1)
     })
 
-    test('a circle offers no opacity control', async ({ page }) => {
+    test('a circle offers an opacity control', async ({ page }) => {
         const box = await getCanvasBox(page)
         const circle = await drawShape(page, 'circle', {
             startX: box.x + 260,
@@ -98,10 +99,10 @@ test.describe('opacity', () => {
         // carries no stroke controls at all (see SETS.CIRCLE).
         await page.waitForSelector('#floating-toolbar [data-section="fill"]')
 
-        // Its own controls are there, but opacity is not one of them.
+        // Opacity is one of its controls, alongside fill.
         await expect(
             page.locator('#floating-toolbar #slider-main')
-        ).toHaveCount(0)
+        ).toHaveCount(1)
     })
 
     test('a circle is created half-transparent so the basemap reads through', async ({
