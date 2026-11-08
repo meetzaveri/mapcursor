@@ -8,11 +8,13 @@ import LegendPanelModal from '../legend/legendPanelModal'
 import { MobileMetaPropertiesButton } from '../metaProperties/metaPropertiesPanel'
 import { useSelectedMetaObject } from '../metaProperties/useSelectedMetaObject'
 import { SHARE_BUTTON_ID } from './shapesToolbarId'
+import LocateMeButton from '../locateMeButton'
 
-// Mobile only. While one element other than a pencil stroke is selected, a
-// column of buttons hangs under Share on the right edge: Legend (the same modal
-// the menu drawer opens), then the meta properties button when the element
-// takes meta properties. Everything shares Share's right edge.
+// Mobile only. A column of buttons hangs under Share on the right edge. Locate
+// me is always there (desktop has it in the zoom pill, which mobile hides).
+// While one element other than a pencil stroke is selected, Legend (the same
+// modal the menu drawer opens) follows, then the meta properties button when
+// the element takes meta properties. Everything shares Share's right edge.
 
 const GAP_PX = 8
 /** Where the column starts if Share can't be measured: its usual bottom + gap. */
@@ -51,15 +53,15 @@ const MobileSideActions = (): ReactElement | null => {
     const metaTarget = useSelectedMetaObject()
     const [showLegend, setShowLegend] = useState(false)
     const active = isMobile && hasSelection
-    const top = useBelowShareTop(active)
+    const top = useBelowShareTop(isMobile)
 
     // The modal stays mounted while open, so deselecting behind it can't
     // yank it away mid-edit.
-    if (!active && !showLegend) return null
+    if (!isMobile && !showLegend) return null
 
     return (
         <>
-            {active && (
+            {isMobile && (
                 <div
                     className="flex flex-col items-end"
                     style={{
@@ -70,17 +72,24 @@ const MobileSideActions = (): ReactElement | null => {
                         zIndex: 20,
                     }}
                 >
-                    <button
-                        type="button"
-                        aria-label="Legend"
-                        title="Legend"
-                        onClick={(): void => setShowLegend(true)}
+                    <LocateMeButton
                         className="w-10 h-10 rounded-lg flex items-center justify-center
-                            bg-accent-dark text-white"
-                    >
-                        <LegendIcon size={18} />
-                    </button>
-                    {metaTarget && (
+                            bg-card-bg text-ink border border-border-panel disabled:cursor-wait"
+                        iconClassName="w-5 h-5"
+                    />
+                    {active && (
+                        <button
+                            type="button"
+                            aria-label="Legend"
+                            title="Legend"
+                            onClick={(): void => setShowLegend(true)}
+                            className="w-10 h-10 rounded-lg flex items-center justify-center
+                                bg-accent-dark text-white"
+                        >
+                            <LegendIcon size={18} />
+                        </button>
+                    )}
+                    {active && metaTarget && (
                         <MobileMetaPropertiesButton target={metaTarget} />
                     )}
                 </div>

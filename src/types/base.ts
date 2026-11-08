@@ -175,8 +175,11 @@ export interface BaseContextValue {
     clearBase: () => void
     /** Open the file picker → parse → new-vs-merge chooser flow (P0 import). */
     beginBaseImport: () => void
-    /** Show a short self-dismissing notice at the bottom of the canvas. */
-    showCanvasNotice: (message: string) => void
+    /**
+     * Show a short self-dismissing notice at the bottom of the canvas. 4 s by
+     * default; pass longer for a notice that carries instructions.
+     */
+    showCanvasNotice: (message: string, durationMs?: number) => void
 
     // Two.js handles
     twoJSInstance: Two | null

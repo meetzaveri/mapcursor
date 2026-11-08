@@ -1,4 +1,5 @@
-// One-shot "where am I" lookup for the map base's start-location prompt.
+// One-shot "where am I" lookup, for the map base's start-location prompt and
+// the "Locate me" button (see hooks/useLocateMe.ts).
 //
 // Geolocation was deliberately removed from this app once before, for three
 // reasons recorded in `mapType.ts`: it prompted the user unbidden the instant
@@ -7,8 +8,9 @@
 // all three are now answered:
 //
 //   unbidden  — this is never called on mount. It runs from an explicit tap on
-//               "Use my current location", so the browser's own permission
-//               sheet arrives with context the user just asked for.
+//               "Use my current location" or "Locate me", so the browser's
+//               own permission sheet arrives with context the user just asked
+//               for.
 //   silent    — `getCurrentPosition` on some mobile browsers invokes NEITHER
 //               callback. The spec's own `timeout` option is not enough there,
 //               because that timer is part of the same call that never runs, so
@@ -51,7 +53,15 @@ const LOOKUP_TIMEOUT_MS = 12000
  * failed lookup is an ordinary answer here, not an exception. Resolves at most
  * once even if a late callback arrives after the backstop.
  */
-export function requestCurrentLocation(): Promise<GeolocationOutcome> {
+export function requestCurrentLocation({
+    maximumAgeMs = 5 * 60 * 1000,
+}: {
+    /**
+     * How old a cached fix may be. Five minutes is fine for picking a starting
+     * view; "Locate me" asks for a fresher one, since the user may have moved.
+     */
+    maximumAgeMs?: number
+} = {}): Promise<GeolocationOutcome> {
     return new Promise<GeolocationOutcome>((resolve) => {
         // `navigator.geolocation` exists but is inert on insecure origins, and
         // browsers differ on whether they reject or hang. Checking up front
@@ -114,8 +124,7 @@ export function requestCurrentLocation(): Promise<GeolocationOutcome> {
                 {
                     enableHighAccuracy: false,
                     timeout: LOOKUP_TIMEOUT_MS,
-                    // A recent fix is fine — this only picks a starting view.
-                    maximumAge: 5 * 60 * 1000,
+                    maximumAge: maximumAgeMs,
                 }
             )
         } catch (_) {

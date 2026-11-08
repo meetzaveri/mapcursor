@@ -352,9 +352,14 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     // Short self-dismissing notice at the bottom of the canvas (image drop
     // refusals, etc.).
     const [canvasNotice, setCanvasNotice] = useState<string | null>(null)
-    const showCanvasNotice = useCallback((message: string) => {
-        setCanvasNotice(message)
-    }, [])
+    const [canvasNoticeMs, setCanvasNoticeMs] = useState(4000)
+    const showCanvasNotice = useCallback(
+        (message: string, durationMs = 4000) => {
+            setCanvasNoticeMs(durationMs)
+            setCanvasNotice(message)
+        },
+        []
+    )
     const dismissCanvasNotice = useCallback(() => setCanvasNotice(null), [])
 
     const [lastAddedElement, setLastAddedElement] =
@@ -3083,7 +3088,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 open={canvasNotice !== null}
                 onClose={dismissCanvasNotice}
                 message={canvasNotice ?? ''}
-                duration={4000}
+                duration={canvasNoticeMs}
             />
             <Toast
                 open={showPerfWarning}
