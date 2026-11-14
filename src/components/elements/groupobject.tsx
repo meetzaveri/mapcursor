@@ -491,7 +491,10 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 // exactly `parseInt(store.x)` in world space.
                 coreObject.translation.x = parseInt(String(item.x))
                 coreObject.translation.y = parseInt(String(item.y))
-                coreObject.opacity = readOpacity(item)
+                // An area's opacity is already in the fill the factory painted
+                // (areaFillFor); on the group it would dim the border too.
+                coreObject.opacity =
+                    item.componentType === 'area' ? 1 : readOpacity(item)
 
                 // Standalone text: the factory makes ONE Two.Text from the raw
                 // content, but SVG collapses `\n` to a single line. Re-lay it out

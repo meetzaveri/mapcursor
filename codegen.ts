@@ -35,7 +35,6 @@ const config: CodegenConfig = {
     generates: {
         'src/schema/generated.ts': {
             plugins: [
-                'typescript',
                 'typescript-operations',
                 'typed-document-node',
             ],

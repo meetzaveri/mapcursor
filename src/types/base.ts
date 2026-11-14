@@ -88,6 +88,11 @@ export interface ComponentRecord {
     stroke: string | null
     linewidth: number | null
     strokeType: string | null
+    /**
+     * How an area's interior is painted: 'hachure' | 'cross-hatch', with
+     * null/absent meaning solid. Areas only; see utils/areaFill.ts.
+     */
+    fillType?: string | null
     textColor: string | null
     /**
      * Per-element opacity (0–1). A real column; `metadata.opacity` is the
@@ -294,6 +299,7 @@ export interface BaseContextValue {
     defaultStrokeColor: string
     defaultLinewidth: number
     defaultStrokeType: string | null
+    defaultFillType: string | null
     defaultOpacity: number
     defaultTextColor: string
     defaultTextSize: string

@@ -1,4 +1,5 @@
-import { strokeTypeToDashes, clearDashesOnTwoJSShape, strokeToAreaFill } from './misc'
+import { strokeTypeToDashes, clearDashesOnTwoJSShape } from './misc'
+import { areaFillFor } from './areaFill'
 import { computeCounterScale, isStrokeScaled, resolveResist } from './counterScale'
 import { applyStrokeDashes } from './strokeDashes'
 import { presetStylePatch } from '../types/legend'
@@ -17,7 +18,7 @@ import { getPointCircle } from '../factory/point'
 // Why it is not `applyPropertyToTwoJSGroup` either: that one paints
 // `shape.linewidth = value` raw and leaves an area's fill alone, neither of
 // which is right for a geo mark (see the two rules below). It covers every key
-// shallowly; this covers a preset's four keys properly.
+// shallowly; this covers a preset's keys properly.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
@@ -68,7 +69,12 @@ function paintPresetKey(
             shape.stroke = value
             if (elementData) elementData.stroke = value
             if (componentType === 'area') {
-                shape.fill = strokeToAreaFill(value as string)
+                shape.fill = areaFillFor(
+                    two,
+                    value as string,
+                    elementData?.fillType,
+                    elementData
+                )
             }
             break
         case 'linewidth':
@@ -101,6 +107,35 @@ function paintPresetKey(
                 if (!value || value === 'solid') clearDashesOnTwoJSShape(shape)
             }
             if (elementData) elementData.strokeType = value
+            break
+        case 'fillType':
+            // Painted from the element's stroke, which the preset's own
+            // `stroke` has already updated: the patch lists stroke first.
+            if (componentType === 'area') {
+                shape.fill = areaFillFor(
+                    two,
+                    elementData?.stroke,
+                    value,
+                    elementData
+                )
+                if (elementData) elementData.fillType = value
+            }
+            break
+        case 'opacity':
+            // An area's opacity is its fill's alpha; the border and the group
+            // stay at full strength (see areaFill.ts). Listed last in the
+            // patch, so stroke and fill type are already in place.
+            if (componentType === 'area') {
+                if (elementData) elementData.opacity = value
+                group.opacity = 1
+                shape.opacity = 1
+                shape.fill = areaFillFor(
+                    two,
+                    elementData?.stroke,
+                    elementData?.fillType,
+                    elementData
+                )
+            }
             break
         default:
             break

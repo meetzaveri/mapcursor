@@ -31,6 +31,7 @@ const COMPONENT_COLUMNS: Record<ComponentColumn, true> = {
     createdAt: true,
     createdBy: true,
     fill: true,
+    fillType: true,
     height: true,
     id: true,
     legendPresetId: true,

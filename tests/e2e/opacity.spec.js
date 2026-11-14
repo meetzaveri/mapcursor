@@ -5,11 +5,18 @@
 // load-bearing rather than fussy — a default of 0 would make every later
 // element invisible with no way to see what you were editing.
 //
-// A circle (radius map) and an area carry the control too. A circle is created
-// half-transparent so the basemap reads through it, and its slider changes how
-// much; it dims the disc only, never its label (see map-circle.spec.js). A
-// point and a route omit the section: leaving it out of their property set IS
-// how the control is hidden.
+// Only an area carries the control, and on an area it means the FILL's
+// opacity: the interior fades, the border always paints at full strength, and
+// at 100% the fill hides what is under it. An area with no value
+// of its own is a half-strength fill, as areas have always been drawn.
+//
+// A circle (radius map) is created half-transparent so the basemap reads
+// through it, and has no control to change that. A point and a route omit the
+// section too: leaving it out of their property set IS how the control is
+// hidden.
+//
+// Pencil, text and image have the control hidden for now. Their opacity paths
+// are kept (see SETS in elementProperties.tsx), so it is a list entry away.
 
 import { test, expect } from './helpers/test.js'
 import {
@@ -19,6 +26,7 @@ import {
     drawPencilStroke,
     clickPointerTool,
     getDraftComponents,
+    drawArea,
 } from './helpers/index.js'
 
 const recordsOf = async (page, type) => {
@@ -40,7 +48,7 @@ test.describe('opacity', () => {
         await setupLocalBase(page)
     })
 
-    test('a pencil stroke takes an opacity, and it persists', async ({ page }) => {
+    test('a pencil stroke offers no opacity control', async ({ page }) => {
         const box = await getCanvasBox(page)
         await drawPencilStroke(page, {
             startX: box.x + 250,
@@ -56,35 +64,14 @@ test.describe('opacity', () => {
                 new CustomEvent('selectComponent', { detail: { id } })
             )
         }, stroke.id)
-        // The section only renders for sets that declare it.
-        await page.waitForSelector('#floating-toolbar #slider-main')
-
-        // Drag the handle to the track's midpoint. The ranger snaps to a 0.1
-        // step over [0, 1], so the midpoint commits 0.5 — and the drag runs
-        // BOTH paths a user does: live preview on every move, commit on release.
-        await page
-            .locator('#floating-toolbar #slider-handle')
-            .scrollIntoViewIfNeeded()
-        const track = await page
-            .locator('#floating-toolbar #slider-main')
-            .boundingBox()
-        const knob = await page
-            .locator('#floating-toolbar #slider-handle')
-            .boundingBox()
-        const y = knob.y + knob.height / 2
-        await page.mouse.move(knob.x + knob.width / 2, y)
-        await page.mouse.down()
-        await page.mouse.move(track.x + track.width * 0.5, y, { steps: 12 })
-        await page.mouse.up()
-
-        await expect
-            .poll(async () => (await recordsOf(page, 'pencil'))[0]?.opacity, {
-                timeout: 10_000,
-            })
-            .toBeCloseTo(0.5, 1)
+        // Its panel is up, with its stroke controls and nothing to dim it by.
+        await page.waitForSelector('#floating-toolbar #stroke-width-section')
+        await expect(
+            page.locator('#floating-toolbar #slider-main')
+        ).toHaveCount(0)
     })
 
-    test('a circle offers an opacity control', async ({ page }) => {
+    test('a circle has no opacity control', async ({ page }) => {
         const box = await getCanvasBox(page)
         const circle = await drawShape(page, 'circle', {
             startX: box.x + 260,
@@ -99,10 +86,10 @@ test.describe('opacity', () => {
         // carries no stroke controls at all (see SETS.CIRCLE).
         await page.waitForSelector('#floating-toolbar [data-section="fill"]')
 
-        // Opacity is one of its controls, alongside fill.
+        // Its 50% is the mark, not a setting (see SETS.CIRCLE).
         await expect(
             page.locator('#floating-toolbar #slider-main')
-        ).toHaveCount(1)
+        ).toHaveCount(0)
     })
 
     test('a circle is created half-transparent so the basemap reads through', async ({
@@ -120,5 +107,70 @@ test.describe('opacity', () => {
                 timeout: 10_000,
             })
             .toBeCloseTo(0.5, 2)
+    })
+
+    test('an area\'s opacity is its fill\'s; the border stays at 100%', async ({
+        page,
+    }) => {
+        const box = await getCanvasBox(page)
+        const cx = box.x + box.width * 0.5
+        const cy = box.y + box.height * 0.6
+        await drawArea(page, [
+            { x: cx - 80, y: cy - 60 },
+            { x: cx + 80, y: cy - 60 },
+            { x: cx, y: cy + 60 },
+        ])
+        // Select it by clicking its top edge.
+        await clickPointerTool(page)
+        await page.mouse.click(cx - 40, cy - 59)
+        await page.waitForSelector('#floating-toolbar #slider-main')
+
+        // What the area paints: its group, its path and the path's fill.
+        const painted = () =>
+            page.evaluate(() => {
+                const g = Array.from(window.__mcTwo.scene.children).find(
+                    (c) => c?.elementData?.componentType === 'area'
+                )
+                const path = g?.children?.[0]
+                return {
+                    groupOpacity: g?.opacity,
+                    pathOpacity: path?.opacity,
+                    fill: String(path?.fill),
+                    stroke: String(path?.stroke),
+                }
+            })
+
+        // Created as the half-strength fill areas have always had.
+        const before = await painted()
+        expect(before.fill).toMatch(/,0\.5\)$/)
+
+        // Drag the knob past the end of the track: 100%.
+        await page
+            .locator('#floating-toolbar #slider-handle')
+            .scrollIntoViewIfNeeded()
+        const track = await page
+            .locator('#floating-toolbar #slider-main')
+            .boundingBox()
+        const knob = await page
+            .locator('#floating-toolbar #slider-handle')
+            .boundingBox()
+        const y = knob.y + knob.height / 2
+        await page.mouse.move(knob.x + knob.width / 2, y)
+        await page.mouse.down()
+        await page.mouse.move(track.x + track.width + 20, y, { steps: 12 })
+        await page.mouse.up()
+
+        await expect
+            .poll(async () => (await recordsOf(page, 'area'))[0]?.opacity, {
+                timeout: 10_000,
+            })
+            .toBe(1)
+        const after = await painted()
+        // A fully opaque interior: nothing behind it shows through.
+        expect(after.fill).toMatch(/,1\)$/)
+        // Nothing dims the whole area, so the border is untouched.
+        expect(after.groupOpacity).toBe(1)
+        expect(after.pathOpacity).toBe(1)
+        expect(after.stroke).toBe(before.stroke)
     })
 })

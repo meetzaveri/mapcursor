@@ -1,6 +1,7 @@
 import Main from './main'
 import Two from 'two.js'
-import { strokeTypeToDashes, strokeToAreaFill } from '../utils/misc'
+import { strokeTypeToDashes } from '../utils/misc'
+import { areaFillFor } from '../utils/areaFill'
 import { geometryPositions, readGeometry } from '../utils/geometry'
 import type { ComponentMetadata } from '../types/base'
 
@@ -8,6 +9,8 @@ export interface AreaProperties {
     stroke?: string
     linewidth?: number
     strokeType?: string | null
+    /** 'hachure' | 'cross-hatch'; null/absent is solid. See utils/areaFill.ts. */
+    fillType?: string | null
     /** `geometry` is a Polygon whose outer ring is in absolute surface coords. */
     metadata?: ComponentMetadata | null
 }
@@ -23,7 +26,7 @@ export default class AreaFactory extends Main<AreaProperties> {
         const two = this.two
         const prevX = this.x
         const prevY = this.y
-        const { stroke, linewidth, strokeType } = this.properties
+        const { stroke, linewidth, strokeType, fillType } = this.properties
 
         // `geometryPositions` hands back the ring OPEN. The stored ring repeats
         // its first position last, per RFC 7946, but the path below is built
@@ -39,8 +42,9 @@ export default class AreaFactory extends Main<AreaProperties> {
         const path = new (Two as ShapeLike).Path(anchors, true, false)
         const strokeColor = stroke || '#A32D2D'
         path.stroke = strokeColor
-        // Fill is always derived from stroke @ 0.7 — never persisted.
-        path.fill = strokeToAreaFill(strokeColor)
+        // Fill is always derived from the stroke colour, never persisted as a
+        // colour: a wash for solid, otherwise a hatch sized to this area.
+        path.fill = areaFillFor(two, strokeColor, fillType, this.properties)
         path.linewidth = linewidth ? linewidth : 2
         path.dashes = strokeTypeToDashes(strokeType)
 

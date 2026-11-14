@@ -459,3 +459,10 @@ export const DEFAULT_PREVIEW_OPACITY = 0.6
 export const LINE_HEIGHT_MULTIPLIER = 1.6
 export const PENCIL_DISTANCE_THROTTLE = 3
 export const DEFAULT_TEXT_SIZE = 36
+
+/**
+ * The legend panel was dragged to a new spot, or docked back in its corner.
+ * A move does not resize the panel, so the meta properties panel, which stacks
+ * under the docked legend, cannot learn of it from its ResizeObserver.
+ */
+export const LEGEND_PANEL_MOVED_EVENT = 'legendPanelMoved'

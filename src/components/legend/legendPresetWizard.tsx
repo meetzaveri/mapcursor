@@ -18,7 +18,18 @@ import type { ReactElement } from 'react'
 import Modal from '../common/modal'
 import Button from '../common/button'
 import ColorPicker from '../utils/colorPicker'
-import { StrokeTypeRow, StrokeWidthRow } from '../utils/strokeRows'
+import {
+    SectionLabel,
+    StrokeTypeRow,
+    StrokeWidthRow,
+} from '../utils/strokeRows'
+import { FillTypeRow } from '../utils/fillTypeRow'
+import OpacitySlider from '../utils/opacitySlider'
+import {
+    AREA_DEFAULT_OPACITY,
+    areaFillTypeToDb,
+    areaOpacityOf,
+} from '../../utils/areaFill'
 import { essentialShades } from '../../utils/constants'
 import PresetPreview from './presetPreview'
 import {
@@ -40,7 +51,13 @@ import type { LegendPresetInput } from '../../hooks/useLegendPresets'
  */
 const SEED_STYLE: Record<LegendPresetType, LegendPresetStyle> = {
     point: { fill: '#FF5630' },
-    area: { stroke: '#A32D2D', linewidth: 2, strokeType: null },
+    area: {
+        stroke: '#A32D2D',
+        linewidth: 2,
+        strokeType: null,
+        fillType: null,
+        opacity: AREA_DEFAULT_OPACITY,
+    },
     route: { stroke: '#3B82F6', linewidth: 3, strokeType: null },
     // A radius map is borderless, so its preset is a colour and nothing else —
     // it skips the stroke page entirely (see PRESET_STYLE_KEYS).
@@ -62,7 +79,7 @@ const NAME_PLACEHOLDER: Record<LegendPresetType, string> = {
     circle: 'e.g. Theft Hotspot',
 }
 
-type Page = 'type' | 'colour' | 'stroke' | 'review'
+type Page = 'type' | 'colour' | 'fill' | 'stroke' | 'review'
 
 /**
  * Which pages a type actually has. Derived from PRESET_STYLE_KEYS rather than
@@ -73,6 +90,9 @@ function pagesFor(type: LegendPresetType): Page[] {
     const keys = PRESET_STYLE_KEYS[type]
     const pages: Page[] = ['type']
     if (keys.includes('fill') || keys.includes('stroke')) pages.push('colour')
+    if (keys.includes('fillType') || keys.includes('opacity')) {
+        pages.push('fill')
+    }
     if (keys.includes('linewidth') || keys.includes('strokeType')) {
         pages.push('stroke')
     }
@@ -276,6 +296,45 @@ export default function LegendPresetWizard({
                             setStyle((s) => ({ ...s, [colourKey]: color }))
                         }
                     />
+                )}
+
+                {page === 'fill' && (
+                    <div className="-mx-2">
+                        <FillTypeRow
+                            value={style.fillType}
+                            onChange={(v): void =>
+                                setStyle((s) => ({
+                                    ...s,
+                                    // Solid is stored as null, as on the
+                                    // element itself.
+                                    fillType: areaFillTypeToDb(v),
+                                }))
+                            }
+                        />
+                        {/* The fill's opacity, as in the properties toolbar:
+                            the border stays at full strength. An older preset
+                            with none reads as the default it was drawn at. */}
+                        <div className="pt-3 px-2">
+                            <SectionLabel>Opacity</SectionLabel>
+                            <OpacitySlider
+                                currentOpacity={areaOpacityOf(style)}
+                                // Both update the draft, so the preview in
+                                // the corner follows the knob as it moves.
+                                handleOnDrag={(arr): void =>
+                                    setStyle((s) => ({
+                                        ...s,
+                                        opacity: arr[0],
+                                    }))
+                                }
+                                handleOnChange={(arr): void =>
+                                    setStyle((s) => ({
+                                        ...s,
+                                        opacity: arr[0],
+                                    }))
+                                }
+                            />
+                        </div>
+                    </div>
                 )}
 
                 {page === 'stroke' && (

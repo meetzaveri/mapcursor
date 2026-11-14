@@ -219,6 +219,7 @@ interface CanvasProps {
     componentStore: ComponentStore
     defaultLinewidth: number
     defaultStrokeType: string | null
+    defaultFillType: string | null
     defaultStrokeColor: string
     defaultTextSize: number
     onCameraChange?: (event: CameraChangeEvent) => void
@@ -296,6 +297,7 @@ let isPencilStrokeActive: boolean = false
 const PENCIL_DOT_SEGMENT = 0.5
 let defaultLinewidthValue: number = 1
 let defaultStrokeTypeValue: string | null = null
+let defaultFillTypeValue: string | null = null
 let defaultStrokeColorValue: string = PENCIL_DEFAULT_COLOR
 // Live default text size (px) for shape-with-text. Module-level + synced via
 // useEffect so the once-bound addZUI DOM handlers read the latest value
@@ -1131,6 +1133,10 @@ function addZUI(
                 SHAPE_DEFAULT_STROKE,
             linewidth: defaultLinewidthValue || geoDrawProps?.linewidth || 2,
             strokeType: defaultStrokeTypeValue,
+            // Only an area has an interior to fill. Solid is stored as null.
+            ...(type === 'area' && defaultFillTypeValue
+                ? { fillType: defaultFillTypeValue }
+                : {}),
             // An area is a closed ring (`polygonGeometry` adds the closing
             // position); a route is an open polyline. `geometryFields` derives
             // x/y from the first coordinate, which is the origin the factory
@@ -5306,6 +5312,10 @@ const Canvas: React.FC<CanvasProps> = (props) => {
     useEffect(() => {
         defaultStrokeTypeValue = props.defaultStrokeType || null
     }, [props.defaultStrokeType])
+
+    useEffect(() => {
+        defaultFillTypeValue = props.defaultFillType || null
+    }, [props.defaultFillType])
 
     useEffect(() => {
         defaultStrokeColorValue =

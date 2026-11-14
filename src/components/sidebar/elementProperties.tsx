@@ -10,6 +10,8 @@ import {
     StrokeTypeRow,
     StrokeWidthRow,
 } from '../utils/strokeRows'
+import { FillTypeRow } from '../utils/fillTypeRow'
+import { AREA_DEFAULT_OPACITY } from '../../utils/areaFill'
 import { PresetChipRow } from '../legend/presetChips'
 import Tooltip from '../common/tooltip'
 import ToggleSwitch from '../common/toggleSwitch'
@@ -78,24 +80,34 @@ const MOBILE_TABS: {
 ]
 
 // What sections each "set" should render, in display order.
+//
+// Opacity is offered on an AREA only, where it is the fill's (areaFill.ts).
+// Pencil, text, image and groups carry no opacity control for now. Only the
+// control is hidden: every apply, undo and render path for their opacity is
+// still in place, and a record that already has a value still paints at it,
+// so offering it again is adding 'opacity' back to these lists.
 const SETS = {
-    PENCIL: ['stroke', 'strokeWidth', 'strokeType', 'opacity'],
+    PENCIL: ['stroke', 'strokeWidth', 'strokeType'],
     // Text carries the zoom-resistance switch, which only text counter-scales
     // for — see resolveResist in utils/counterScale.ts.
-    TEXT: ['textColor', 'textSize', 'textFont', 'zoomResist', 'opacity'],
-    // Placed map objects: stroke-centric. Area's fill is auto-derived from its
-    // stroke, so no fill control — but its outline still takes width/type like
-    // a route, and opacity dims the whole area (outline and fill together). A point is a filled circle plus a label whose colour is fixed by
-    // design, so what is editable is the pin's fill and the label's size and
+    TEXT: ['textColor', 'textSize', 'textFont', 'zoomResist'],
+    // Placed map objects: stroke-centric. Area's fill COLOUR is auto-derived
+    // from its stroke, so no fill colour control. What it does take is a fill
+    // TYPE (solid / hachure / cross-hatch, see utils/areaFill.ts), and its
+    // outline takes width/type like a route. Opacity dims the FILL only: the
+    // border always paints at full strength, and at 100% the fill hides what
+    // is under it (see areaFill.ts). A point is a filled circle plus a label
+    // whose colour is fixed by design, so what is editable is the pin's fill and the label's size and
     // font. Both text controls run off the point's own ladder/record — see
     // applyProperty.
     POINT: ['fill', 'textSize', 'textFont'],
-    AREA: ['stroke', 'strokeWidth', 'strokeType', 'opacity'],
+    AREA: ['fillType', 'stroke', 'strokeWidth', 'strokeType', 'opacity'],
     ROUTE: ['stroke', 'strokeWidth', 'strokeType'],
     // A circle keeps fill (it is a filled mark, unlike an area whose fill is
-    // derived) and opacity. It is created half-transparent so the basemap reads
-    // through it, and opacity changes how much shows through. It dims the disc
-    // only, never the label (see circle.tsx and applyProperty).
+    // derived). It has no opacity control: it is created half-transparent
+    // (CIRCLE_DEFAULTS) so the basemap reads through it, and that is the mark.
+    // A circle whose record already carries another opacity still paints at
+    // it (circle.tsx); there is just no knob to move it.
     //
     // It drops every STROKE control too, because a radius map is borderless:
     // the mark is the translucent disc, so an outline colour, a width and a
@@ -108,9 +120,10 @@ const SETS = {
     // Colour is a real control here, unlike a point's fixed ink: a point's
     // name hangs OUTSIDE a 10px pin, while a circle's sits inside a filled
     // disc the user colours, so black is not always readable.
-    CIRCLE: ['fill', 'textColor', 'textSize', 'textFont', 'opacity'],
-    // Bitmap: nothing to stroke or fill, only dim. Ported from craftbase.
-    IMAGE: ['opacity'],
+    CIRCLE: ['fill', 'textColor', 'textSize', 'textFont'],
+    // Bitmap: nothing to stroke or fill. Its panel carries only the reorder
+    // controls while its opacity control is hidden (see above).
+    IMAGE: [],
     // GROUP: union of every property — toolbar shows them all when a group is
     // focused. applyGroupProperty silently skips children whose element type
     // doesn't accept a given property.
@@ -122,7 +135,6 @@ const SETS = {
         'textColor',
         'textSize',
         'textFont',
-        'opacity',
     ],
 }
 
@@ -247,7 +259,13 @@ function readEffectiveValues({
             stroke: defaults.defaultStrokeColor,
             linewidth: defaults.defaultLinewidth,
             strokeType: defaults.defaultStrokeType ?? 'solid',
-            opacity: defaults.defaultOpacity ?? 1,
+            fillType: defaults.defaultFillType ?? 'solid',
+            // Opacity is never a default (applyProperty), so this is what the
+            // next mark is drawn with: for an area, its half-strength fill.
+            opacity:
+                setKey === 'AREA'
+                    ? AREA_DEFAULT_OPACITY
+                    : (defaults.defaultOpacity ?? 1),
             textColor: defaults.defaultTextColor,
             textSize: defaults.defaultTextSize,
             textFontFamily: defaults.defaultTextFontFamily,
@@ -291,6 +309,7 @@ function readEffectiveValues({
         stroke: shapeData?.stroke ?? defaults.defaultStrokeColor,
         linewidth: shapeData?.linewidth ?? defaults.defaultLinewidth,
         strokeType: elementData?.strokeType ?? 'solid',
+        fillType: elementData?.fillType ?? 'solid',
         // Opacity lives in the top-level `opacity` field (legacy rows fall
         // back to properties.opacity).
         opacity: readOpacity(elementData),
@@ -507,6 +526,7 @@ const ElementPropertiesToolbar = () => {
         defaultStrokeColor,
         defaultLinewidth,
         defaultStrokeType,
+        defaultFillType,
         defaultOpacity,
         defaultTextColor,
         defaultTextSize,
@@ -539,6 +559,7 @@ const ElementPropertiesToolbar = () => {
         defaultStrokeColor,
         defaultLinewidth,
         defaultStrokeType,
+        defaultFillType,
         defaultOpacity,
         defaultTextColor,
         defaultTextSize,
@@ -597,6 +618,7 @@ const ElementPropertiesToolbar = () => {
         defaultStrokeColor,
         defaultLinewidth,
         defaultStrokeType,
+        defaultFillType,
         defaultOpacity,
         defaultTextColor,
         defaultTextSize,
@@ -662,29 +684,42 @@ const ElementPropertiesToolbar = () => {
     // width it belongs to. Now each palette sits at the head of the section it
     // edits. Mobile is the sharper case: a tab is a complete section, so the
     // stroke tab no longer sends you back to the colours tab mid-edit.
-    const fillGroup = sections.includes('fill') ? (
-        <div className="pb-2 border-b border-border-panel">
-            <div data-section="fill" className="pt-2 px-2">
-                <ColorPicker
-                    title="Fill"
-                    currentColor={values.fill}
-                    onChangeComplete={handle('fill')}
-                    isExpanded={expandedSection === 'fill'}
-                    onToggleExpand={() => toggleSection('fill')}
-                    // Map fills run dark; every other fill stays pastel. See
-                    // pointFillEssentialShades — the pastels are tuned to sit
-                    // behind text, and on CARTO Positron's pale greys they
-                    // disappear. A map circle is half-transparent on top of
-                    // that, so it needs the saturated row even more than a pin.
-                    essentialColors={
-                        setKey === 'POINT' || setKey === 'CIRCLE'
-                            ? pointFillEssentialShades
-                            : fillEssentialShades
-                    }
-                />
+    // An area's fill is a TYPE, not a colour, but it is still the fill: it sits
+    // in this group so mobile keeps it on the Fill tab.
+    const fillGroup =
+        sections.includes('fill') || sections.includes('fillType') ? (
+            <div className="pb-2 border-b border-border-panel">
+                {sections.includes('fillType') && (
+                    <div data-section="fillType">
+                        <FillTypeRow
+                            value={values.fillType}
+                            onChange={handle('fillType')}
+                        />
+                    </div>
+                )}
+                {sections.includes('fill') && (
+                    <div data-section="fill" className="pt-2 px-2">
+                        <ColorPicker
+                            title="Fill"
+                            currentColor={values.fill}
+                            onChangeComplete={handle('fill')}
+                            isExpanded={expandedSection === 'fill'}
+                            onToggleExpand={() => toggleSection('fill')}
+                            // Map fills run dark; every other fill stays pastel. See
+                            // pointFillEssentialShades — the pastels are tuned to sit
+                            // behind text, and on CARTO Positron's pale greys they
+                            // disappear. A map circle is half-transparent on top of
+                            // that, so it needs the saturated row even more than a pin.
+                            essentialColors={
+                                setKey === 'POINT' || setKey === 'CIRCLE'
+                                    ? pointFillEssentialShades
+                                    : fillEssentialShades
+                            }
+                        />
+                    </div>
+                )}
             </div>
-        </div>
-    ) : null
+        ) : null
 
     const strokeGroup =
         sections.includes('stroke') ||

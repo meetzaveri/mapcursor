@@ -522,6 +522,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         defaultStrokeColor,
         defaultLinewidth,
         defaultStrokeType,
+        defaultFillType,
         defaultOpacity,
         defaultTextColor,
         defaultTextSize,
@@ -531,6 +532,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setDefaultStrokeColor,
         setDefaultLinewidth,
         setDefaultStrokeType,
+        setDefaultFillType,
         setDefaultOpacity,
         setDefaultTextColor,
         setDefaultTextSize,
@@ -621,6 +623,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setShowPermissionErrorModal,
         setDefaultLinewidth,
         setDefaultStrokeType,
+        setDefaultFillType,
         selectedComponent,
         selectedGroupRef,
         stripTypename,
@@ -1717,6 +1720,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 if (val === undefined && key === 'legendPresetId') {
                     val = null
                 }
+                // An area drawn before fill types existed has no value; it
+                // painted solid, which is stored as null.
+                if (val === undefined && key === 'fillType') {
+                    val = null
+                }
                 if (val !== undefined) {
                     prevProps[key] = val
                 }
@@ -2648,6 +2656,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setDefaultStrokeColor,
         setDefaultLinewidth,
         setDefaultStrokeType,
+        setDefaultFillType,
         setDefaultOpacity,
         setDefaultTextColor,
         setDefaultTextSize: (value: string) =>
@@ -2679,6 +2688,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 let val = (current as any)?.[key]
                 if (val === undefined && key === 'legendPresetId') val = null
+                if (val === undefined && key === 'fillType') val = null
+                // Unset reads as the element's effective value (an area's is
+                // its half-strength fill), or undo would restore nothing.
+                if (val === undefined && key === 'opacity') {
+                    val = readOpacity(current)
+                }
                 if (val !== undefined) prev[key] = val
             })
             return prev
@@ -2897,6 +2912,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         defaultStrokeColor,
         defaultLinewidth,
         defaultStrokeType,
+        defaultFillType,
         defaultOpacity,
         defaultTextColor,
         defaultTextSize,
@@ -3019,6 +3035,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                         componentStore={componentStore}
                         defaultLinewidth={defaultLinewidth}
                         defaultStrokeType={defaultStrokeType}
+                        defaultFillType={defaultFillType}
                         defaultStrokeColor={defaultStrokeColor}
                         defaultTextSize={
                             (isMobile

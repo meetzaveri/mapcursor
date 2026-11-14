@@ -106,6 +106,7 @@ export const GET_COMPONENTS_FOR_BASE_QUERY: TypedDocumentNode<
             stroke
             linewidth
             strokeType
+            fillType
             textColor
             opacity
             position

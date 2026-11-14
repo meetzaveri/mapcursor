@@ -14,6 +14,7 @@ import {
     prepareImagesForExport,
     stripSelectionChrome,
 } from './svgExportShared'
+import { copyAreaFillPatterns } from './areaFill'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GroupLike = any
@@ -65,6 +66,9 @@ export async function exportSelectionAsSvg(group: GroupLike): Promise<void> {
     const wrapper = document.createElementNS(SVG_NS, 'g')
     wrapper.appendChild(clone)
     svg.appendChild(wrapper)
+    // A hatched area's fill points at a pattern in the canvas's own <defs>,
+    // which the cloned <g> does not carry.
+    copyAreaFillPatterns(clone, svg)
 
     // getBBox requires the node be laid out (in the DOM, not display:none).
     svg.setAttribute(

@@ -1,8 +1,4 @@
-import {
-    strokeTypeToDashes,
-    clearDashesOnTwoJSShape,
-    strokeToAreaFill,
-} from './misc'
+import { strokeTypeToDashes, clearDashesOnTwoJSShape } from './misc'
 import { getShapeTextNodes } from './canvasUtils'
 import { getPointCircle, getPointLabelNode } from '../factory/point'
 import { POINT_LABEL_SIZES } from '../constants/misc'
@@ -11,6 +7,7 @@ import { readProperties, setProperties } from './geometry'
 import { lineHeightFor } from './textLayout'
 import { rescaleTextSizeForResist } from './textResistToggle'
 import { applyStrokeDashes } from './strokeDashes'
+import { areaFillFor, areaFillTypeToDb } from './areaFill'
 import { LEGEND_STYLE_KEYS } from '../types/legend'
 import {
     TEXT_RESIST_CHANGED_EVENT,
@@ -48,6 +45,7 @@ type PropertyKey =
     | 'stroke'
     | 'linewidth'
     | 'strokeType'
+    | 'fillType'
     | 'opacity'
     | 'textColor'
     | 'textSize'
@@ -73,6 +71,7 @@ export interface ApplyPropertyDeps {
     setDefaultStrokeColor: (value: string) => void
     setDefaultLinewidth: (value: number) => void
     setDefaultStrokeType: (value: string | null) => void
+    setDefaultFillType: (value: string | null) => void
     setDefaultOpacity: (value: number) => void
     setDefaultTextColor: (value: string) => void
     setDefaultTextSize: (value: string) => void
@@ -114,6 +113,7 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             setDefaultStrokeColor,
             setDefaultLinewidth,
             setDefaultStrokeType,
+            setDefaultFillType,
             setDefaultTextColor,
             setDefaultTextSize,
             setDefaultTextFontFamily,
@@ -179,6 +179,8 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             else if (propertyKey === 'linewidth') setDefaultLinewidth(value)
             else if (propertyKey === 'strokeType')
                 setDefaultStrokeType(value === 'solid' ? null : value)
+            else if (propertyKey === 'fillType')
+                setDefaultFillType(areaFillTypeToDb(value))
             else if (propertyKey === 'textColor') setDefaultTextColor(value)
             else if (propertyKey === 'textSize') setDefaultTextSize(value)
             else if (propertyKey === 'textFontFamily')
@@ -511,7 +513,12 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             // Area fill is a light shade of its stroke — re-derive on the
             // Two.js path only; fill is never persisted for geo objects.
             if (elementType === 'area' && shapeData) {
-                shapeData.fill = strokeToAreaFill(value)
+                shapeData.fill = areaFillFor(
+                    twoJSInstance,
+                    value,
+                    elementData?.fillType,
+                    elementData
+                )
             }
             updateComponentBulkPropertiesInLocalStore(id, { stroke: value })
         } else if (propertyKey === 'linewidth') {
@@ -561,6 +568,21 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             updateComponentBulkPropertiesInLocalStore(id, {
                 strokeType: dbValue,
             })
+        } else if (propertyKey === 'fillType') {
+            // Only an area has an interior to hatch. Stored as null for solid,
+            // like the default, so the column only carries a real choice.
+            if (elementType !== 'area') return
+            const dbValue = areaFillTypeToDb(value)
+            if (shapeData) {
+                shapeData.fill = areaFillFor(
+                    twoJSInstance,
+                    elementData?.stroke ?? shapeData.stroke,
+                    dbValue,
+                    elementData
+                )
+            }
+            if (elementData) elementData.fillType = dbValue
+            updateComponentBulkPropertiesInLocalStore(id, { fillType: dbValue })
         } else if (propertyKey === 'opacity') {
             // Apply opacity at the GROUP level, not the shape leaf. The leaf
             // path is double-referenced in group.children (the *-with-text
@@ -570,7 +592,23 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             // The group's own opacity always repaints, and it uniformly dims the
             // shape plus any embedded text-layer nodes in one shot.
             const groupObj = selectedComponent?.group?.data
-            if (isCircle) {
+            if (elementType === 'area') {
+                // An area dims its FILL only: the value goes into the fill
+                // colour's alpha (areaFillFor), and the border keeps painting
+                // at full strength. Group and leaf stay at 1. Live while
+                // dragging too: the fill is repainted from the dragged value,
+                // not from the record, which only takes it on release.
+                if (groupObj) groupObj.opacity = 1
+                if (shapeData) {
+                    shapeData.opacity = 1
+                    shapeData.fill = areaFillFor(
+                        twoJSInstance,
+                        elementData?.stroke ?? shapeData.stroke,
+                        elementData?.fillType,
+                        { ...elementData, opacity: value }
+                    )
+                }
+            } else if (isCircle) {
                 // A radius map dims its DISC only: a half-transparent label
                 // over a basemap is unreadable. Mirrors circle.tsx and the
                 // undo path in useComponentHistory. The disc is the leaf, so
@@ -581,7 +619,9 @@ export function createApplyProperty(deps: ApplyPropertyDeps) {
             // Neutralize any leaf/text opacity so it doesn't compound with the
             // group's (e.g. shapes mounted before this change carried leaf-level
             // opacity).
-            if (shapeData && !isCircle) shapeData.opacity = 1
+            if (shapeData && !isCircle && elementType !== 'area') {
+                shapeData.opacity = 1
+            }
             getShapeTextNodes(selectedComponent?.group?.data).forEach(
                 (n) => (n.opacity = 1)
             )

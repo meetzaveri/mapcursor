@@ -91,3 +91,109 @@ describe('applyPresetToElement', () => {
         )
     })
 })
+
+describe('area fill type in a preset', () => {
+    const areaPreset = (
+        fillType?: string | null,
+        opacity?: number
+    ): LegendPreset => ({
+        id: 'p-area',
+        baseId: null,
+        name: 'Flood zone',
+        elementType: 'area',
+        style: {
+            stroke: '#3B82F6',
+            linewidth: 2,
+            strokeType: null,
+            ...(fillType !== undefined ? { fillType } : {}),
+            ...(opacity !== undefined ? { opacity } : {}),
+        },
+        position: 0,
+    })
+
+    it('writes the fill type and marks the element with it', () => {
+        const path = { fill: '', stroke: '#A32D2D', linewidth: 2 }
+        const group = makeGroup('a-1', 'area', [path])
+        const { deps, write } = makeDeps(group)
+
+        applyPresetToElement(deps, 'a-1', areaPreset('hachure'))
+
+        expect(write).toHaveBeenCalledWith(
+            'a-1',
+            expect.objectContaining({
+                fillType: 'hachure',
+                legendPresetId: 'p-area',
+            }),
+            false
+        )
+        expect(
+            (group.elementData as Record<string, unknown>).fillType
+        ).toBe('hachure')
+    })
+
+    // A preset saved before fill types existed was drawn solid. Applying it
+    // must say so, or a hand-hatched area would stay hatched under a solid
+    // legend swatch.
+    it('reads a preset with no fill type as solid', () => {
+        const path = { fill: '', stroke: '#A32D2D', linewidth: 2 }
+        const group = makeGroup('a-2', 'area', [path])
+        const { deps, write } = makeDeps(group)
+
+        applyPresetToElement(deps, 'a-2', areaPreset())
+
+        expect(write).toHaveBeenCalledWith(
+            'a-2',
+            expect.objectContaining({ fillType: null }),
+            false
+        )
+    })
+
+    it('never hands a fill type to a route', () => {
+        const path = { fill: 'none', stroke: '#A32D2D', linewidth: 2 }
+        const group = makeGroup('r-1', 'route', [path])
+        const { deps, write } = makeDeps(group)
+
+        applyPresetToElement(deps, 'r-1', {
+            ...areaPreset('hachure'),
+            elementType: 'route',
+        })
+
+        expect(write.mock.calls[0]?.[1]).not.toHaveProperty('fillType')
+        expect(path.fill).toBe('none')
+    })
+
+    // Opacity is the FILL's: it lands in the fill colour's alpha, and nothing
+    // dims the group or the path, so the border stays at full strength.
+    it('paints its opacity into the fill, never the border', () => {
+        const path = { fill: '', stroke: '#A32D2D', linewidth: 2, opacity: 1 }
+        const group = makeGroup('a-3', 'area', [path])
+        const { deps, write } = makeDeps(group)
+
+        applyPresetToElement(deps, 'a-3', areaPreset(null, 1))
+
+        expect(write).toHaveBeenCalledWith(
+            'a-3',
+            expect.objectContaining({ opacity: 1 }),
+            false
+        )
+        // No renderer in a unit test, so solid is the plain rgba wash.
+        expect(path.fill).toBe('rgba(59,130,246,1)')
+        expect(path.opacity).toBe(1)
+        expect((group as Record<string, unknown>).opacity).toBe(1)
+    })
+
+    it('reads a preset with no opacity as the half-strength default', () => {
+        const path = { fill: '', stroke: '#A32D2D', linewidth: 2 }
+        const group = makeGroup('a-4', 'area', [path])
+        const { deps, write } = makeDeps(group)
+
+        applyPresetToElement(deps, 'a-4', areaPreset(null))
+
+        expect(write).toHaveBeenCalledWith(
+            'a-4',
+            expect.objectContaining({ opacity: 0.5 }),
+            false
+        )
+        expect(path.fill).toBe('rgba(59,130,246,0.5)')
+    })
+})

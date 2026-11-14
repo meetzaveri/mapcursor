@@ -121,9 +121,9 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
     // `metadata.opacity` like every other type (it would clobber the points).
     // Pencil therefore persists opacity in a top-level `opacity` field instead
     // — see the pencil branch in the opacity handler below.
+    // No `circle`: a radius map has no opacity control (see SETS.CIRCLE).
     opacity: new Set([
         'rectangle',
-        'circle',
         'diamond',
         'frame',
         'arrowLine',

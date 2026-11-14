@@ -1,7 +1,14 @@
+import { useId } from 'react'
 import type { ReactElement } from 'react'
 
 import { strokeToAreaFill, strokeTypeToDashes } from '../../utils/misc'
 import { presetStylePatch } from '../../types/legend'
+import {
+    areaHatchColor,
+    areaOpacityOf,
+    normalizeAreaFillType,
+} from '../../utils/areaFill'
+import { AreaFillPattern, svgSafeId } from '../utils/areaFillSwatch'
 import {
     POINT_BORDER_COLOR,
     POINT_BORDER_WIDTH,
@@ -18,10 +25,11 @@ import type { LegendPreset, LegendPresetType } from '../../types/legend'
 // in a modal to draw a 44px swatch would cost a canvas, a mount/unmount cycle
 // and a camera, to arrive at the same four attributes.
 //
-// The two derivations that are NOT direct — an area's fill being a light shade
-// of its stroke, and a dash pattern from a stroke type — go through the same
-// helpers the canvas uses (`strokeToAreaFill`, `strokeTypeToDashes`), so the
-// preview cannot disagree with what gets drawn.
+// The derivations that are NOT direct — an area's fill being a light shade of
+// its stroke (or a hatch in it), and a dash pattern from a stroke type — go
+// through the same helpers the canvas uses (`strokeToAreaFill`,
+// `areaHatchColor` / `areaFillTilePath`, `strokeTypeToDashes`), so the preview
+// cannot disagree with what gets drawn.
 //
 // Stroke widths are NOT counter-scaled here. On the canvas a geo stroke is
 // scaled against the live camera; in a fixed swatch there is no camera, so the
@@ -57,7 +65,12 @@ export default function PresetPreview({
         stroke?: string
         linewidth?: number
         strokeType?: string | null
+        fillType?: string | null
+        opacity?: number | null
     }
+    // One preview per legend row and per wizard button, so the hatch pattern's
+    // id has to be unique to this instance.
+    const patternId = `preset-fill-${svgSafeId(useId())}`
     const stroke = patch.stroke ?? 'rgb(var(--color-ink-muted))'
     const fill = patch.fill
     // A 0-width stroke is a real choice ("no outline"); anything above 8 is not
@@ -101,17 +114,40 @@ export default function PresetPreview({
                 </g>
             )
             break
-        case 'area':
-            // Closed polygon, filled with the derived wash — the single rule
-            // that makes an area read as an area and not a route.
+        case 'area': {
+            // Closed polygon, filled with the derived wash or hatch — the
+            // single rule that makes an area read as an area and not a route.
+            // At the preset's opacity, which is the FILL's: the outline in
+            // `common` stays at full strength, as on the canvas.
+            const fillType = normalizeAreaFillType(patch.fillType)
+            const alpha = areaOpacityOf(patch)
             mark = (
-                <polygon
-                    points="6,30 13,9 30,7 34,26 20,34"
-                    fill={strokeToAreaFill(stroke)}
-                    {...common}
-                />
+                <g>
+                    {fillType !== 'solid' && (
+                        <defs>
+                            <AreaFillPattern
+                                id={patternId}
+                                fillType={fillType}
+                                color={areaHatchColor(stroke, alpha)}
+                                // A little denser than the canvas, so even the
+                                // 24px chip shows a hatch, not two stray lines.
+                                scale={0.75}
+                            />
+                        </defs>
+                    )}
+                    <polygon
+                        points="6,30 13,9 30,7 34,26 20,34"
+                        fill={
+                            fillType === 'solid'
+                                ? strokeToAreaFill(stroke, alpha)
+                                : `url(#${patternId})`
+                        }
+                        {...common}
+                    />
+                </g>
             )
             break
+        }
         case 'route':
             mark = (
                 <polyline points="5,29 15,14 25,24 35,9" fill="none" {...common} />
