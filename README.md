@@ -17,12 +17,14 @@
 
 ## Why built mapcursor ?
 
-I am building this as a side project since 4 months. While I was working on [Craftbase](https://github.com/meetzaveri/craftbase), I thought: what if the same engine that draws
+I am building this as a side project since mid 2026. While I was working on [Craftbase](https://github.com/meetzaveri/craftbase), I thought: what if the same engine that draws
 shapes on a whiteboard drew them on a map instead? The canvas, the drawing
 tools and the scene graph could all stay. Only the surface underneath would
 change, from a blank page to the real world.
 
 That idea became Mapcursor. The way I was targetting to serve to the audience was that it should be accessible by everyone and should be pretty straightforward to use for any kind of user or even expert cartographers out there.
+
+AI Disclaimer: I mean this was only possible with help of coding agents because forking from craftbase, then getting the binding right, use mercator approach, and features on top of that, I can hardly ever work single-handedly on this.
 
 ## What you can do
 
