@@ -15,20 +15,14 @@
 
 ![Mapcursor editing experience](./src/assets/home-page-hero.png)
 
-## Why this exists
+## Why built mapcursor ?
 
-Mapcursor is a side project. I have a full-time job doing something else, and
-before this I built [Craftbase](https://github.com/meetzaveri/craftbase), an
-infinite whiteboard for sketching and diagramming.
-
-While working on Craftbase I got curious: what if the same engine that draws
+I am building this as a side project since 4 months. While I was working on [Craftbase](https://github.com/meetzaveri/craftbase), I thought: what if the same engine that draws
 shapes on a whiteboard drew them on a map instead? The canvas, the drawing
 tools and the scene graph could all stay. Only the surface underneath would
 change, from a blank page to the real world.
 
-That idea became Mapcursor. It's for the moments when full GIS is too much:
-you want to point at a place, trace a route, shade an area and send it to
-someone. You don't need an account, a project or a toolbar tutorial for that.
+That idea became Mapcursor. The way I was targetting to serve to the audience was that it should be accessible by everyone and should be pretty straightforward to use for any kind of user or even expert cartographers out there.
 
 ## What you can do
 
