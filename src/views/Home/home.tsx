@@ -2,6 +2,7 @@ import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import LogoSVG from '../../assets/favicon-indigo-bg.svg'
 import RightArrowWhiteSVG from '../../assets/right_arrow_white.svg'
+import heroImage from '../../assets/home-page-hero.png'
 import Button from '../../components/common/button'
 import routes from '../../routes'
 import ToolSection from './toolSection'
@@ -53,15 +54,15 @@ const HomePage: React.FC = () => {
                 {/* Hero */}
                 <header className="mt-16 desktop:mt-24 max-w-3xl">
                     <div className="font-mono text-xs text-ink-muted uppercase tracking-wider">
-                        Map annotation · No sign-up
+                        Local · No sign-up/login
                     </div>
                     <h1 className="mt-3 text-3xl desktop:text-5xl font-bold text-ink tracking-tight font-display">
-                        Draw and annotate on maps
+                        Draw and annotate on maps.
                     </h1>
                     <p className="mt-5 text-sm lg:text-lg 2xl:text-xl text-ink-mid leading-relaxed">
-                        Drop points, trace routes, outline areas, size circles
-                        by the numbers and label it all with text. Everything
-                        stays on your machine until you choose to share the map.
+                        Pick and draw route, area (polygon), radius map or
+                        points to describe objects on map. Everything stays on
+                        your machine until you choose to share the map.
                     </p>
                     <div className="mt-6 flex flex-wrap items-center gap-4">
                         <Button
@@ -100,6 +101,20 @@ const HomePage: React.FC = () => {
                         ))}
                     </ul>
                 </header>
+
+                {/* Hero image: the editor itself, mid-edit. Same frame as the
+                    tool demos below. Not lazy: it is the first thing on the
+                    page past the intro. width/height reserve its box so the
+                    page does not jump when it arrives. */}
+                <figure className="mt-12 desktop:mt-16">
+                    <img
+                        src={heroImage}
+                        alt="Mapcursor editing a map of Andheri and Powai, Mumbai: metro lines drawn as routes, residential and industrial clusters marked as areas, with the area styling panel, legend and properties panels open"
+                        width={2862}
+                        height={1428}
+                        className="w-full h-auto rounded-card border border-border-panel shadow-card bg-card-bg"
+                    />
+                </figure>
 
                 {/* Tools */}
                 <div className="mt-20 desktop:mt-28">
