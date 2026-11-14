@@ -64,6 +64,43 @@ const HomePage: React.FC = () => {
                         points to describe objects on map. Everything stays on
                         your machine until you choose to share the map.
                     </p>
+                    <p className="mt-5 text-sm lg:text-lg 2xl:text-xl text-ink-mid leading-relaxed">
+                        Once you share, we need to upload map data on cloud such
+                        that it's shareable with others.
+                    </p>
+                </header>
+
+                {/* Hero image: the editor itself, mid-edit. Same frame as the
+                    tool demos below. Not lazy: it is the first thing on the
+                    page past the intro. width/height reserve its box so the
+                    page does not jump when it arrives. */}
+                <figure className="mt-6 desktop:mt-10">
+                    <img
+                        src={heroImage}
+                        alt="Mapcursor editing a map of Andheri and Powai, Mumbai: metro lines drawn as routes, residential and industrial clusters marked as areas, with the area styling panel, legend and properties panels open"
+                        width={2862}
+                        height={1428}
+                        className="w-full h-auto rounded-card border border-border-panel shadow-card bg-card-bg"
+                    />
+                </figure>
+
+                <div>
+                    <p className="mt-5 text-xs lg:text-sm 2xl:text-lg text-ink-mid leading-relaxed">
+                        Disclosure: The mapcursor uses 2D SVG rendering engine
+                        to display objects such as area, point and routes as
+                        well as{' '}
+                        <a
+                            className="text-accent-dark font-semibold no-underline border-b border-accent-dark"
+                            href="https://carto.com/"
+                            target="_blank"
+                        >
+                            CARTO
+                        </a>{' '}
+                        as its map tiles data provider. We use Positron basemap
+                        such that it allows cartographers as well as map makers
+                        to annotate with ease.
+                    </p>
+
                     <div className="mt-6 flex flex-wrap items-center gap-4">
                         <Button
                             intent="primary"
@@ -100,21 +137,7 @@ const HomePage: React.FC = () => {
                             </li>
                         ))}
                     </ul>
-                </header>
-
-                {/* Hero image: the editor itself, mid-edit. Same frame as the
-                    tool demos below. Not lazy: it is the first thing on the
-                    page past the intro. width/height reserve its box so the
-                    page does not jump when it arrives. */}
-                <figure className="mt-12 desktop:mt-16">
-                    <img
-                        src={heroImage}
-                        alt="Mapcursor editing a map of Andheri and Powai, Mumbai: metro lines drawn as routes, residential and industrial clusters marked as areas, with the area styling panel, legend and properties panels open"
-                        width={2862}
-                        height={1428}
-                        className="w-full h-auto rounded-card border border-border-panel shadow-card bg-card-bg"
-                    />
-                </figure>
+                </div>
 
                 {/* Tools */}
                 <div className="mt-20 desktop:mt-28">
