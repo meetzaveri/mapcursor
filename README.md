@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-    <strong>A whiteboard that knows where things are.</strong><br />
+    <strong>Draw and annotate on maps. Accessible to everyone.</strong><br />
     Sketch routes, areas and notes on a real map, right in the browser.
 </p>
 
