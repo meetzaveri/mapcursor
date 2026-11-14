@@ -1,99 +1,123 @@
-<img src="./src/assets/mapcursor-logo-original.svg" alt="Mapcursor" width="180" />
+<p align="center">
+    <img src="./src/assets/mapcursor-logo-original.svg" alt="Mapcursor" width="160" />
+</p>
 
-# Mapcursor
+<p align="center">
+    <strong>A whiteboard that knows where things are.</strong><br />
+    Sketch routes, areas and notes on a real map, right in the browser.
+</p>
 
-Draw and annotate on maps. Open a canvas, drop a few points, trace a route, circle a neighbourhood — no signup, no setup, no empty-state tutorial to click through.
+<p align="center">
+    <a href="https://mapcursor.com">mapcursor.com</a> ·
+    <a href="https://mapcursor.com/use-cases">Use cases</a> ·
+    <a href="https://github.com/meetzaveri/mapcursor/issues">Issues</a>
+</p>
 
-<!--
-    Demo GIF goes here. Record a short loop (10–15s) of opening a map, dropping
-    a couple of points, drawing a route and a radius circle, then drop it at the
-    path below. A moving picture sells this far better than any paragraph can.
--->
+![Corridors in Mumbai drawn in Mapcursor, with a legend naming each route](./src/assets/route-corridor-use-case.png)
 
-<!-- ![Mapcursor demo](./src/assets/mapcursor-demo.gif) -->
+## Why this exists
 
-## What it is
+Mapcursor is a side project. I have a full-time job doing something else, and
+before this I built [Craftbase](https://github.com/meetzaveri/craftbase), an
+infinite whiteboard for sketching and diagramming.
 
-I wanted a way to mark things up on a map that gets out of the way. Most tools make you sign in, pick a project, or learn a GIS toolbar before you can point at a street. Mapcursor opens straight onto a map — you drop a pin, draw a line along a route, shade an area, and that's the whole pitch. Your data stays on your machine unless you choose to share the canvas.
+While working on Craftbase I got curious: what if the same engine that draws
+shapes on a whiteboard drew them on a map instead? The canvas, the drawing
+tools and the scene graph could all stay. Only the surface underneath would
+change, from a blank page to the real world.
 
-Things you can do on a base:
+That idea became Mapcursor. It's for the moments when full GIS is too much:
+you want to point at a place, trace a route, shade an area and send it to
+someone. You don't need an account, a project or a toolbar tutorial for that.
 
-- **Point** — drop a pin and name it
-- **Route** — trace a polyline, with optional snapping to the road network underneath
-- **Area** — shade a polygon over a neighbourhood or a zone
-- **Radius map** — a circle that holds a real-world radius as you zoom
-- **Pencil** — freehand sketch over the map
-- **Text** — annotate anywhere, at a size that stays legible as the world zooms out
-- Group elements, erase, reorder, undo and redo
-- Style what you draw — stroke, fill, width, dashes, colour, opacity
-- **Legend presets** — define a caption once, bind elements to it, and restyling the preset repaints every element carrying it
-- Search for a place to jump to
-- Export the visible viewport as a **PNG**, or export and import a whole canvas as **JSON** or **SVG**
-- Share a base with a link
+## What you can do
 
-A fair warning: I work on this mostly on weekends, so expect the occasional bug or rough edge. If you hit one — or have an idea, or just want a feature — please [open an issue](https://github.com/meetzaveri/mapcursor/issues). I read all of them.
+| Tool   | What it's for                                         |
+| ------ | ----------------------------------------------------- |
+| Point  | Drop a named pin                                      |
+| Route  | Trace a line, optionally snapped to the road network  |
+| Area   | Shade a neighbourhood, a zone or a site               |
+| Radius | A circle that keeps its real-world radius as you zoom |
+| Pencil | Freehand sketching over the map                       |
+| Text   | Labels that stay readable at any zoom                 |
+| Image  | Pin a photo where it was taken                        |
 
-## How it's built
+Around those tools:
 
-Mapcursor renders its annotations with [two.js](https://github.com/jonobr1/two.js), a lovely 2D scene-graph library by [Jono Brandel](https://github.com/jonobr1), layered over a [MapLibre](https://maplibre.org/) basemap. Two.js draws the ink; React drives the UI and state around it.
+- **Legend presets.** Define "Metro line" or "No vehicle lane" once, apply it
+  to any feature, and the legend explains your map for you. Restyle the preset
+  and every feature using it updates.
+- **Custom properties** on any feature, defined once per map.
+- **Export** the view as PNG (basemap included), a selection as SVG, or the
+  whole map as JSON you can import later.
+- **Share** a link when you're ready. Until then, everything stays in your
+  browser.
 
-The central concept is the **base** — the workspace itself. It owns the map, the canvas, the sidebar and the toolbars. Rendering flows down a small chain:
+Some worked examples:
+[transit corridors in Mumbai](https://mapcursor.com/use-cases/city-corridors)
+and [a road trip with photos](https://mapcursor.com/use-cases/road-trip).
 
-```
-Base → Canvas → ElementRenderer → Component Element → Component Factory
-```
+### What it isn't
 
-Canvas holds the 2D rendering logic and all the interaction handling — mouse, drag, zoom, pan — which is what makes a canvas feel alive to draw on. Each kind of element (a point, a route, a pencil stroke) has a **factory** that produces its template definition, and a matching React **component** that mounts it into the scene and wires up its event listeners.
-
-The interesting part is how ink and map stay married. Elements live in Two.js's own surface space and their coordinates are **never rewritten**. Instead the map is jumped so that surface (0,0) always sits over the base's geographic anchor, and the map's zoom tracks the canvas camera. That one equation is what makes an annotation behave as though it were pinned to the ground.
-
-State is shared through React Context (`BaseContext`) rather than a global store. The stack is React + TypeScript, Vite for the build, Two.js and MapLibre for rendering, and Apollo + Hasura (GraphQL) for the backend.
+Mapcursor is not an analysis tool. There's no geoprocessing, no projection to
+choose (it's Web Mercator) and no shapefile or GeoJSON import yet. If you
+need those, QGIS is what you want. Mapcursor is for the step before or after
+it: the quick sketch, the slide, the "here's what I mean" message.
 
 ## Running it locally
 
-Mapcursor is the frontend. The backend lives in a separate repo, [mapcursor-hasura](https://github.com/meetzaveri/mapcursor-hasura). You'll need both running to use the full app locally.
-
-### Backend
-
-Follow the setup steps in the [mapcursor-hasura README](https://github.com/meetzaveri/mapcursor-hasura) to get the backend running.
-
-### Frontend
-
-Clone this repo and install dependencies:
+You'll need a current Node LTS and Yarn 1.
 
 ```bash
+git clone https://github.com/meetzaveri/mapcursor.git
+cd mapcursor
 yarn
+cp .envexample .env
+yarn start            # http://localhost:5173
 ```
 
-Create a `.env` file in the project root and copy the contents of `.envexample` into it.
+Drawing, local saving and export work without a backend. Share links and saved
+maps need the GraphQL backend (Hasura + Postgres) from
+[mapcursor-hasura](https://github.com/meetzaveri/mapcursor-hasura); follow its
+README, then point `VITE_GRAPHQL_ENDPOINT` and `VITE_WS_GRAPHQL_ENDPOINT` at it.
 
-Then start the dev server:
+| Command          | Does                                 |
+| ---------------- | ------------------------------------ |
+| `yarn build`     | Production build into `dist/`        |
+| `yarn preview`   | Serve the production build           |
+| `yarn typecheck` | `tsc --noEmit`                       |
+| `yarn test`      | Unit tests (Vitest)                  |
+| `yarn test:e2e`  | End-to-end tests (Playwright)        |
+| `yarn codegen`   | Regenerate GraphQL types from Hasura |
 
-```bash
-yarn start
-```
-
-This runs Vite and serves the app at [http://localhost:5173](http://localhost:5173). The page hot-reloads as you edit, and type/lint errors show up in your terminal.
-
-Other useful scripts:
-
-```bash
-yarn build       # production build into ./dist
-yarn preview     # serve the production build locally
-yarn typecheck   # tsc --noEmit
-yarn test        # unit tests (vitest)
-yarn test:e2e    # end-to-end tests (playwright)
-```
-
-## Perf test
-
-Before 0.8.3
+### Finding your way around
 
 ```
-     1200 mixed elems (0.97 MB) | settle   3512 ms | blocking   2043 ms | svg nodes 7817 | selectable nodes 1200
-     3000 mixed elems (2.43 MB) | settle  15629 ms | blocking  14242 ms | svg nodes 19517 | selectable nodes 3000
+src/
+    views/Base/        the workspace page and BaseContext
+    newCanvas.tsx      the canvas: two.js setup and every input handler
+    components/
+        elements/      one component per drawable (point, route, area, ...)
+        sidebar/       toolbars and the properties panel
+        legend/        legend presets
+    factory/           templates for each element type
+    baseTypes/         the MapLibre backdrop and map anchoring
+    utils/             geometry, export/import, road snapping, ...
 ```
 
-## Contributing
+Stack: React 18, TypeScript, Vite, two.js, MapLibre GL, Apollo + Hasura,
+Tailwind.
 
-Issues and pull requests are welcome — features, suggestions, and bug reports all count. It's a weekend project, so I appreciate the patience and the company.
+## Status
+
+Built on evenings and weekends, so it moves in bursts. Expect rough edges.
+Bug reports, ideas and "I tried to do X and couldn't" are all useful.
+[Open an issue](https://github.com/meetzaveri/mapcursor/issues); I read every
+one, even if a reply takes a few days.
+
+Pull requests are welcome too. For anything bigger than a bug fix, open an
+issue first so we can talk it through before you spend your weekend on it.
+
+## License
+
+[MIT](./LICENSE)
