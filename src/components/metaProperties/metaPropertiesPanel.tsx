@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
-import type { ReactElement } from 'react'
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+} from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import { RIGHT_MARGIN } from '../../hooks/useTopRightOffset'
 import Modal from '../common/modal'
-import { LEGEND_PANEL_ID, LEGEND_PANEL_TOP } from '../legend/legendPanel'
+import {
+    LEGEND_FLOATING_ATTR,
+    LEGEND_PANEL_ID,
+    LEGEND_PANEL_TOP,
+} from '../legend/legendPanel'
+import { LEGEND_PANEL_MOVED_EVENT } from '../../constants/misc'
+import DragGrip from '../common/dragGrip'
+import { useDraggablePanel } from '../../hooks/useDraggablePanel'
 import { META_PANEL_DIALOG_ATTR, META_PANEL_ID } from '../../utils/canvasChrome'
 import {
     META_OBJECT_LABELS,
@@ -25,7 +38,9 @@ import {
 import type { MetaProperty } from '../../types/metaProperty'
 
 // The meta properties panel: a floating card on the right edge, tucked under
-// the legend, shown while exactly one point / route / area / radius map /
+// the legend until it is picked up by the grip in its header and dropped
+// anywhere on screen, like the legend (double-click the grip to dock it back
+// under the legend). Shown while exactly one point / route / area / radius map /
 // geo-text is selected. Lists that object's properties (editable in place) and adds new
 // ones through a two-step wizard. On mobile the same body opens in a sheet
 // from a button in the right-edge column under Share (MobileSideActions).
@@ -37,11 +52,15 @@ const PANEL_WIDTH = 260
 const GAP = 8
 // Room kept clear at the bottom for the help button and map attribution.
 const BOTTOM_CLEARANCE = 64
+// Where a dragged card is remembered: one spot for every base and every
+// selection, since the card comes and goes with the selection.
+const POSITION_STORAGE_KEY = 'mapcursor:metaPanelPosition'
 
 /**
  * Directly under the legend, one GAP below it, following it as it collapses or
- * grows, and never past the bottom of the screen. With no legend on screen it
- * takes the legend's own top, so it sits where the legend would.
+ * grows, and never past the bottom of the screen. With no legend in its corner
+ * — none on screen, or one dragged off to float elsewhere — it takes the
+ * legend's own top, so it sits where the legend would.
  */
 function useUnderLegendPlacement(): {
     top: number
@@ -50,9 +69,10 @@ function useUnderLegendPlacement(): {
     const [placement, setPlacement] = useState({ top: 120, maxHeight: 400 })
 
     const measure = useCallback((): void => {
-        const legendRect = document
-            .getElementById(LEGEND_PANEL_ID)
-            ?.getBoundingClientRect()
+        const legend = document.getElementById(LEGEND_PANEL_ID)
+        const legendRect = legend?.hasAttribute(LEGEND_FLOATING_ATTR)
+            ? null
+            : legend?.getBoundingClientRect()
         const top = legendRect ? legendRect.bottom + GAP : LEGEND_PANEL_TOP
         const maxHeight = Math.max(
             window.innerHeight - top - BOTTOM_CLEARANCE,
@@ -69,9 +89,12 @@ function useUnderLegendPlacement(): {
         const legend = document.getElementById(LEGEND_PANEL_ID)
         if (legend) observer.observe(legend)
         window.addEventListener('resize', measure)
+        // Docking or floating the legend moves it without resizing it.
+        window.addEventListener(LEGEND_PANEL_MOVED_EVENT, measure)
         return (): void => {
             observer.disconnect()
             window.removeEventListener('resize', measure)
+            window.removeEventListener(LEGEND_PANEL_MOVED_EVENT, measure)
         }
     }, [measure])
 
@@ -81,8 +104,11 @@ function useUnderLegendPlacement(): {
 /** The panel's content, shared by the desktop card and the mobile sheet. */
 function MetaPanelBody({
     target,
+    grip,
 }: {
     target: SelectedMetaObject
+    /** The desktop card's drag handle. The mobile sheet has none. */
+    grip?: ReactNode
 }): ReactElement {
     const { meta, isPersisted } = useBaseContext()
     const { values, loading, error } = useObjectMetaValues(target.objectId)
@@ -124,8 +150,13 @@ function MetaPanelBody({
 
     return (
         <>
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border-panel">
-                <span className="text-xs font-semibold text-ink">
+            <div
+                className={`flex items-center justify-between py-2 border-b border-border-panel ${
+                    grip ? 'pl-1 pr-3' : 'px-3'
+                }`}
+            >
+                <span className="flex items-center gap-1 text-xs font-semibold text-ink">
+                    {grip}
                     Properties
                 </span>
                 <span className="text-[11px] text-ink-muted">
@@ -243,19 +274,32 @@ function DesktopPanel({
 }: {
     target: SelectedMetaObject
 }): ReactElement {
-    const { top, maxHeight } = useUnderLegendPlacement()
+    const docked = useUnderLegendPlacement()
+    const panelRef = useRef<HTMLDivElement>(null)
+    const { position, isDragging, gripHandlers } = useDraggablePanel(
+        panelRef,
+        POSITION_STORAGE_KEY
+    )
+    // Floating, it runs from wherever it was dropped to the same bottom
+    // clearance the docked card keeps.
+    const maxHeight = position
+        ? Math.max(window.innerHeight - position.y - BOTTOM_CLEARANCE, 160)
+        : docked.maxHeight
     return (
         <div
+            ref={panelRef}
             id={META_PANEL_ID}
             className="fixed"
             style={{
-                top: `${top}px`,
-                right: `${RIGHT_MARGIN}px`,
+                ...(position
+                    ? { left: `${position.x}px`, top: `${position.y}px` }
+                    : { top: `${docked.top}px`, right: `${RIGHT_MARGIN}px` }),
                 width: `${PANEL_WIDTH}px`,
                 maxHeight: `${maxHeight}px`,
                 // Same layer as the legend: under the place-search dropdown
-                // (12) and every modal (1000).
-                zIndex: 11,
+                // (12) and every modal (1000). Raised while carried, so it
+                // passes over the legend rather than under it.
+                zIndex: isDragging ? 13 : 11,
             }}
         >
             {/* Chrome mirrors the legend card, so the right edge reads as one
@@ -266,7 +310,17 @@ function DesktopPanel({
                 style={{ maxHeight: `${maxHeight}px` }}
             >
                 {/* Keyed by object: switching selection resets the view. */}
-                <MetaPanelBody key={target.objectId} target={target} />
+                <MetaPanelBody
+                    key={target.objectId}
+                    target={target}
+                    grip={
+                        <DragGrip
+                            label="Drag to move · double-click to dock"
+                            isDragging={isDragging}
+                            {...gripHandlers}
+                        />
+                    }
+                />
             </div>
         </div>
     )

@@ -7,6 +7,7 @@ import { lineHeightFor, measureTextWidth, type FontSpec } from './textLayout'
 import { reflowTextForShape } from './shapeTextFit'
 import { isFontReady, runWhenFontReady } from './fontLoading'
 import { scheduleRender } from './renderScheduler'
+import { areaOpacityOf } from './areaFill'
 import type { ComponentMetadata } from '../types/base'
 import {
     geometryCenter,
@@ -72,12 +73,15 @@ export function setArrowEndpointsVisible(
 // Single source of truth for reading an element's opacity off a store row /
 // props / elementData. Opacity is persisted in the top-level `opacity` column
 // for every element type; the `properties.opacity` read below covers records
-// whose creation path still seeds it there. Absent from both → fully opaque.
+// whose creation path still seeds it there. Absent from both → fully opaque,
+// except an area: its opacity is its FILL's, and defaults to the half-strength
+// wash it has always been drawn with (see areaOpacityOf in areaFill.ts).
 export function readOpacity(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     source: any
 ): number {
     if (!source) return 1
+    if (source.componentType === 'area') return areaOpacityOf(source)
     if (typeof source.opacity === 'number') return source.opacity
     const stored = readProperties(source).opacity
     if (typeof stored === 'number') return stored
@@ -86,15 +90,19 @@ export function readOpacity(
 
 /**
  * The opacity an element's top-level GROUP should paint at. For most types
- * that is the element's opacity. A radius map is the exception: its opacity
- * lives on the disc (see circle.tsx), so its group stays at 1. Otherwise the
- * label would dim and the disc would get the value twice (0.5 × 0.5).
+ * that is the element's opacity. Two exceptions keep the group at 1:
+ *
+ * - A radius map's opacity lives on the disc (see circle.tsx). Otherwise the
+ *   label would dim and the disc would get the value twice (0.5 × 0.5).
+ * - An area's opacity is in its fill colour (areaFillFor). Dimming the group
+ *   would dim its border, which always paints at full strength.
  */
 export function groupOpacityOf(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     record: any
 ): number {
     if (record?.componentType === 'circle') return 1
+    if (record?.componentType === 'area') return 1
     return readOpacity(record)
 }
 
@@ -146,6 +154,7 @@ interface ElementCloneSource {
     fill: string
     stroke: string | null
     strokeType: string | null
+    fillType?: string | null
     linewidth: number | null
     textColor: string | null
     opacity?: number | null
@@ -219,6 +228,8 @@ export function cloneElementData(
         fill: src.fill,
         stroke: src.stroke,
         strokeType: src.strokeType,
+        // Only when set: solid is null, and only an area reads the column.
+        ...(src.fillType != null ? { fillType: src.fillType } : {}),
         linewidth: src.linewidth,
         textColor: src.textColor,
         opacity: readOpacity(src),

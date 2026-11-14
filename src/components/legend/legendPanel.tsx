@@ -1,5 +1,6 @@
-// The legend: the standing key to a map, pinned top-right under the place
-// search.
+// The legend: the standing key to a map. It starts pinned top-right under the
+// place search, and can be picked up by the grip in its header and dropped
+// anywhere on screen (double-click the grip to send it back to the corner).
 //
 // It is the durable half of the feature. The secondary toolbar is how a preset
 // gets applied; THIS is what a person sees three weeks later, or what a
@@ -10,13 +11,16 @@
 // menu + share and that is the whole width. On mobile the same list is a menu
 // entry that opens `legendPanelModal`; both render `LegendList`.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import { RIGHT_MARGIN } from '../../hooks/useTopRightOffset'
 import Tooltip from '../common/tooltip'
+import DragGrip from '../common/dragGrip'
+import { useDraggablePanel } from '../../hooks/useDraggablePanel'
+import { LEGEND_PANEL_MOVED_EVENT } from '../../constants/misc'
 import PresetPreview from './presetPreview'
 import LegendPresetWizard from './legendPresetWizard'
 import ApplyPresetButton from './applyPresetButton'
@@ -33,6 +37,23 @@ export const LEGEND_PANEL_TOP = 62
 const PANEL_WIDTH = 260
 
 export const LEGEND_PANEL_ID = 'mc-legend-panel'
+/** Set on the panel while it is floating rather than docked in its corner. */
+export const LEGEND_FLOATING_ATTR = 'data-floating'
+const POSITION_STORAGE_KEY = 'mapcursor:legendPanelPosition'
+
+/**
+ * Where the panel sits until it is dragged: the screen's right edge, NOT the
+ * search field's. The panel used to take the measured offset that keeps the
+ * place search clear of the share button, which lined the two up and made the
+ * legend read as a dropdown hanging off the search field. Tucked against the
+ * edge it reads as what it is: a panel about the map, parked in the corner.
+ * `useTopRightOffset` stays for the place search, which does still have to
+ * dodge the share button.
+ */
+const DOCKED_PLACEMENT = {
+    top: `${LEGEND_PANEL_TOP}px`,
+    right: `${RIGHT_MARGIN}px`,
+}
 
 interface LegendListProps {
     presets: LegendPreset[]
@@ -314,64 +335,83 @@ export default function LegendPanel(): ReactElement | null {
     const { isMobile } = useMediaQueryUtils()
     const wizard = useLegendWizard()
     const [collapsed, setCollapsed] = useState(false)
+    const panelRef = useRef<HTMLDivElement>(null)
+    const { position, isDragging, gripHandlers } = useDraggablePanel(
+        panelRef,
+        POSITION_STORAGE_KEY
+    )
+    const isFloating = position !== null
+
+    // The meta properties panel stacks under the DOCKED legend and takes the
+    // corner itself while the legend floats. Fired after the render that set
+    // the attribute, so a re-measure on the far side sees it.
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent(LEGEND_PANEL_MOVED_EVENT))
+    }, [isFloating])
 
     if (isMobile) return null
 
     return (
         <>
             <div
+                ref={panelRef}
                 id={LEGEND_PANEL_ID}
+                {...{ [LEGEND_FLOATING_ATTR]: isFloating || undefined }}
                 className="fixed"
                 style={{
-                    top: `${LEGEND_PANEL_TOP}px`,
-                    // The screen's right edge, NOT the search field's. The
-                    // panel used to take the measured offset that keeps the
-                    // place search clear of the share button, which lined the
-                    // two up and made the legend read as a dropdown hanging
-                    // off the search field. Tucked against the edge it reads
-                    // as what it is: a panel about the map, parked in the
-                    // corner. `useTopRightOffset` stays for the place search,
-                    // which does still have to dodge the share button.
-                    right: `${RIGHT_MARGIN}px`,
+                    ...(position
+                        ? { left: `${position.x}px`, top: `${position.y}px` }
+                        : DOCKED_PLACEMENT),
                     width: `${PANEL_WIDTH}px`,
                     // One below the place search (12), so its results
                     // dropdown opens over this panel; well below the modal
-                    // backdrop (1000).
-                    zIndex: 11,
+                    // backdrop (1000). Raised while carried, so it passes
+                    // over the other panels rather than under them.
+                    zIndex: isDragging ? 13 : 11,
                 }}
             >
                 {/* Chrome mirrors the search field and the toolbar exactly —
                     same card background, panel border and card radius — so the
                     whole top-right corner reads as one surface. */}
                 <div className="bg-card-bg border border-border-panel rounded-card overflow-hidden shadow-panel">
-                    <button
-                        type="button"
-                        onClick={(): void => setCollapsed((v) => !v)}
-                        aria-expanded={!collapsed}
-                        className="w-full flex items-center justify-between px-2 py-1
+                    {/* The grip sits BESIDE the collapse button, not in it: a
+                        drag must not also toggle the list, and a button
+                        cannot hold another control. */}
+                    <div className="flex items-center gap-0.5 pl-1">
+                        <DragGrip
+                            label="Drag to move · double-click to dock"
+                            isDragging={isDragging}
+                            {...gripHandlers}
+                        />
+                        <button
+                            type="button"
+                            onClick={(): void => setCollapsed((v) => !v)}
+                            aria-expanded={!collapsed}
+                            className="flex-1 flex items-center justify-between px-2 py-1
                             text-xs font-semibold text-ink-muted hover:bg-sidebar
-                            transition-colors duration-150"
-                    >
-                        <span>Legend</span>
-                        <svg
-                            width="10"
-                            height="10"
-                            viewBox="0 0 16 16"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            style={{
-                                transform: collapsed
-                                    ? 'rotate(-90deg)'
-                                    : 'none',
-                                transition: 'transform 150ms',
-                            }}
+                            transition-colors duration-150 rounded"
                         >
-                            <path d="M3 6l5 5 5-5" />
-                        </svg>
-                    </button>
+                            <span>Legend</span>
+                            <svg
+                                width="10"
+                                height="10"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{
+                                    transform: collapsed
+                                        ? 'rotate(-90deg)'
+                                        : 'none',
+                                    transition: 'transform 150ms',
+                                }}
+                            >
+                                <path d="M3 6l5 5 5-5" />
+                            </svg>
+                        </button>
+                    </div>
                     {!collapsed && (
                         <div className="border-t border-border-panel">
                             <LegendList

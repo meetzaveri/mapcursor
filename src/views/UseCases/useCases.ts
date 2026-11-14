@@ -1,6 +1,7 @@
 import { lazy } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
 import roadTripImage from '../../assets/road-trip-usecase.png'
+import cityCorridorsImage from '../../assets/route-corridor-use-case.png'
 
 export interface UseCase {
     /** URL segment: /use-cases/<slug>. Keep public/sitemap.xml in sync. */
@@ -30,6 +31,19 @@ export const USE_CASES: readonly UseCase[] = [
         heroAlt:
             'A California road trip drawn in Mapcursor, from San Francisco to Monterey, with a photo at each stop',
         Content: lazy(() => import('./content/roadTrip')),
+    },
+    {
+        slug: 'city-corridors',
+        title: 'Corridors and lanes in a city',
+        summary:
+            'Map the corridors and lanes of a metro city like Mumbai with routes and a legend that explains each line.',
+        metaTitle: 'Map city corridors and lanes | Mapcursor',
+        metaDescription:
+            'Draw transit corridors, traffic routes and no vehicle lanes on a city map, and style each one with a legend preset. No sign-up.',
+        heroImage: cityCorridorsImage,
+        heroAlt:
+            'Corridors in Mumbai drawn in Mapcursor: the Sealink corridor, Aqua Line 3 and Metro Lines 1 and 2, with a legend naming each route',
+        Content: lazy(() => import('./content/cityCorridors')),
     },
 ]
 

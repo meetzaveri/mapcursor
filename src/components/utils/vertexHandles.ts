@@ -21,6 +21,7 @@ import {
     attachStrokeCounterScale,
 } from '../../utils/handleScale'
 import { scheduleRender } from '../../utils/renderScheduler'
+import { areaFillFor } from '../../utils/areaFill'
 import {
     geometryPositions,
     lineGeometry,
@@ -284,6 +285,8 @@ export function attachVertexHandles({
                     // further from the geometry on every edit.
                     const patch = setGeometry(grp.elementData, geometry)
                     grp.elementData = { ...grp.elementData, ...patch }
+                    // A hatch is sized from the area's own size (areaFill.ts).
+                    repaintAreaFill(two, grp, pth)
                     // Records an UPDATE_BULK so the edit is undoable; the revert
                     // comes back through VERTEX_PATH_REVERTED_EVENT.
                     persistRef.current?.(idRef.current, patch)
@@ -367,5 +370,23 @@ export function applyRevertedVertices(
         }
     })
     path._flagVertices = true
+    repaintAreaFill(two, group, path)
     two.update()
+}
+
+/**
+ * Re-derive an area's fill after its shape changed. A hatch takes its spacing
+ * from the area's size, rounded to a power of two, so most reshapes land on the
+ * same pattern and this is a no-op; a big one moves it to the next step. A
+ * route has no fill and is left alone. Reads the geometry off `elementData`,
+ * which both callers have already brought up to date.
+ */
+function repaintAreaFill(
+    two: ShapeLike,
+    group: ShapeLike,
+    path: ShapeLike
+): void {
+    const data = group?.elementData
+    if (data?.componentType !== 'area' || !path) return
+    path.fill = areaFillFor(two, data.stroke, data.fillType, data)
 }

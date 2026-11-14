@@ -1,3 +1,5 @@
+import { areaFillTypeToDb, areaOpacityOf } from '../utils/areaFill'
+
 // Legend presets — the named, pre-styled bundles that turn a canvas full of
 // coloured marks into a map with a key.
 //
@@ -45,13 +47,18 @@ export function isLegendPresetType(
  * Label font and size stay manual; `style` is jsonb, so adding them later is a
  * wizard page and an apply branch, not a migration.
  */
-export type LegendStyleKey = 'fill' | 'stroke' | 'linewidth' | 'strokeType'
+export type LegendStyleKey =
+    'fill' | 'stroke' | 'linewidth' | 'strokeType' | 'fillType' | 'opacity'
 
 export interface LegendPresetStyle {
     fill?: string
     stroke?: string
     linewidth?: number
     strokeType?: string | null
+    /** Area only: 'hachure' | 'cross-hatch', null for solid. */
+    fillType?: string | null
+    /** Area only: the fill's opacity, 0–1 (see areaOpacityOf). */
+    opacity?: number | null
 }
 
 /**
@@ -64,13 +71,18 @@ export interface LegendPresetStyle {
  * and nothing else — listing `stroke` here too would let a wizard offer two
  * colours for one mark, and a border a radius map does not draw. This matches
  * `SETS.POINT` / `SETS.CIRCLE`, neither of which carries a stroke control.
+ *
+ * `fillType` and `opacity` are an area's alone: it is the only mark with an
+ * interior to hatch, and the only one with an opacity control (it is its
+ * FILL's, see areaFill.ts). Two areas the same colour can then still mean two
+ * different things.
  */
 export const PRESET_STYLE_KEYS: Record<
     LegendPresetType,
     readonly LegendStyleKey[]
 > = {
     point: ['fill'],
-    area: ['stroke', 'linewidth', 'strokeType'],
+    area: ['stroke', 'linewidth', 'strokeType', 'fillType', 'opacity'],
     route: ['stroke', 'linewidth', 'strokeType'],
     circle: ['fill'],
 }
@@ -85,6 +97,8 @@ export const LEGEND_STYLE_KEYS: ReadonlySet<string> = new Set<string>([
     'stroke',
     'linewidth',
     'strokeType',
+    'fillType',
+    'opacity',
 ])
 
 export interface LegendPreset {
@@ -124,6 +138,20 @@ export function presetStylePatch(
     const patch: Record<string, unknown> = {}
     keys.forEach((key) => {
         const value = preset.style[key]
+        // An area preset saved before fill types existed has no `fillType`,
+        // and it was drawn solid. Writing that out (as null) rather than
+        // skipping it keeps the promise a legend makes: a mark bound to this
+        // preset looks like its swatch, even one that was hatched by hand.
+        if (key === 'fillType') {
+            patch.fillType = areaFillTypeToDb(value)
+            return
+        }
+        // Same promise for opacity: a preset saved before it carried one was
+        // drawn at the default half-strength fill.
+        if (key === 'opacity') {
+            patch.opacity = areaOpacityOf({ opacity: value })
+            return
+        }
         if (value === undefined) return
         patch[key] = value
     })

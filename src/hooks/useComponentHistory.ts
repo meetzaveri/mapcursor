@@ -1,11 +1,8 @@
 import { useState, useRef } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import Two from 'two.js'
-import {
-    strokeTypeToDashes,
-    clearDashesOnTwoJSShape,
-    strokeToAreaFill,
-} from '../utils/misc'
+import { strokeTypeToDashes, clearDashesOnTwoJSShape } from '../utils/misc'
+import { areaFillFor, areaFillTypeToDb } from '../utils/areaFill'
 import {
     computeCounterScale,
     isStrokeScaled,
@@ -152,6 +149,7 @@ export interface ComponentHistoryOptions {
     setShowPermissionErrorModal: Dispatch<SetStateAction<boolean>>
     setDefaultLinewidth: (val: number) => void
     setDefaultStrokeType: (val: string | null) => void
+    setDefaultFillType: (val: string | null) => void
     setToolbarRefreshKey?: Dispatch<SetStateAction<number>>
     selectedComponent: ShapeLike | null
     selectedGroupRef: MutableRefObject<ShapeLike | null>
@@ -182,7 +180,8 @@ export interface ComponentHistoryApi {
 function applyPropertyToTwoJSGroup(
     group: ShapeLike,
     name: string,
-    value: unknown
+    value: unknown,
+    two: ShapeLike
 ): void {
     // A point's pin is not children[0]: its shadow discs and any selection
     // chrome come first. getPointCircle skips both.
@@ -234,7 +233,12 @@ function applyPropertyToTwoJSGroup(
             // persisted, so reverting the stroke has to re-derive it — without
             // this the outline snaps back but the wash stays the old colour.
             if (group.elementData?.componentType === 'area') {
-                shape.fill = strokeToAreaFill(value as string)
+                shape.fill = areaFillFor(
+                    two,
+                    value as string,
+                    group.elementData?.fillType,
+                    group.elementData
+                )
             }
             break
         case 'linewidth':
@@ -304,6 +308,14 @@ function applyPropertyToTwoJSGroup(
             }
             if (meta) meta.strokeType = value
             break
+        case 'fillType':
+            // Repainted from the stroke the element carries now, which a
+            // stroke revert in the same entry may already have restored.
+            if (meta?.componentType === 'area') {
+                shape.fill = areaFillFor(two, meta.stroke, value, meta)
+                meta.fillType = value
+            }
+            break
         case 'zoomResistant': {
             // The text counter-scale switch. It has no Two.js field of its
             // own — the element component owns the scaled node and the
@@ -336,6 +348,15 @@ function applyPropertyToTwoJSGroup(
             if (isCircle) {
                 shape.opacity = value
                 group.opacity = 1
+                break
+            }
+            // An area's opacity is its fill's alpha; its border stays at full
+            // strength. Mirrors applyProperty.
+            if (meta?.componentType === 'area') {
+                group.opacity = 1
+                shape.opacity = 1
+                meta.opacity = value
+                shape.fill = areaFillFor(two, meta.stroke, meta.fillType, meta)
                 break
             }
             // Everything else: apply at the GROUP level (shape + text dim
@@ -438,6 +459,7 @@ export function useComponentHistory({
     setShowPermissionErrorModal,
     setDefaultLinewidth,
     setDefaultStrokeType,
+    setDefaultFillType,
     setToolbarRefreshKey,
     selectedComponent,
     selectedGroupRef,
@@ -766,7 +788,7 @@ export function useComponentHistory({
             if (props.x !== undefined) group.translation.x = props.x
             if (props.y !== undefined) group.translation.y = props.y
             Object.entries(props).forEach(([name, val]) => {
-                applyPropertyToTwoJSGroup(group, name, val)
+                applyPropertyToTwoJSGroup(group, name, val, two)
             })
 
             const hasArrowVertices =
@@ -841,6 +863,9 @@ export function useComponentHistory({
                     props.strokeType === 'solid' ? null : props.strokeType
                 )
             }
+            if (props.fillType !== undefined) {
+                setDefaultFillType(areaFillTypeToDb(props.fillType))
+            }
         }
         if (props.strokeType !== undefined) {
             if (selectedComponent?.group?.data?.elementData) {
@@ -848,7 +873,11 @@ export function useComponentHistory({
                     props.strokeType
             }
         }
-        if (props.linewidth !== undefined || props.strokeType !== undefined) {
+        if (
+            props.linewidth !== undefined ||
+            props.strokeType !== undefined ||
+            props.fillType !== undefined
+        ) {
             setToolbarRefreshKey?.((k) => k + 1)
         }
 
@@ -943,7 +972,7 @@ export function useComponentHistory({
                     if (propsToApply.y !== undefined)
                         sceneGroup.translation.y = propsToApply.y
                     Object.entries(propsToApply).forEach(([name, val]) => {
-                        applyPropertyToTwoJSGroup(sceneGroup, name, val)
+                        applyPropertyToTwoJSGroup(sceneGroup, name, val, two)
                     })
                     // ArrowLine vertex handling
                     const hasArrowVertices =
@@ -1048,7 +1077,8 @@ export function useComponentHistory({
                                     applyPropertyToTwoJSGroup(
                                         coreObj,
                                         name,
-                                        val
+                                        val,
+                                        two
                                     )
                                 }
                             )

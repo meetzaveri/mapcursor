@@ -103,6 +103,7 @@ const ZoomControls = (): ReactElement => {
                     <LocateMeButton
                         className="w-7 h-7 flex items-center justify-center rounded text-ink-muted hover:bg-sidebar hover:text-ink transition-colors duration-150 disabled:cursor-wait"
                         iconClassName="w-5 h-5"
+                        tooltipPlacement="top"
                     />
                 </>
             )}

@@ -106,7 +106,21 @@ async function awaitModalGone(page) {
     })
 }
 
-/** Walk the wizard: name → type → colour → (stroke) → save. */
+/**
+ * Step through whatever style pages the type has after its colour page (an
+ * area has Fill and Stroke, a route Stroke, a point and a radius map none),
+ * then save. Counting the pages here instead would break each time a type
+ * gains one, which is exactly what happened when areas got a Fill page.
+ */
+async function finishWizard(w) {
+    const save = w.getByRole('button', { name: 'Save preset' })
+    for (let i = 0; i < 5 && !(await save.isVisible()); i++) {
+        await w.getByRole('button', { name: 'Next' }).click()
+    }
+    await save.click()
+}
+
+/** Walk the wizard: name → type → colour → (fill, stroke) → save. */
 async function createPreset(page, { name, type = 'Area', colour = RED } = {}) {
     // The panel's create button; the empty state and the populated state use
     // different labels, so accept either.
@@ -126,12 +140,7 @@ async function createPreset(page, { name, type = 'Area', colour = RED } = {}) {
     await w.locator(`[title="${colour}"]`).first().click()
     await w.getByRole('button', { name: 'Next' }).click()
 
-    // Stroke page (present for area/route, absent for point and for the
-    // borderless radius map).
-    const next = w.getByRole('button', { name: 'Next' })
-    if (await next.isVisible().catch(() => false)) await next.click()
-
-    await w.getByRole('button', { name: 'Save preset' }).click()
+    await finishWizard(w)
     await awaitModalGone(page)
 }
 
@@ -271,9 +280,7 @@ test.describe('legend presets', () => {
         await w.getByRole('button', { name: 'Next' }).click()
         await w.locator(`[title="${BLUE}"]`).first().click()
         await w.getByRole('button', { name: 'Next' }).click()
-        const next = w.getByRole('button', { name: 'Next' })
-        if (await next.isVisible().catch(() => false)) await next.click()
-        await w.getByRole('button', { name: 'Save preset' }).click()
+        await finishWizard(w)
         await awaitModalGone(page)
 
         // BOTH areas follow, including the painted value — the elements froze

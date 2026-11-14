@@ -12,6 +12,8 @@ export interface ElementDefaultsState {
     defaultStrokeColor: string
     defaultLinewidth: number
     defaultStrokeType: string | null
+    // Area interior: null (solid) | 'hachure' | 'cross-hatch'. Areas only.
+    defaultFillType: string | null
     defaultOpacity: number
     // Text defaults
     defaultTextColor: string
@@ -26,6 +28,7 @@ const INITIAL_DEFAULTS: ElementDefaultsState = {
     defaultStrokeColor: '#000',
     defaultLinewidth: 2,
     defaultStrokeType: null,
+    defaultFillType: null,
     defaultOpacity: 1,
     defaultTextColor: '#000',
     defaultTextSize: 'S',
@@ -49,6 +52,7 @@ export interface ElementDefaultsApi extends ElementDefaultsState {
     setDefaultStrokeColor: Dispatch<SetStateAction<string>>
     setDefaultLinewidth: Dispatch<SetStateAction<number>>
     setDefaultStrokeType: Dispatch<SetStateAction<string | null>>
+    setDefaultFillType: Dispatch<SetStateAction<string | null>>
     setDefaultOpacity: Dispatch<SetStateAction<number>>
     setDefaultTextColor: Dispatch<SetStateAction<string>>
     setDefaultTextSize: Dispatch<SetStateAction<TextSizeLabel>>
@@ -80,6 +84,9 @@ export function useElementDefaults(): ElementDefaultsApi {
     const [defaultStrokeType, setDefaultStrokeType] = useState<string | null>(
         initial.defaultStrokeType
     )
+    const [defaultFillType, setDefaultFillType] = useState<string | null>(
+        initial.defaultFillType
+    )
     const [defaultOpacity, setDefaultOpacity] = useState(initial.defaultOpacity)
 
     const [defaultTextColor, setDefaultTextColor] = useState(
@@ -106,6 +113,7 @@ export function useElementDefaults(): ElementDefaultsApi {
                     defaultStrokeColor,
                     defaultLinewidth,
                     defaultStrokeType,
+                    defaultFillType,
                     defaultOpacity,
                     defaultTextColor,
                     defaultTextSize,
@@ -120,6 +128,7 @@ export function useElementDefaults(): ElementDefaultsApi {
         defaultStrokeColor,
         defaultLinewidth,
         defaultStrokeType,
+        defaultFillType,
         defaultOpacity,
         defaultTextColor,
         defaultTextSize,
@@ -150,6 +159,7 @@ export function useElementDefaults(): ElementDefaultsApi {
         setDefaultStrokeColor(INITIAL_DEFAULTS.defaultStrokeColor)
         setDefaultLinewidth(INITIAL_DEFAULTS.defaultLinewidth)
         setDefaultStrokeType(INITIAL_DEFAULTS.defaultStrokeType)
+        setDefaultFillType(INITIAL_DEFAULTS.defaultFillType)
         setDefaultOpacity(INITIAL_DEFAULTS.defaultOpacity)
         setDefaultTextColor(INITIAL_DEFAULTS.defaultTextColor)
         setDefaultTextSize(INITIAL_DEFAULTS.defaultTextSize)
@@ -161,6 +171,7 @@ export function useElementDefaults(): ElementDefaultsApi {
         defaultStrokeColor,
         defaultLinewidth,
         defaultStrokeType,
+        defaultFillType,
         defaultOpacity,
         defaultTextColor,
         defaultTextSize,
@@ -169,6 +180,7 @@ export function useElementDefaults(): ElementDefaultsApi {
         setDefaultStrokeColor,
         setDefaultLinewidth,
         setDefaultStrokeType,
+        setDefaultFillType,
         setDefaultOpacity,
         setDefaultTextColor,
         setDefaultTextSize,

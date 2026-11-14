@@ -4,8 +4,8 @@
 // hotspot — and drawing one as a polygon `area` is fiddly and never actually
 // round. What these tests protect: it is created at 50% opacity with its stroke
 // column seeded from its fill, it is BORDERLESS (no ring at any zoom and no
-// stroke controls to grow one), its opacity control dims the disc but never
-// the label, and it takes a
+// stroke controls to grow one), it has no opacity control and paints its 50%
+// on the disc but never the label, and it takes a
 // name rather than craftbase-style inner text (the shape is never resized by
 // it). Its label is covered separately, in map-circle-label.spec.js.
 
@@ -124,7 +124,7 @@ test.describe('the map circle', () => {
         expect(rec.fill.toLowerCase()).toBe('#a32d2d')
     })
 
-    test('its opacity control dims the disc, never the label', async ({
+    test('has no opacity control, and dims the disc, never the label', async ({
         page,
     }) => {
         await openMapBase(page)
@@ -137,31 +137,17 @@ test.describe('the map circle', () => {
         })
         // drawShape leaves the new circle selected (finishPlacement attaches
         // the selection controller), so the property panel is already up.
-        const slider = page.locator('#floating-toolbar #slider-main')
-        const handle = page.locator('#floating-toolbar #slider-handle')
-        await expect(slider).toHaveCount(1)
+        await page.waitForSelector('#floating-toolbar [data-section="fill"]')
+        // The 50% it is created with is the mark, not a setting.
+        await expect(
+            page.locator('#floating-toolbar #slider-main')
+        ).toHaveCount(0)
 
-        // Drag to 20% of the track. The slider snaps to 0.1 steps, so this
-        // commits 0.2, well clear of the 0.5 a circle is created with.
-        await handle.scrollIntoViewIfNeeded()
-        const track = await slider.boundingBox()
-        const knob = await handle.boundingBox()
-        const y = knob.y + knob.height / 2
-        await page.mouse.move(knob.x + knob.width / 2, y)
-        await page.mouse.down()
-        await page.mouse.move(track.x + track.width * 0.2, y, { steps: 12 })
-        await page.mouse.up()
-
-        await expect
-            .poll(async () => (await lastRecord(page))?.opacity, {
-                timeout: 10_000,
-            })
-            .toBeCloseTo(0.2, 1)
         const rec = await lastRecord(page)
-        // The disc takes the value...
-        expect(rec.paintedShapeOpacity).toBeCloseTo(0.2, 1)
+        // The disc paints the 50%...
+        expect(rec.paintedShapeOpacity).toBeCloseTo(0.5, 2)
         // ...and the group, which also holds the label, stays opaque, so the
-        // name stays readable over the basemap (see applyProperty).
+        // name stays readable over the basemap.
         expect(rec.paintedGroupOpacity).toBe(1)
     })
 

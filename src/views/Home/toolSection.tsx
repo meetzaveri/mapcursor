@@ -68,13 +68,13 @@ const ToolSection = ({
                     ))}
                 </dl>
 
-                <Link
+                {/* <Link
                     to={routes.index}
                     className="mt-6 inline-flex items-center gap-2 bg-accent hover:bg-accent-dark text-white text-sm font-semibold
                         no-underline rounded-card px-4 py-2.5 shadow-card hover:shadow-card-accent transition-all ease-in duration-150"
                 >
                     Try it on a map
-                </Link>
+                </Link> */}
             </div>
 
             <div className="relative laptop:py-10">

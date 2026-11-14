@@ -105,7 +105,6 @@ const ACCEPTS: Record<InspectableProperty, Set<string>> = {
     ]),
     opacity: new Set([
         'rectangle',
-        'circle',
         'diamond',
         'frame',
         'arrowLine',

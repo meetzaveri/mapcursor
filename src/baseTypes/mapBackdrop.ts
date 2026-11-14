@@ -23,7 +23,7 @@ import {
 import { makeLngLatToSurface, surfaceUnitsPerMeter } from './mercator'
 import { setRoadSource, type RoadSnapshot } from './roadSource'
 import { findRoadSource } from './roadSchema'
-import { addLandLayers } from './landPaint'
+import { addAirportLabels } from './airportLabels'
 import type { RoadPolyline } from '../utils/roadGraph'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -342,11 +342,12 @@ export const mapBackdrop = {
             }),
         })
 
-        // Positron's water and land are grey by design; see paintWater and
-        // landPaint.ts.
+        // Positron's water is grey by design; see paintWater. Its land is
+        // left as CARTO draws it: the faint tints leave room for the areas
+        // people draw on top. It never names airports; see airportLabels.ts.
         map.on('styledata', () => {
             paintWater(map)
-            addLandLayers(map)
+            addAirportLabels(map)
         })
 
         const handle: MapHandle = {

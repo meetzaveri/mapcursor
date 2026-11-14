@@ -190,6 +190,47 @@ test.describe('meta properties panel', () => {
         await expect(page.locator(PANEL)).toContainText('Route')
     })
 
+    // Like the legend, the card can be carried by the grip in its header and
+    // parked anywhere, without letting go of the object it describes.
+    test('drags by its grip, keeps the selection, and docks on double-click', async ({
+        page,
+    }) => {
+        await openSeeded(page)
+        await selectPoint(page)
+        const panel = page.locator(PANEL)
+        await expect(panel).toContainText('Point')
+        const docked = await panel.boundingBox()
+
+        const grip = panel.getByRole('button', { name: /Drag to move/ })
+        const g = await grip.boundingBox()
+        const from = { x: g.x + g.width / 2, y: g.y + g.height / 2 }
+        await page.mouse.move(from.x, from.y)
+        await page.mouse.down()
+        await page.mouse.move(from.x - 400, from.y + 120, { steps: 10 })
+        await page.mouse.up()
+
+        // Moved by the drag, and the point is still the one being described.
+        const moved = await panel.boundingBox()
+        expect(moved.x).toBeCloseTo(docked.x - 400, -1)
+        expect(moved.y).toBeCloseTo(docked.y + 120, -1)
+        await expect(panel).toContainText('Point')
+
+        // Remembered across a fresh selection: the card comes and goes with
+        // it, the spot does not.
+        await page.mouse.click(1000, 250)
+        await expect(panel).toHaveCount(0)
+        await selectPoint(page)
+        const again = await panel.boundingBox()
+        expect(again.x).toBeCloseTo(moved.x, 0)
+        expect(again.y).toBeCloseTo(moved.y, 0)
+
+        // Double-click the grip: back under the legend.
+        await panel.getByRole('button', { name: /Drag to move/ }).dblclick()
+        const home = await panel.boundingBox()
+        expect(home.x).toBeCloseTo(docked.x, 0)
+        expect(home.y).toBeCloseTo(docked.y, 0)
+    })
+
     test('the wizard refuses a value that does not fit, then saves it', async ({
         page,
     }) => {
