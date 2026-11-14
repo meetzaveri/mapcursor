@@ -13,7 +13,7 @@
     <a href="https://github.com/meetzaveri/mapcursor/issues">Issues</a>
 </p>
 
-![Corridors in Mumbai drawn in Mapcursor, with a legend naming each route](./src/assets/route-corridor-use-case.png)
+![Mapcursor editing experience](./src/assets/home-page-hero.png)
 
 ## Why this exists
 
