@@ -36,6 +36,7 @@ import {
     RenamePropertyDialog,
 } from './metaDialogs'
 import type { MetaProperty } from '../../types/metaProperty'
+import { CHROME_ENTER } from '../common/chromeEnter'
 
 const PANEL_WIDTH = 260
 const GAP = 8
@@ -317,8 +318,8 @@ export function MobileMetaPropertiesButton({
                 aria-label="Properties"
                 title="Properties"
                 onClick={(): void => setOpen(true)}
-                className="w-10 h-10 rounded-lg flex items-center justify-center
-                    bg-accent-dark text-white"
+                className={`w-10 h-10 rounded-lg flex items-center justify-center
+                    bg-card-bg text-accent-dark border border-accent/30 ${CHROME_ENTER}`}
             >
                 <svg
                     width="18"

@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { useBaseContext } from '../../views/Base/baseContext'
 import { useMediaQueryUtils } from '../../constants/exportHooks'
 import { dispatchDeleteKey } from '../../utils/deleteKey'
+import { CHROME_ENTER_FROM_BOTTOM } from '../common/chromeEnter'
 
 const TrashIcon = (): ReactElement => (
     <svg
@@ -106,8 +107,8 @@ const MobileDeleteButton = ({
                 right: '10px',
                 zIndex: 20,
             }}
-            className="w-10 h-10 rounded-lg flex items-center justify-center
-                bg-reds-r400 text-white shadow-md transition-colors duration-150"
+            className={`w-10 h-10 rounded-lg flex items-center justify-center
+                bg-reds-r400 text-white shadow-md transition-colors duration-150 ${CHROME_ENTER_FROM_BOTTOM}`}
         >
             <TrashIcon />
         </button>

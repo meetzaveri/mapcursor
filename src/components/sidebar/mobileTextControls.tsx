@@ -10,6 +10,7 @@ import {
 } from '../../constants/misc'
 import OkIcon from '../../assets/ok.svg?react'
 import CloseIcon from '../../assets/close.svg?react'
+import { CHROME_ENTER_FROM_BOTTOM } from '../common/chromeEnter'
 import PencilIcon from '../../wireframeAssets/pencil.svg?react'
 
 const EDITABLE_TEXT_TYPES: ReadonlySet<string> = new Set([
@@ -71,7 +72,7 @@ const MobileTextControls = ({
                     right: '10px',
                     zIndex: 20,
                 }}
-                className="flex flex-col gap-2"
+                className={`flex flex-col gap-2 ${CHROME_ENTER_FROM_BOTTOM}`}
             >
                 <button
                     type="button"
@@ -121,9 +122,9 @@ const MobileTextControls = ({
                 right: '10px',
                 zIndex: 20,
             }}
-            className="w-10 h-10 rounded-lg flex items-center justify-center
+            className={`w-10 h-10 rounded-lg flex items-center justify-center
                 bg-card-bg text-ink-mid border border-border-panel shadow-md
-                transition-colors duration-150"
+                transition-colors duration-150 ${CHROME_ENTER_FROM_BOTTOM}`}
         >
             <PencilIcon
                 width={18}

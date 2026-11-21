@@ -10,6 +10,14 @@
         var(--mc-reveal-delay, 0ms) backwards;
 }
 
+.mc-enter {
+    animation: mc-chrome-in 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.mc-enter--from-bottom {
+    --mc-reveal-dy: 10px;
+}
+
 @keyframes mc-chrome-in {
     from {
         opacity: 0;
@@ -29,7 +37,8 @@
 
 @media (prefers-reduced-motion: reduce) {
     .mc-reveal-active:not(.mc-reveal--deep) > *,
-    .mc-reveal-active.mc-reveal--deep > * > * {
+    .mc-reveal-active.mc-reveal--deep > * > *,
+    .mc-enter {
         animation-name: mc-chrome-fade;
     }
 }
