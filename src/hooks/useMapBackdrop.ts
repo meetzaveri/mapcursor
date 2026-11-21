@@ -22,6 +22,9 @@ type MapBackdropModule = typeof import('../baseTypes/mapBackdrop')['mapBackdrop'
 
 export const BASE_ROOT_ID = 'mc-base-root'
 
+// The UI must never wait on tiles that are blocked, offline or slow.
+const FIRST_PAINT_FALLBACK_MS = 3500
+
 export interface MapBackdropOptions {
     baseId: string
     /**
@@ -54,6 +57,8 @@ export interface MapBackdropApi {
     hadStoredMapAnchor: boolean
     /** True once the backdrop has actually mounted. */
     ready: boolean
+    /** True once the first tiles have rendered, or the fallback has elapsed. */
+    firstPaint: boolean
     /** Feed every ZUI camera update here. Also triggers the deferred mount. */
     handleCameraChange: (camera: CameraChangeEvent) => void
     /** Rasterize the live backdrop for PNG export; null when there's nothing. */
@@ -82,6 +87,13 @@ export function useMapBackdrop({
         }
     })
     const [ready, setReady] = useState(false)
+    const [firstPaint, setFirstPaint] = useState(false)
+    const markFirstPaint = useCallback((): void => setFirstPaint(true), [])
+
+    useEffect(() => {
+        const timer = window.setTimeout(markFirstPaint, FIRST_PAINT_FALLBACK_MS)
+        return (): void => window.clearTimeout(timer)
+    }, [markFirstPaint])
 
     const handleRef = useRef<MapBackdropHandle | null>(null)
     // Cached at mount. `syncCamera` runs on every camera event, so it has to be
@@ -121,7 +133,7 @@ export function useMapBackdrop({
             const handle = await mapBackdrop.mount(
                 container,
                 configRef.current,
-                { saveConfig }
+                { saveConfig, onFirstPaint: markFirstPaint }
             )
             if (token !== mountTokenRef.current) {
                 mapBackdrop.unmount(handle)
@@ -136,10 +148,13 @@ export function useMapBackdrop({
             // shows at the origin for a frame before the next pan.
             const camera = lastCameraRef.current
             if (camera) mapBackdrop.syncCamera(handle, camera)
+        } catch (err) {
+            console.error('Map backdrop mount failed', err)
+            markFirstPaint()
         } finally {
             mountingRef.current = false
         }
-    }, [saveConfig])
+    }, [saveConfig, markFirstPaint])
 
     const handleCameraChange = useCallback(
         (camera: CameraChangeEvent): void => {
@@ -199,6 +214,7 @@ export function useMapBackdrop({
     return {
         hadStoredMapAnchor: Boolean(initialConfig.mapAnchor),
         ready,
+        firstPaint,
         handleCameraChange,
         captureBackdrop,
         readConfig,

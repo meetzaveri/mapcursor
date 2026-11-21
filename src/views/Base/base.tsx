@@ -15,7 +15,6 @@ import {
 } from '../../schema/queries'
 import {
     UPDATE_USER_REVISIT_COUNT,
-    INSERT_USER_ONE,
     INSERT_COMPONENT,
     INSERT_BULK_COMPONENTS,
     DELETE_COMPONENT_BY_ID,
@@ -53,6 +52,7 @@ import Canvas from '../../newCanvas'
 import ZoomControls from '../../components/ZoomControls'
 import GoToContentButton from '../../components/goToContentButton'
 import HelpButton from '../../components/helpButton'
+import ChromeReveal from '../../components/common/chromeReveal'
 import Sidebar from '../../components/sidebar/primary'
 import ElementPropertiesToolbar from '../../components/sidebar/elementProperties'
 import controlsIcon from '../../assets/controls.svg'
@@ -111,7 +111,7 @@ import type { UseMetaPropertiesApi } from '../../hooks/useMetaProperties'
 import { writeMetaLocal } from '../../utils/metaPropertyStore'
 import type { ParsedImport, BaseViewport } from '../../utils/importBase'
 import { draftFitsForStore } from '../../utils/baseSizeGuard'
-import { generateUUID, generateRandomUsernames } from '../../utils/misc'
+import { generateUUID } from '../../utils/misc'
 import { prefetchElementModule } from '../../elementModules'
 import {
     pollUntilElement,
@@ -318,8 +318,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         },
     ] = useMutation(UPDATE_USER_REVISIT_COUNT)
 
-    const [insertUser] = useMutation(INSERT_USER_ONE)
-
     const navigate = useNavigate()
 
     const [createBase, { loading: createBaseLoading, data: createBaseData }] =
@@ -441,6 +439,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setMapAnchor,
         hadStoredMapAnchor,
         ready: backdropReady,
+        firstPaint: mapFirstPaint,
     } = useMapBackdrop({
         baseId,
         serverConfig: props.serverBaseConfig,
@@ -1087,34 +1086,13 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }, [baseId])
 
-    // Update revisit count on every base open, persisted or local.
-    // A null payload means there's no revisit row for this userId — i.e.
-    // the user was never created in this DB. Self-heal by inserting the
-    // user with the known id; the `after_user_insert` Postgres trigger
-    // then creates the revisits row (count = 1) for this visit.
+    // Revisit tracking is best-effort and must never break base mount.
     useEffect(() => {
         const userId = localStorage.getItem('userId')
         if (!userId) return
-        // Capture the revisit moment client-side as an ISO 8601 string;
-        // Hasura coerces it into the timestamptz `last_visit` column for
-        // cohort analysis in the DB.
         updateUserRevisit({
             variables: { userId, lastVisit: new Date().toISOString() },
-        })
-            .then(({ data }) => {
-                if (data?.update_users_user_revisits_by_pk) return
-                const { nickname, firstName, lastName } =
-                    generateRandomUsernames()
-                return insertUser({
-                    variables: {
-                        object: { id: userId, nickname, firstName, lastName },
-                    },
-                })
-            })
-            .catch(() => {
-                // Non-blocking: revisit tracking is best-effort and must
-                // never break base mount (network/permission/conflict).
-            })
+        }).catch(() => {})
     }, [])
 
     // Track last opened base only once it's persisted
@@ -2944,7 +2922,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 value={contextValueForSidebar as unknown as BaseContextValue}
             >
                 <div>
-                    <Sidebar />
+                    <Sidebar chromeShown={mapFirstPaint} />
                     {isMobile && showMultiClickDrawControls && (
                         <div
                             style={{
@@ -3022,7 +3000,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                         )}
                     <ElementPropertiesToolbar />
                     <PresetChips />
-                    <LegendPanel />
+                    <ChromeReveal shown={mapFirstPaint} order={4}>
+                        <LegendPanel />
+                    </ChromeReveal>
                     <MetaPropertiesPanel />
                     <MobileSideActions />
                     <Canvas
@@ -3048,9 +3028,19 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                         fitToContentRef={fitToContentRef}
                         initialMapLanding={initialMapLanding}
                     />
-                    {!isMobile && <ZoomControls />}
+                    {!isMobile && (
+                        <ChromeReveal
+                            shown={mapFirstPaint}
+                            order={5}
+                            from="bottom"
+                        >
+                            <ZoomControls />
+                        </ChromeReveal>
+                    )}
                     <GoToContentButton />
-                    <HelpButton />
+                    <ChromeReveal shown={mapFirstPaint} order={6} from="bottom">
+                        <HelpButton />
+                    </ChromeReveal>
                 </div>
             </BaseContext.Provider>
             {/* {isMobile ? (

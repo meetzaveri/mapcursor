@@ -9,8 +9,6 @@ import type {
     DeleteComponentByIdMutationVariables,
     InsertBulkComponentsMutation,
     InsertBulkComponentsMutationVariables,
-    InsertUserMutation,
-    InsertUserMutationVariables,
     CreateBaseMutation,
     CreateBaseMutationVariables,
     DeleteComponentsMutation,
@@ -103,18 +101,6 @@ export const INSERT_BULK_COMPONENTS: TypedDocumentNode<
                 componentType
                 id
             }
-        }
-    }
-`
-
-export const INSERT_USER_ONE: TypedDocumentNode<
-    InsertUserMutation,
-    InsertUserMutationVariables
-> = gql`
-    mutation insertUser($object: users_user_insert_input! = {}) {
-        user: insert_users_user_one(object: $object) {
-            id
-            firstName
         }
     }
 `

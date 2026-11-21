@@ -7,7 +7,7 @@ loadEnv({ path: '.env.local' })
 loadEnv({ path: '.env' })
 
 const endpoint = process.env.VITE_GRAPHQL_ENDPOINT
-const adminSecret = process.env.VITE_HASURA_ADMIN_SECRET
+const adminSecret = process.env.HASURA_ADMIN_SECRET
 
 if (!endpoint) {
     throw new Error(
@@ -16,7 +16,7 @@ if (!endpoint) {
 }
 if (!adminSecret) {
     throw new Error(
-        'VITE_HASURA_ADMIN_SECRET is required for codegen. Set it in .env.local.'
+        'HASURA_ADMIN_SECRET is required for codegen. Set it in .env.local.'
     )
 }
 

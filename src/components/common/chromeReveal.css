@@ -1,0 +1,40 @@
+/* Animates the wrapper's child (or grandchild, for roots that are plain
+   containers around fixed elements) rather than the wrapper itself: a
+   transform on an ancestor would re-anchor every position: fixed descendant
+   to that ancestor. `translate` composes with any transform the child sets. */
+
+.mc-reveal-pending > *,
+.mc-reveal-pending.mc-reveal--deep > * > * {
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+
+.mc-reveal-active:not(.mc-reveal--deep) > *,
+.mc-reveal-active.mc-reveal--deep > * > * {
+    animation: mc-chrome-in 600ms cubic-bezier(0.22, 1, 0.36, 1)
+        var(--mc-reveal-delay, 0ms) backwards;
+}
+
+@keyframes mc-chrome-in {
+    from {
+        opacity: 0;
+        translate: 0 var(--mc-reveal-dy, -10px);
+    }
+    to {
+        opacity: 1;
+        translate: none;
+    }
+}
+
+@keyframes mc-chrome-fade {
+    from {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mc-reveal-active:not(.mc-reveal--deep) > *,
+    .mc-reveal-active.mc-reveal--deep > * > * {
+        animation-name: mc-chrome-fade;
+    }
+}

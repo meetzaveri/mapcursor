@@ -8,11 +8,12 @@
 
 # General guidelines
 
-For example:
-
 - Only use absolute positioning when necessary. Opt for responsive and well structured layouts that use flexbox and grid by default
 - Refactor code as you go to keep code clean
 - Keep file sizes small and put helper functions and components in their own files.
+- If you are changing DB table schema/ column types or such types in /schema folder like component or legend preset, always confirm with the actual developer/user before making any change.
+- Restrict use of comments wherever possible unless really needed.
+- If you are stuck in making architecture decision or code configuration changes, please push back and ask me.
 
 # What mapcursor is
 

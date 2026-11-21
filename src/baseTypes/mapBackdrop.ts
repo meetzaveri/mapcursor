@@ -282,9 +282,7 @@ export const mapBackdrop = {
     async mount(
         container: HTMLElement,
         config: MapBackdropConfig,
-        // Unused: the anchor is resolved synchronously from the timezone, and a
-        // real choice arrives later via setAnchor (the host persists it).
-        _ctx: MapBackdropMountContext
+        ctx: MapBackdropMountContext
     ): Promise<MapBackdropHandle> {
         // maplibre v6 ships ESM-only with named exports (no default export),
         // so take the module namespace itself.
@@ -349,6 +347,7 @@ export const mapBackdrop = {
             paintWater(map)
             addAirportLabels(map)
         })
+        map.once('load', () => ctx.onFirstPaint())
 
         const handle: MapHandle = {
             map,

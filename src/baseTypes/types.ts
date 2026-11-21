@@ -46,6 +46,8 @@ export interface MapBackdropHandle {
 export interface MapBackdropMountContext {
     /** Persist a partial config update for the current base. */
     saveConfig(patch: Partial<MapBackdropConfig>): void
+    /** Called once, when the first set of tiles has rendered. */
+    onFirstPaint(): void
 }
 
 /**

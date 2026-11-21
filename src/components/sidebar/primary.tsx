@@ -39,6 +39,7 @@ import {
 import './sidebar.css'
 import { openImageFilePicker } from '../../utils/imageFile'
 import { requestImageInsert } from '../../hooks/useImageDrop'
+import ChromeReveal from '../common/chromeReveal'
 import ShareLinkPopup from './shareLinkPopup'
 import MenuDrawer from './menuDrawer'
 
@@ -60,7 +61,12 @@ const FALLBACK_CATALOG: Record<
     text: { width: 120, height: 36, fill: 'transparent', textColor: '#3A342C' },
 }
 
-const PrimarySidebar = (): ReactElement => {
+interface PrimarySidebarProps {
+    /** Hold the chrome back until the map has painted, then stagger it in. */
+    chromeShown: boolean
+}
+
+const PrimarySidebar = ({ chromeShown }: PrimarySidebarProps): ReactElement => {
     const {
         baseId,
         updateLastAddedElement,
@@ -586,9 +592,20 @@ const PrimarySidebar = (): ReactElement => {
     const isLiveSession = false
     return (
         <>
-            <ShapesToolbar addElement={addElement} />
-            <PlaceSearch />
-            <MenuDrawer />
+            <ChromeReveal shown={chromeShown} order={0}>
+                <MenuDrawer />
+            </ChromeReveal>
+            <ChromeReveal shown={chromeShown} order={1}>
+                <PlaceSearch />
+            </ChromeReveal>
+            <ChromeReveal
+                shown={chromeShown}
+                order={2}
+                from={isMobile ? 'bottom' : 'top'}
+                deep
+            >
+                <ShapesToolbar addElement={addElement} />
+            </ChromeReveal>
             {/* pointer-events-none: this is a full-width strip across the top
                 of the screen, hidden only by opacity, so it used to swallow
                 every press over the canvas beside the toolbars. It is a
@@ -651,7 +668,9 @@ const PrimarySidebar = (): ReactElement => {
                     </div>
                 )}
 
-                <ShareLinkPopup />
+                <ChromeReveal shown={chromeShown} order={3}>
+                    <ShareLinkPopup />
+                </ChromeReveal>
             </div>
         </>
     )
