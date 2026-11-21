@@ -53,6 +53,7 @@ import ZoomControls from '../../components/ZoomControls'
 import GoToContentButton from '../../components/goToContentButton'
 import HelpButton from '../../components/helpButton'
 import ChromeReveal from '../../components/common/chromeReveal'
+import ToolbarIntro from '../../components/onboarding/toolbarIntro'
 import { CHROME_ENTER_FROM_BOTTOM } from '../../components/common/chromeEnter'
 import Sidebar from '../../components/sidebar/primary'
 import ElementPropertiesToolbar from '../../components/sidebar/elementProperties'
@@ -2282,6 +2283,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             >
                 <div>
                     <Sidebar chromeShown={mapFirstPaint} />
+                    <ToolbarIntro
+                        ready={mapFirstPaint && !showMapStartModal}
+                    />
                     {isMobile && showMultiClickDrawControls && (
                         <div
                             style={{
