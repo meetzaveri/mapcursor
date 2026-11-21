@@ -1,24 +1,9 @@
-// Image helpers shared by the image, image-metadata and meta-properties specs.
-//
-// Playwright can't drag a file from the OS, so a drop is a real File built in
-// the page, wrapped in a DataTransfer and dispatched as dragover + drop on
-// #main-two-root: the same event shape the browser delivers, and useImageDrop
-// reads only `dataTransfer.files` and the client coords from it.
-//
-// Selectors and storage names mirror the app (no `import('/src/…')` in the
-// page; see CLAUDE.md):
-//   IMAGE_NODE_ATTR   src/utils/imageNode.ts
-//   IMAGE_PENDING_ATTR src/utils/svgExportShared.ts
-//   DB_NAME / STORE   src/utils/assetStore.ts
-
 export const IMAGE_GROUP = 'g[data-component-type="image"]'
 export const IMAGE_NODE = `${IMAGE_GROUP} image[data-mc-image]`
 export const PENDING_NODE = '[data-mc-image-pending]'
 export const ASSET_DB = 'mapcursor-assets'
-// useLocalDraftPersistence's 500ms debounce, plus headroom.
 export const DRAFT_DEBOUNCE_MS = 700
 
-/** A solid PNG encoded in the page, returned to Node as a Buffer. */
 export async function makePng(page, { width, height, color = '#3b82f6' }) {
     const base64 = await page.evaluate(
         ({ width, height, color }) => {
@@ -37,7 +22,6 @@ export async function makePng(page, { width, height, color = '#3b82f6' }) {
     return Buffer.from(base64, 'base64')
 }
 
-/** Drop a file (Buffer or base64) on the canvas at client coords. */
 export async function dropFile(
     page,
     data,
@@ -60,7 +44,6 @@ export async function dropFile(
     await page.dispatchEvent('#main-two-root', 'drop', init)
 }
 
-/** Pick a file through the toolbar's Image tool. */
 export async function insertImageViaToolbar(page, buffer) {
     const [chooser] = await Promise.all([
         page.waitForEvent('filechooser'),
@@ -69,10 +52,6 @@ export async function insertImageViaToolbar(page, buffer) {
     await chooser.setFiles({ name: 'picked.png', mimeType: 'image/png', buffer })
 }
 
-/**
- * Wait until an image's BITMAP has painted, not just its placeholder: the
- * frame turns transparent only on the <image>'s load event.
- */
 export async function waitForPaintedImage(page) {
     await page.waitForFunction(() => {
         const g = document.querySelector('g[data-component-type="image"]')
@@ -84,7 +63,6 @@ export async function waitForPaintedImage(page) {
     })
 }
 
-/** The <image>'s rendered box, in screen px. */
 export async function imageRect(page) {
     return page.$eval(IMAGE_NODE, (el) => {
         const r = el.getBoundingClientRect()
@@ -101,7 +79,6 @@ export async function imageRect(page) {
     })
 }
 
-/** Number of stored image assets (the DB may not exist yet: 0). */
 export async function assetCount(page) {
     return page.evaluate(
         (db) =>
@@ -126,7 +103,6 @@ export async function assetCount(page) {
     )
 }
 
-/** One stored asset's bytes (base64) and MIME type. */
 export async function readAsset(page, assetId) {
     return page.evaluate(
         ({ db, id }) =>
@@ -153,7 +129,6 @@ export async function readAsset(page, assetId) {
     )
 }
 
-/** The image element records in the local draft. */
 export async function draftImages(page) {
     return page.evaluate(() => {
         const raw = localStorage.getItem('mapcursor_local_draft')
@@ -164,11 +139,6 @@ export async function draftImages(page) {
     })
 }
 
-/**
- * Wait until the debounced draft write holds `count` image records. Never a
- * fixed sleep: under parallel workers the 500ms debounce can land well after
- * any fixed allowance, which made a 700ms wait flaky.
- */
 export async function waitForDraftImages(page, count = 1) {
     await page.waitForFunction((n) => {
         const raw = localStorage.getItem('mapcursor_local_draft')

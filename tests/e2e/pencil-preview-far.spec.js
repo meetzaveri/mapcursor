@@ -5,16 +5,7 @@ import {
     clickToolbarButton,
 } from './helpers/index.js'
 
-// Far from the anchor, surface coordinates run to ~1e7, and SVG path data is
-// rasterised in float32 — which resolves only whole units out there. A live
-// pencil preview carrying absolute coordinates drew broken mid-stroke and
-// only turned solid on mouseup. The preview now keeps its vertices relative
-// to the stroke's start (on the group's translation), so its path data stays
-// screen-sized wherever the camera is. That is what this pins down.
-
-// Roughly California from an Ahmedabad anchor, at z16.
 const FAR = { x: -14_500_000, y: -3_000_000 }
-// Comfortably beyond any stroke a test draws, far below FAR.
 const MAX_LOCAL_COORD = 10_000
 
 test.describe('Pencil preview far from the anchor', () => {
@@ -44,9 +35,7 @@ test.describe('Pencil preview far from the anchor', () => {
             await page.mouse.move(x + i * 10, y + Math.sin(i / 5) * 60)
         }
 
-        // Mid-stroke: the preview is the only element not yet committed.
         const maxCoord = await page.evaluate(() => {
-            // Only the canvas's own scene, under the render-origin wrapper.
             const paths = Array.from(
                 document.querySelectorAll(
                     '#mc-render-origin path[stroke-linecap="round"]'

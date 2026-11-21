@@ -1,9 +1,3 @@
-// Per-base viewport persistence.
-//
-// Key shape: `mapcursor_viewport_<baseId>`, or the mobile prefix instead.
-// Desktop and mobile keep separate cameras — they have very different usable
-// viewports — which is why the prefix differs rather than a suffix.
-
 import {
     VIEWPORT_KEY_PREFIX,
     MOBILE_VIEWPORT_KEY_PREFIX,
@@ -20,13 +14,11 @@ interface RawViewport extends StoredViewport {
     savedAt: number
 }
 
-/** Storage key for a base's camera. */
 export function viewportKeyFor(baseId: string, isMobile: boolean): string {
     const prefix = isMobile ? MOBILE_VIEWPORT_KEY_PREFIX : VIEWPORT_KEY_PREFIX
     return `${prefix}${baseId}`
 }
 
-/** Read a base's saved camera, or null when absent, expired or malformed. */
 export function readViewport(
     baseId: string,
     isMobile: boolean
@@ -61,7 +53,6 @@ export function readViewport(
     }
 }
 
-/** Persist a base's camera. Swallows quota/private-mode failures. */
 export function writeViewport(
     baseId: string,
     isMobile: boolean,
@@ -73,10 +64,7 @@ export function writeViewport(
             viewportKeyFor(baseId, isMobile),
             JSON.stringify({ ...viewport, savedAt: Date.now() })
         )
-    } catch {
-        // Losing a camera preference must never block the interaction.
-    }
+    } catch {}
 }
 
-/** The camera a base opens on when it has nothing saved. */
 export const IDENTITY_VIEWPORT: StoredViewport = { scale: 1, tx: 0, ty: 0 }

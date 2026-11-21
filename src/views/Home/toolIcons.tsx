@@ -1,8 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
 
-// Radar-style section marks: a tool glyph drawn over a dot grid. Dots use the
-// border-card token (grid dots), strokes use ink, vertices use the accent.
-
 const SIZE = 96
 const STEP = 12
 

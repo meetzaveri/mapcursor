@@ -10,17 +10,9 @@ import { useSelectedMetaObject } from '../metaProperties/useSelectedMetaObject'
 import { SHARE_BUTTON_ID } from './shapesToolbarId'
 import LocateMeButton from '../locateMeButton'
 
-// Mobile only. A column of buttons hangs under Share on the right edge. Locate
-// me is always there (desktop has it in the zoom pill, which mobile hides).
-// While one element other than a pencil stroke is selected, Legend (the same
-// modal the menu drawer opens) follows, then the meta properties button when
-// the element takes meta properties. Everything shares Share's right edge.
-
 const GAP_PX = 8
-/** Where the column starts if Share can't be measured: its usual bottom + gap. */
 const FALLBACK_TOP_PX = 62
 
-/** Top of the column: just under the Share button, re-measured on resize. */
 function useBelowShareTop(active: boolean): number {
     const [top, setTop] = useState(FALLBACK_TOP_PX)
     useLayoutEffect(() => {
@@ -37,7 +29,6 @@ function useBelowShareTop(active: boolean): number {
     return top
 }
 
-/** A single selected element that isn't a pencil stroke. */
 function useHasNonPencilSelection(): boolean {
     const { selectedComponent, selectedGroup } = useBaseContext()
     if (selectedGroup || !selectedComponent) return false
@@ -55,8 +46,6 @@ const MobileSideActions = (): ReactElement | null => {
     const active = isMobile && hasSelection
     const top = useBelowShareTop(isMobile)
 
-    // The modal stays mounted while open, so deselecting behind it can't
-    // yank it away mid-edit.
     if (!isMobile && !showLegend) return null
 
     return (

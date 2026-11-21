@@ -24,9 +24,6 @@ const MENU_WIDTH = 240
 const SUBMENU_WIDTH = 240
 const MENU_MARGIN = 8
 
-// Shared icon tone — matches the menu's ink-mid text. The source SVGs hardcode
-// a blue stroke; SVGR spreads props after the original attrs, so this wins.
-// Icons inherit the row's text token; see menuDrawer for the same move.
 const ICON_STROKE = 'currentColor'
 
 const itemClass =
@@ -35,11 +32,6 @@ const itemClass =
 
 const shortcutClass = 'text-[10px] text-ink-muted tracking-wide'
 
-// Format a shortcut for the host OS: compact symbols on mac (⌘]), the
-// conventional spelled-out form elsewhere (Ctrl+]). Kept in sync with the
-// keyboard handler in newCanvas.tsx, which acts on metaKey on mac / ctrlKey on
-// the rest. Reorder uses bare brackets for forward/back-one and ⌘/Ctrl+bracket
-// for to-front/to-back (no Shift — ⌘⇧[/] are reserved tab-switch on mac Chrome).
 export const fmtShortcut = (
     key: string,
     { cmd = false, shift = false }: { cmd?: boolean; shift?: boolean } = {}
@@ -82,12 +74,6 @@ const REORDER_ITEMS: ReorderItem[] = [
     },
 ]
 
-/**
- * Small fixed-position menu opened on canvas right-click / two-finger tap.
- * Closes on outside click or Escape. Positioned at the cursor and clamped to
- * the viewport so it never overflows off-screen. The Reorder entry opens a
- * flyout submenu to the right (or left, near the screen edge).
- */
 const CanvasContextMenu = ({
     x,
     y,
@@ -123,7 +109,6 @@ const CanvasContextMenu = ({
     const top = Math.min(y, window.innerHeight - (height || 60) - MENU_MARGIN)
     const clampedLeft = Math.max(MENU_MARGIN, left)
 
-    // Flip the flyout to the left when there isn't room on the right.
     const openLeft =
         clampedLeft + MENU_WIDTH + SUBMENU_WIDTH + MENU_MARGIN >
         window.innerWidth
@@ -164,21 +149,6 @@ const CanvasContextMenu = ({
                             stroke={ICON_STROKE}
                             strokeWidth={2}
                         />
-                        {/* <svg
-                            width="10"
-                            height="10"
-                            viewBox="0 0 10 10"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                        >
-                            <path
-                                d="M3.5 2l3 3-3 3"
-                                stroke={ICON_STROKE}
-                                strokeWidth="1.1"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            />
-                        </svg> */}
                     </button>
 
                     {reorderOpen && (

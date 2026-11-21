@@ -8,7 +8,6 @@ export interface RouteProperties {
     stroke?: string
     linewidth?: number
     strokeType?: string | null
-    /** `geometry` is a LineString in absolute surface coords. */
     metadata?: ComponentMetadata | null
 }
 
@@ -25,15 +24,11 @@ export default class RouteFactory extends Main<RouteProperties> {
         const prevY = this.y
         const { stroke, linewidth, strokeType } = this.properties
 
-        // A route is a LineString. Positions are absolute surface coords, so
-        // the path is rebuilt relative to the origin the geometry itself
-        // reports — `prevX`/`prevY` come from `geometryOrigin`, not the columns.
         const positions = geometryPositions(readGeometry(this.properties))
         const anchors = positions.map(
             ([x, y]) => new (Two as ShapeLike).Anchor(x - prevX, y - prevY)
         )
 
-        // closed = false → open polyline (route)
         const path = new (Two as ShapeLike).Path(anchors, false, false)
         path.noFill()
         path.stroke = stroke || '#3B82F6'

@@ -1,14 +1,3 @@
-// Validation for meta property values and names. The single place that knows
-// what each property type accepts; the panel, the hook and import all go
-// through here, so a value can only be stored in one shape per type.
-//
-// Shapes (the jsonb `value` column):
-//   integer → a JSON number with no fraction
-//   text    → a non-empty string
-//   email   → a string that looks like an address
-//   date    → an ISO calendar date, 'YYYY-MM-DD'
-//   image   → an ImageAssetRef (types/asset.ts)
-
 import { isImageAssetRef } from '../types/asset'
 import type { MetaProperty, MetaPropertyType } from '../types/metaProperty'
 
@@ -21,8 +10,6 @@ export type MetaValueResult =
 
 const fail = (error: string): MetaValueResult => ({ ok: false, error })
 
-// Deliberately loose: one @, something either side, a dot in the domain.
-// Anything stricter rejects real addresses; this only catches typos.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 
@@ -31,7 +18,6 @@ function isCalendarDate(text: string): boolean {
     if (!m) return false
     const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])]
     const date = new Date(Date.UTC(y, mo - 1, d))
-    // Round-trips only for a real day: 2026-02-30 becomes March 2nd.
     return (
         date.getUTCFullYear() === y &&
         date.getUTCMonth() === mo - 1 &&
@@ -39,10 +25,6 @@ function isCalendarDate(text: string): boolean {
     )
 }
 
-/**
- * Check (and normalize) a value for a property type. Accepts what a form
- * field produces (strings) as well as already-typed values from storage.
- */
 export function validateMetaValue(
     type: MetaPropertyType,
     raw: unknown
@@ -84,7 +66,6 @@ export function validateMetaValue(
             return { ok: true, value: raw }
         }
         default: {
-            // Exhaustive: a new enum value from codegen fails to compile here.
             const unknownType: never = type
             return fail(`Unsupported type: ${String(unknownType)}`)
         }
@@ -95,12 +76,6 @@ export type MetaNameResult =
     | { ok: true; name: string }
     | { ok: false; error: string }
 
-/**
- * Normalize a property name and check it against the base's other properties.
- * Names are unique per base in the database (case-sensitive); here they are
- * unique case-insensitively, so "Photo" and "photo" can't both exist.
- * `exceptId` lets a rename keep its own name.
- */
 export function validateMetaPropertyName(
     raw: string,
     existing: readonly MetaProperty[],
@@ -123,18 +98,6 @@ export function validateMetaPropertyName(
     return { ok: true, name }
 }
 
-/**
- * A value carried across a property's type change, or null when it can't be.
- *
- *   to Text   ← numbers, dates, emails (as written); images are cleared
- *   to Number ← text that is a whole number
- *   to Email  ← text that looks like an address
- *   to Date   ← text in YYYY-MM-DD form
- *   to Image  ← nothing converts
- *
- * Everything goes through validateMetaValue, so a converted value is exactly
- * what the new type would have accepted from the form.
- */
 export function convertMetaValue(
     from: MetaPropertyType,
     to: MetaPropertyType,

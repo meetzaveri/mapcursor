@@ -9,9 +9,7 @@ import type { MetaProperty, MetaValue } from '../../types/metaProperty'
 interface MetaPropertyRowProps {
     property: MetaProperty
     value: MetaValue
-    /** e.g. "point", for "Remove from this point". */
     objectNoun: string
-    /** Resolves to an error message, or null once stored. */
     onSave: (draft: MetaDraft) => Promise<string | null>
     onRemove: () => void
     onRename: () => void
@@ -55,7 +53,6 @@ function IconButton({
     )
 }
 
-/** One property on the selected object: its value, editable in place. */
 export default function MetaPropertyRow({
     property,
     value,
@@ -98,9 +95,6 @@ export default function MetaPropertyRow({
                 <div className="min-w-0 text-[11px] font-medium text-ink-muted truncate">
                     {property.name}
                 </div>
-                {/* Always in the DOM, revealed on hover/focus, like the legend
-                    rows: mounting on hover would make them unreachable by
-                    keyboard. */}
                 {!editing && (
                     <div
                         className="flex items-center shrink-0 opacity-0
@@ -173,8 +167,6 @@ export default function MetaPropertyRow({
                     />
                 </div>
             ) : (
-                // A div, not a <button>: an email value renders a link, and a
-                // link can't live inside a button.
                 <div
                     role="button"
                     tabIndex={0}

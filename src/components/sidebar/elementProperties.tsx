@@ -39,9 +39,6 @@ import EllypsisIcon from '../../assets/ellypsis.svg?react'
 import TextIcon from '../../assets/text.svg?react'
 import SunsetIcon from '../../assets/sunset.svg?react'
 
-// Reorder icon tone — matches the toolbar's ink-mid text. The source SVGs
-// hardcode a blue stroke; SVGR spreads props after the original attrs so this
-// override wins (same trick as canvasContextMenu).
 const REORDER_ICON_STROKE = 'currentColor'
 
 const REORDER_BUTTONS: {
@@ -55,14 +52,6 @@ const REORDER_BUTTONS: {
     { op: 'back', label: 'Send to Back', Icon: SendToBackIcon },
 ]
 
-// Mobile-only: the property groups are collapsed into a 4-way segmented control
-// (one group visible at a time) so the panel never overflows a small screen.
-// Each tab is a whole section, colour included — the stroke tab carries the
-// stroke palette, the text tab the text palette — so editing one property
-// never bounces you to another tab.
-// `extras` folds opacity + reorder together. Tab icons live in src/assets and
-// hardcode a blue stroke; SVGR spreads props after the original attrs so the
-// `stroke` override below wins (same trick as the reorder icons).
 type MobileTab = 'fill' | 'stroke' | 'text' | 'extras'
 
 const MOBILE_TAB_ICON_ACTIVE = 'currentColor'
@@ -79,54 +68,14 @@ const MOBILE_TABS: {
     { key: 'extras', label: 'Opacity & order', Icon: SunsetIcon },
 ]
 
-// What sections each "set" should render, in display order.
-//
-// Opacity is offered on an AREA only, where it is the fill's (areaFill.ts).
-// Pencil, text, image and groups carry no opacity control for now. Only the
-// control is hidden: every apply, undo and render path for their opacity is
-// still in place, and a record that already has a value still paints at it,
-// so offering it again is adding 'opacity' back to these lists.
 const SETS = {
     PENCIL: ['stroke', 'strokeWidth', 'strokeType'],
-    // Text carries the zoom-resistance switch, which only text counter-scales
-    // for — see resolveResist in utils/counterScale.ts.
     TEXT: ['textColor', 'textSize', 'textFont', 'zoomResist'],
-    // Placed map objects: stroke-centric. Area's fill COLOUR is auto-derived
-    // from its stroke, so no fill colour control. What it does take is a fill
-    // TYPE (solid / hachure / cross-hatch, see utils/areaFill.ts), and its
-    // outline takes width/type like a route. Opacity dims the FILL only: the
-    // border always paints at full strength, and at 100% the fill hides what
-    // is under it (see areaFill.ts). A point is a filled circle plus a label
-    // whose colour is fixed by design, so what is editable is the pin's fill and the label's size and
-    // font. Both text controls run off the point's own ladder/record — see
-    // applyProperty.
     POINT: ['fill', 'textSize', 'textFont'],
     AREA: ['fillType', 'stroke', 'strokeWidth', 'strokeType', 'opacity'],
     ROUTE: ['stroke', 'strokeWidth', 'strokeType'],
-    // A circle keeps fill (it is a filled mark, unlike an area whose fill is
-    // derived). It has no opacity control: it is created half-transparent
-    // (CIRCLE_DEFAULTS) so the basemap reads through it, and that is the mark.
-    // A circle whose record already carries another opacity still paints at
-    // it (circle.tsx); there is just no knob to move it.
-    //
-    // It drops every STROKE control too, because a radius map is borderless:
-    // the mark is the translucent disc, so an outline colour, a width and a
-    // dash pattern would all be knobs on something that is never drawn (see
-    // CIRCLE_DEFAULTS and circle.tsx, which paint a zero-width ring).
-    //
-    // Its label takes colour, size and font (the latter two off the POINT
-    // ladder — see circleLabelFontSizeOf). No zoom-resistance switch: its
-    // label scales with the map (see circleLabelScale).
-    // Colour is a real control here, unlike a point's fixed ink: a point's
-    // name hangs OUTSIDE a 10px pin, while a circle's sits inside a filled
-    // disc the user colours, so black is not always readable.
     CIRCLE: ['fill', 'textColor', 'textSize', 'textFont'],
-    // Bitmap: nothing to stroke or fill. Its panel carries only the reorder
-    // controls while its opacity control is hidden (see above).
     IMAGE: [],
-    // GROUP: union of every property — toolbar shows them all when a group is
-    // focused. applyGroupProperty silently skips children whose element type
-    // doesn't accept a given property.
     GROUP: [
         'fill',
         'stroke',
@@ -138,7 +87,6 @@ const SETS = {
     ],
 }
 
-// Element names, rendered as "Styling: <name>" in the panel header.
 const SET_LABELS = {
     PENCIL: 'Pencil',
     TEXT: 'Text',
@@ -158,8 +106,6 @@ interface ResolveSetKeyOptions {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     selectedGroup: any
     isTextDrawMode: boolean
-    // Active tool from the toolbar (e.g. 'route'/'area'/'point' while a geo
-    // draw is in progress, before any vertex/element is selected).
     currentElement: string | null
 }
 
@@ -171,7 +117,6 @@ function resolveSetKey({
     isTextDrawMode,
     currentElement,
 }: ResolveSetKeyOptions): string | null {
-    // A focused group beats every other mode — show the union toolbar.
     if (selectedGroup) return 'GROUP'
     if (isRubberMode) return null
     if (isPencilMode) return 'PENCIL'
@@ -179,19 +124,11 @@ function resolveSetKey({
         const shapeType = selectedComponent?.shape?.type
         const elementType =
             selectedComponent?.group?.data?.elementData?.componentType
-        // Placed map objects first: area/route are path-typed and a point's
-        // circle would otherwise read as a plain shape and offer controls it
-        // has no use for.
         if (elementType === 'point') return 'POINT'
         if (elementType === 'area') return 'AREA'
         if (elementType === 'route') return 'ROUTE'
         if (elementType === 'circle') return 'CIRCLE'
-        // Its frame is a plain rectangle path; route it before anything that
-        // keys off the shape type.
         if (elementType === 'image') return 'IMAGE'
-        // Both spellings are checked because `shape.type` is set from
-        // elementData.componentType for a selection made on the canvas, while
-        // the elementType fallback covers the paths that don't populate it.
         if (
             isStandaloneTextType(shapeType) ||
             isStandaloneTextType(elementType)
@@ -202,17 +139,9 @@ function resolveSetKey({
         return null
     }
     if (isTextDrawMode) return 'TEXT'
-    // Draw modes: the toolbar tool is active but nothing is selected yet.
-    // Surface the property panel so stroke edits seed the next draw — the same
-    // way pencil mode shows the pencil panel before the first stroke.
-    // Point is excluded: its category lives in the toolbar drawer, not here.
     if (currentElement === 'area') return 'AREA'
     if (currentElement === 'route') return 'ROUTE'
     if (currentElement === 'circle') return 'CIRCLE'
-    // No selection and no active tool — hide the panel. Defaults still apply
-    // to the next-created shape (the `useElementDefaults` state is unchanged);
-    // users edit them by selecting a shape, which auto-syncs the default per
-    // createApplyProperty.
     return null
 }
 
@@ -235,12 +164,8 @@ function readEffectiveValues({
     isMobile,
     defaults,
 }: ReadEffectiveValuesOptions): any {
-    // Group mode: walk the group's children and report common values, falling
-    // back to defaults when no child carries the property and to MIXED when
-    // children disagree.
     if (setKey === 'GROUP' && selectedGroup) {
         const inspected = inspectGroupValues(selectedGroup, defaults)
-        // textSize is stored numeric in properties; map to the toolbar label.
         let textSizeOut = inspected.textSize
         if (textSizeOut !== MIXED) {
             const match = TEXT_SIZES_ARRAY.find((s) =>
@@ -253,15 +178,12 @@ function readEffectiveValues({
         return { ...inspected, textSize: textSizeOut }
     }
     if (!selectedComponent) {
-        // Pure default mode — pencil/arrow/shape all share the same defaults.
         return {
             fill: defaults.defaultFill,
             stroke: defaults.defaultStrokeColor,
             linewidth: defaults.defaultLinewidth,
             strokeType: defaults.defaultStrokeType ?? 'solid',
             fillType: defaults.defaultFillType ?? 'solid',
-            // Opacity is never a default (applyProperty), so this is what the
-            // next mark is drawn with: for an area, its half-strength fill.
             opacity:
                 setKey === 'AREA'
                     ? AREA_DEFAULT_OPACITY
@@ -277,16 +199,9 @@ function readEffectiveValues({
     const elementData = selectedComponent?.group?.data?.elementData
     const textData = selectedComponent?.text?.data
 
-    // For rectangle-with-text + plain text, the text properties live in
-    // different places. Resolve here so the rest is symmetric.
     const isText = isStandaloneTextType(selectedComponent?.shape?.type)
     const textNode = isText ? shapeData : textData
 
-    // A point's label is a bare Two.Text in its group and a circle's is a
-    // sub-group of them — neither is a text layer, so `textNode` is empty for
-    // both. Their size and font are per record, off the SAME (point) ladder,
-    // never the live defaults. Both are annotations hanging off a mark; the
-    // whiteboard ladder's smallest step already overshoots for either.
     const isPoint = elementData?.componentType === 'point'
     const isCircle = elementData?.componentType === 'circle'
     const isMarkLabel = isPoint || isCircle
@@ -310,13 +225,7 @@ function readEffectiveValues({
         linewidth: shapeData?.linewidth ?? defaults.defaultLinewidth,
         strokeType: elementData?.strokeType ?? 'solid',
         fillType: elementData?.fillType ?? 'solid',
-        // Opacity lives in the top-level `opacity` field (legacy rows fall
-        // back to properties.opacity).
         opacity: readOpacity(elementData),
-        // A circle's label ink is a COLUMN (see circleLabelColorOf), and its
-        // line nodes never reach `textData` — so neither generic arm resolves
-        // it. Falls back to the design default, not the live text default: an
-        // untouched circle reads as the black it actually paints.
         textColor: isCircle
             ? circleLabelColorOf(elementData)
             : isText
@@ -328,8 +237,6 @@ function readEffectiveValues({
             : isCircle
               ? circleLabelFontFamilyOf(elementData)
               : (textNode?.family ?? defaults.defaultTextFontFamily),
-        // Per record, off the element's own row — never a default. Absent/null
-        // means the column was never written, which reads as zoom-resistant.
         zoomResistant: elementData?.zoomResistant ?? true,
     }
 }
@@ -365,8 +272,6 @@ const ReorderRow = ({ onReorder }: { onReorder: (op: ReorderOp) => void }) => (
 const TextSizeRow = ({
     value,
     onChange,
-    // The ladder to offer. Defaults to the whiteboard's; a point passes its own
-    // (POINT_LABEL_SIZES), which is tighter and starts smaller.
     sizes = TEXT_SIZES_ARRAY,
 }: {
     value: string
@@ -403,9 +308,6 @@ const FontFamilyRow = ({
     value: string
     onChange: (v: string) => void
 }) => {
-    // Self-hosted faces (src/styles/fonts.css). These spellings are persisted
-    // verbatim into `properties.textFontFamily`, so they must match the
-    // @font-face family names exactly.
     const families = [
         { label: 'Avenir', family: 'Avenir' },
         { label: 'Frutiger', family: 'Frutiger' },
@@ -437,10 +339,6 @@ const FontFamilyRow = ({
     )
 }
 
-// Map text only. Checked (the default for every record) counter-scales the
-// label so it holds a constant on-screen size across the map's 18 zoom stops;
-// unchecked drops it to resist 0, so it grows and shrinks with the geography.
-// One row per element — see applyProperty's zoomResistant branch.
 const ZoomResistRow = ({
     value,
     onChange,
@@ -521,7 +419,6 @@ const ElementPropertiesToolbar = () => {
         reorderSelected,
         isElementDragging,
         showMobileToolbarPanel,
-        // defaults
         defaultFill,
         defaultStrokeColor,
         defaultLinewidth,
@@ -578,25 +475,16 @@ const ElementPropertiesToolbar = () => {
 
     const [expandedSection, setExpandedSection] = useState<string | null>(null)
 
-    // Mobile-only active segment. Resets to the first tab on any context change
-    // / panel re-open below. `availableMobileTabs` clamps this to a tab the
-    // current element actually has, so a set without a fill (an arrow, a line)
-    // lands on its stroke tab rather than an empty one.
     const [mobileTab, setMobileTab] = useState<MobileTab>('fill')
 
     const toggleSection = (key: string): void =>
         setExpandedSection((prev) => (prev === key ? null : key))
 
-    // Collapse any open color picker + reset the mobile tab to the first group
-    // when context changes (new selection, mode switch, panel re-open).
     useEffect(() => {
         setExpandedSection(null)
         setMobileTab('fill')
     }, [setKey, selectedComponent, selectedGroup, showMobileToolbarPanel])
 
-    // Re-sync local UI state whenever the source of truth changes (selection,
-    // mode, or any default). Property mutations bump a default, which flows
-    // through this effect to refresh the readouts.
     useEffect(() => {
         if (!setKey) return
         setValues(
@@ -627,12 +515,8 @@ const ElementPropertiesToolbar = () => {
 
     if (!setKey) return null
     if (isMobile && !showMobileToolbarPanel) return null
-    // Hide while the selected element/group is being dragged/resized so the
-    // fixed panel doesn't sit under it mid-interaction; it returns on release.
     if (isElementDragging) return null
 
-    // Read the selection's row from the store, not elementData, so the panel
-    // updates when a circle's label is set or cleared. See visibleSections.
     const selectedId: string | undefined =
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (selectedComponent as any)?.group?.data?.elementData?.id
@@ -641,9 +525,6 @@ const ElementPropertiesToolbar = () => {
         SETS[setKey as keyof typeof SETS],
         selectedId ? componentStore?.[selectedId] : null
     )
-    // Reorder controls apply to an actually-selected element (single shape or
-    // group). Hidden in pencil mode (armed pencil has no selection to reorder)
-    // and in the default/armed-tool panels where nothing is selected yet.
     const showReorder =
         Boolean(selectedComponent || selectedGroup) && !isPencilMode
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -653,11 +534,6 @@ const ElementPropertiesToolbar = () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setValues((prev: any) => ({ ...prev, [key]: val }))
             if (selectedGroup) {
-                // textSize comes through as a label (e.g. 'M'); resolve to the
-                // numeric Two.js size before forwarding to the bulk apply path.
-                // The single-element path goes through handleTextSizeChange which
-                // does this conversion internally; the group path doesn't, so we
-                // do it here.
                 if (key === 'textSize') {
                     const entry = TEXT_SIZES_ARRAY.find((s) => s.label === val)
                     const numeric = entry
@@ -674,18 +550,6 @@ const ElementPropertiesToolbar = () => {
             applyProperty?.(key, val, opts)
         }
 
-    // Build each property group once, then lay them out differently per device:
-    // desktop stacks them all; mobile shows one group at a time via the bottom
-    // segmented bar.
-    //
-    // A group owns its own colour. The three palettes used to be stacked
-    // together above every other control, which read as one undifferentiated
-    // corridor of swatches and put "Stroke" three rows away from the stroke
-    // width it belongs to. Now each palette sits at the head of the section it
-    // edits. Mobile is the sharper case: a tab is a complete section, so the
-    // stroke tab no longer sends you back to the colours tab mid-edit.
-    // An area's fill is a TYPE, not a colour, but it is still the fill: it sits
-    // in this group so mobile keeps it on the Fill tab.
     const fillGroup =
         sections.includes('fill') || sections.includes('fillType') ? (
             <div className="pb-2 border-b border-border-panel">
@@ -705,11 +569,6 @@ const ElementPropertiesToolbar = () => {
                             onChangeComplete={handle('fill')}
                             isExpanded={expandedSection === 'fill'}
                             onToggleExpand={() => toggleSection('fill')}
-                            // Map fills run dark; every other fill stays pastel. See
-                            // pointFillEssentialShades — the pastels are tuned to sit
-                            // behind text, and on CARTO Positron's pale greys they
-                            // disappear. A map circle is half-transparent on top of
-                            // that, so it needs the saturated row even more than a pin.
                             essentialColors={
                                 setKey === 'POINT' || setKey === 'CIRCLE'
                                     ? pointFillEssentialShades
@@ -809,9 +668,6 @@ const ElementPropertiesToolbar = () => {
                     typeof values.opacity === 'number' ? values.opacity : 1
                 }
                 handleOnDrag={(arr): void =>
-                    // Live preview while dragging: applies to the scene only
-                    // (no store/history write) so the element fades in real
-                    // time. The release (handleOnChange) commits.
                     handle('opacity', { preview: true })(arr[0])
                 }
                 handleOnChange={(arr) => handle('opacity')(arr[0])}
@@ -823,16 +679,12 @@ const ElementPropertiesToolbar = () => {
         <ReorderRow onReorder={reorderSelected} />
     ) : null
 
-    // Mobile: only surface tabs that actually have content for this element.
-    // `extras` folds opacity + reorder together (per the mobile spec).
     const availableMobileTabs = MOBILE_TABS.filter(({ key }) => {
         if (key === 'fill') return Boolean(fillGroup)
         if (key === 'stroke') return Boolean(strokeGroup)
         if (key === 'text') return Boolean(textGroup)
         return Boolean(opacityGroup) || Boolean(reorderGroup)
     })
-    // Clamp the active tab to one that exists — the state may still point at a
-    // tab the previous selection had but this one doesn't.
     const activeMobileTab: MobileTab = availableMobileTabs.some(
         (t) => t.key === mobileTab
     )
@@ -854,11 +706,6 @@ const ElementPropertiesToolbar = () => {
     return (
         <div
             id="floating-toolbar"
-            // While a group is focused, prevent the toolbar from stealing
-            // DOM focus on mousedown — the group SVG fires `blur` (and tears
-            // itself down) the moment focus moves elsewhere. Clicks still
-            // fire normally. Skip text inputs so the hex field in ColorPicker
-            // can still receive focus.
             onMouseDown={(e): void => {
                 if (!selectedGroup) return
                 const tag = (e.target as HTMLElement | null)?.tagName
@@ -877,9 +724,6 @@ const ElementPropertiesToolbar = () => {
                           right: '10px',
                           width: '208px',
                           zIndex: 20,
-                          // Anchored to the bottom; cap the height to the space
-                          // above so a tall group still scrolls inside the panel
-                          // instead of overflowing past the top of the screen.
                           maxHeight: 'calc(100dvh - 70px)',
                       }
                     : { left: '10px', top: '56px', width: '13rem' }
@@ -889,12 +733,6 @@ const ElementPropertiesToolbar = () => {
                 Styling: {SET_LABELS[setKey as keyof typeof SET_LABELS]}
             </div>
 
-            {/* Mobile only: the legend-preset picker, which on desktop is its
-                own strip under the primary toolbar. A phone's bottom band
-                already carries the toolbar, the undo/redo row and the draw
-                controls, so it goes here instead — next to the style controls
-                a preset overrides, which is arguably where it belongs anyway.
-                Renders nothing when the selection takes no preset. */}
             {isMobile && (
                 <div
                     data-section="legendPreset"
@@ -906,7 +744,6 @@ const ElementPropertiesToolbar = () => {
 
             {isMobile ? (
                 <>
-                    {/* Content for the active segment, scrollable if tall. */}
                     <div className="flex-1 overflow-y-auto">
                         {mobileActiveContent}
                     </div>

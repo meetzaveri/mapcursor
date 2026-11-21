@@ -22,9 +22,6 @@ const seedAnchor = (baseId: string, ageMs: number): void => {
 }
 
 describe('readAnchorConfig', () => {
-    // The bug: an anchor placed over 30 days ago was deleted on read, while
-    // the draft (renewed on every save) survived, so the canvas was redrawn
-    // over the browser's timezone city.
     it('keeps an anchor however long ago it was placed', () => {
         seedAnchor('base-1', VIEWPORT_TTL_MS + 5 * DAY)
         expect(readAnchorConfig('base-1').mapAnchor).toEqual(AHMEDABAD)

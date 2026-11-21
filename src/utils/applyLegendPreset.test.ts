@@ -12,8 +12,6 @@ const preset = (elementType: LegendPreset['elementType']): LegendPreset => ({
     position: 0,
 })
 
-// A minimal stand-in for a Two.js group: the element's own record, plus the
-// children a real group would carry in the order it would carry them.
 const makeGroup = (id: string, componentType: string, children: object[]) => ({
     elementData: { id, componentType },
     children,
@@ -34,10 +32,6 @@ const makeDeps = (group: object) => {
 }
 
 describe('applyPresetToElement', () => {
-    // The bug: a point that has been selected carries selection chrome at
-    // index 0, because rebuilding the group leaves chrome in place and appends
-    // the pin after it. Painting children[0] recoloured the overlay and left
-    // the pin on its old colour.
     it('paints a selected point on its pin, not on its selection chrome', () => {
         const chrome = { [POINT_CHROME_FLAG]: true, fill: '#chrome' }
         const pin = { fill: '#FF5630', stroke: '#FF5630' }
@@ -60,8 +54,6 @@ describe('applyPresetToElement', () => {
         expect(pin.fill).toBe('#2BB0ED')
     })
 
-    // A radius map keeps its disc at children[0] (circle.tsx unshifts it and
-    // the label layer is appended), so it must keep using the plain path.
     it('paints a radius map on its disc', () => {
         const disc = { fill: '#A32D2D', stroke: '#A32D2D' }
         const labelLayer = { children: [] }
@@ -131,9 +123,6 @@ describe('area fill type in a preset', () => {
         ).toBe('hachure')
     })
 
-    // A preset saved before fill types existed was drawn solid. Applying it
-    // must say so, or a hand-hatched area would stay hatched under a solid
-    // legend swatch.
     it('reads a preset with no fill type as solid', () => {
         const path = { fill: '', stroke: '#A32D2D', linewidth: 2 }
         const group = makeGroup('a-2', 'area', [path])
@@ -162,8 +151,6 @@ describe('area fill type in a preset', () => {
         expect(path.fill).toBe('none')
     })
 
-    // Opacity is the FILL's: it lands in the fill colour's alpha, and nothing
-    // dims the group or the path, so the border stays at full strength.
     it('paints its opacity into the fill, never the border', () => {
         const path = { fill: '', stroke: '#A32D2D', linewidth: 2, opacity: 1 }
         const group = makeGroup('a-3', 'area', [path])
@@ -176,7 +163,6 @@ describe('area fill type in a preset', () => {
             expect.objectContaining({ opacity: 1 }),
             false
         )
-        // No renderer in a unit test, so solid is the plain rgba wash.
         expect(path.fill).toBe('rgba(59,130,246,1)')
         expect(path.opacity).toBe(1)
         expect((group as Record<string, unknown>).opacity).toBe(1)

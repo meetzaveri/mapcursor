@@ -22,9 +22,6 @@ const ref: ImageAssetRef = {
 }
 
 describe('imageLocalSize', () => {
-    // The point of the sizing: an image lands at the same on-screen size
-    // whatever the zoom it is placed at. On screen = local × camera ×
-    // counter-scale.
     it.each([0.06, 0.5, 1, 4, 64])(
         'places the long edge at the screen cap at zoom %s',
         (zuiScale) => {
@@ -38,7 +35,6 @@ describe('imageLocalSize', () => {
 
     it('never upscales a small image past its natural size on screen', () => {
         expect(imageLocalSize(100, 50, 1)).toEqual({ width: 100, height: 50 })
-        // Zoomed out, the same bitmap still shows at 100x50 screen px.
         expect(imageLocalSize(100, 50, 0.5)).toEqual({ width: 200, height: 100 })
     })
 

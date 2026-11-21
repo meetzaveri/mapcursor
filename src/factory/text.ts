@@ -4,7 +4,6 @@ import { scheduleRender } from '../utils/renderScheduler'
 import { readProperties } from '../utils/geometry'
 import type { ComponentMetadata } from '../types/base'
 
-/** The named keys a text record keeps in `metadata.properties`. */
 export interface TextMetadata {
     content?: string
     fontSize?: number
@@ -13,7 +12,6 @@ export interface TextMetadata {
 
 export interface TextProperties {
     textColor?: string
-    /** `geometry` is a Point; `properties` matches {@link TextMetadata}. */
     metadata?: ComponentMetadata | null
 }
 
@@ -32,7 +30,6 @@ export default class TextFactory extends Main<TextProperties> {
             textFontFamily = DEFAULT_TEXT_FONT_FAMILY,
         } = readProperties(this.properties) as TextMetadata
 
-        // Use native Two.js text instead of a foreignObject wrapper
         const twoText = two.makeText(content || '', 0, 0)
         twoText.fill = textColor || '#3A342C'
         twoText.size = fontSize
@@ -44,8 +41,6 @@ export default class TextFactory extends Main<TextProperties> {
         group.translation.x = parseInt(String(prevX))
         group.translation.y = parseInt(String(prevY))
 
-        // Batched, NOT a direct two.update(): this fires once per text element,
-        // so a synchronous full-scene render here is O(N²) across a base load.
         scheduleRender(two)
 
         return { group, twoText }

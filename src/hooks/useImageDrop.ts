@@ -23,26 +23,18 @@ import type { PendingImageNode } from '../utils/imagePendingNode'
 import { prefetchElementModule } from '../elementModules'
 import type { ComponentRecord } from '../types/base'
 
-// Ported from craftbase. Two entry points share one insert path: files dragged
-// onto the canvas (placed at the drop point) and files picked with the toolbar
-// Image tool (placed at the viewport centre, via requestImageInsert).
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ZuiInstanceLike = any
 
-// Screen-px offset between consecutive images of a multi-file drop.
 const MULTI_DROP_OFFSET_PX = 24
-// Upper bound on how long a loading placeholder outlives its record, in case
-// the element never reports back (unmounted by an undo mid-load, etc.).
 const PENDING_TIMEOUT_MS = 15_000
 
 export interface InsertImageFilesDetail {
     files: File[]
 }
 
-/** Ask the canvas to insert these image files at the viewport centre. */
 export function requestImageInsert(files: File[]): void {
     window.dispatchEvent(
         new CustomEvent<InsertImageFilesDetail>(INSERT_IMAGE_FILES_EVENT, {
@@ -55,7 +47,6 @@ export interface ImageDropOptions {
     twoJSInstance: TwoLike | null
     zuiInstanceRef: MutableRefObject<ZuiInstanceLike | null>
     baseId: string
-    /** Images are local-only for now; drops are refused on shared bases. */
     isPersisted: boolean
     addToLocalComponentStore: (
         id: string,
@@ -73,12 +64,6 @@ function hasFiles(e: DragEvent): boolean {
     return Array.from(e.dataTransfer?.types ?? []).includes('Files')
 }
 
-/**
- * Insert image files onto the canvas. Each file is validated, stripped of
- * metadata, downscaled and stored (storeImageFile), then added as an `image`
- * element. Listeners bind once and read the latest options through a ref (the
- * stale-closure rule from CLAUDE.md).
- */
 export function useImageDrop(options: ImageDropOptions): void {
     const optionsRef = useRef(options)
     optionsRef.current = options
@@ -87,8 +72,6 @@ export function useImageDrop(options: ImageDropOptions): void {
         const root = document.getElementById('main-two-root')
         if (!root) return
 
-        // Loading placeholders: every one still on screen, and the release
-        // callback of each one already handed off to a stored record.
         const livePending = new Set<PendingImageNode>()
         const releaseById = new Map<string, () => void>()
 
@@ -97,8 +80,6 @@ export function useImageDrop(options: ImageDropOptions): void {
             pending.remove()
         }
 
-        // The record exists; keep the placeholder until the element reports
-        // its bitmap painted (IMAGE_SETTLED_EVENT), so there is no blank gap.
         const handOffPending = (
             id: string,
             pending: PendingImageNode
@@ -117,14 +98,9 @@ export function useImageDrop(options: ImageDropOptions): void {
             if (id) releaseById.get(id)?.()
         }
 
-        // Accept the drag even on shared bases: a 'none' dropEffect would
-        // suppress the drop event, and the user would get a dead cursor with
-        // no explanation. insertFiles refuses it there with a notice instead.
         const onDragOver = (e: DragEvent): void => {
             if (!hasFiles(e)) return
             e.preventDefault()
-            // Warm the element chunk while the user is still dragging, so the
-            // first drop on a fresh page doesn't also wait on the network.
             prefetchElementModule(IMAGE_COMPONENT)
             if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
         }
@@ -170,8 +146,6 @@ export function useImageDrop(options: ImageDropOptions): void {
             )
         }
 
-        // Shared by drop (at the cursor) and the toolbar picker (at the
-        // viewport centre).
         const insertFiles = (
             files: File[],
             clientX: number,
@@ -199,7 +173,6 @@ export function useImageDrop(options: ImageDropOptions): void {
                 x: surface.x + i * step,
                 y: surface.y + i * step,
             }))
-            // Every file gets its loader right away, before any decoding.
             const pendings = spots.map((spot) => {
                 const pending = createPendingImageNode(
                     optionsRef.current.twoJSInstance,
@@ -209,7 +182,6 @@ export function useImageDrop(options: ImageDropOptions): void {
                 livePending.add(pending)
                 return pending
             })
-            // Sequential, so z-order positions follow drop order.
             images
                 .reduce<Promise<void>>(
                     (chain, file, i) =>
@@ -244,9 +216,6 @@ export function useImageDrop(options: ImageDropOptions): void {
             const files = (e as CustomEvent<InsertImageFilesDetail>).detail
                 ?.files
             if (!files?.length) return
-            // Measure the Two.js <svg>, not #main-two-root: the svg is
-            // absolutely positioned, so the wrapper div has zero height and
-            // its centre is the top edge of the screen.
             const rect = (
                 root.querySelector('svg') ?? root
             ).getBoundingClientRect()
@@ -257,8 +226,6 @@ export function useImageDrop(options: ImageDropOptions): void {
             )
         }
 
-        // A file dropped on the toolbars or just outside the canvas would make
-        // the browser navigate away to the image. Swallow that everywhere.
         const blockNavigation = (e: DragEvent): void => {
             if (hasFiles(e)) e.preventDefault()
         }

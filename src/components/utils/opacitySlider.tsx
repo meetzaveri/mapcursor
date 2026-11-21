@@ -14,10 +14,6 @@ export interface OpacitySliderProps {
     handleOnChange: (values: number[]) => void
     handleOnDrag: (values: number[]) => void
     currentOpacity?: number
-    // True when a group selection's members have differing opacities. The
-    // slider shows a "Mixed" indicator (instead of a misleading single value)
-    // until the user drags — at which point dragging sets a uniform value
-    // across the whole group, same as any other group property edit.
     isMixed?: boolean
 }
 
@@ -29,8 +25,6 @@ const OpacitySlider = ({
     isMixed = false,
 }: OpacitySliderProps): ReactElement => {
     const [values, setValues] = useState<number[]>([1])
-    // Cleared whenever the inputs change; set on first drag so the "Mixed"
-    // hint disappears as soon as the user starts choosing a value.
     const [interacted, setInteracted] = useState(false)
     const rangerRef = useRef<HTMLDivElement | null>(null)
 
@@ -55,8 +49,6 @@ const OpacitySlider = ({
 
     useEffect(() => {
         setInteracted(false)
-        // Mixed: rest the handle at the midpoint (neutral) since there's no
-        // single current value to show.
         const arr = isMixed ? [0.5] : currentOpacity ? [currentOpacity] : [0]
         setValues(arr)
     }, [currentOpacity, isMixed])

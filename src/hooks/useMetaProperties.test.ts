@@ -27,7 +27,6 @@ const IMG = {
 const POINT: MetaCell = { objectId: 'point-1', objectType: 'point' }
 const ROUTE: MetaCell = { objectId: 'route-1', objectType: 'route' }
 
-// A client that records every operation and answers with `respond`.
 function recordingClient(
     respond: (op: Operation) => Record<string, unknown> = () => ({})
 ): { client: ApolloClient<unknown>; ops: Operation[] } {
@@ -75,7 +74,6 @@ function mount(
 const opsOf = (entry: HistoryEntry | undefined): MetaHistoryOp[] =>
     entry?.action === 'META' ? entry.ops : []
 
-// What the real history hook does on Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.
 async function undo(meta: { current: Api }, entry: HistoryEntry | undefined) {
     await act(async () => meta.current.applyHistory(opsOf(entry), 'undo'))
 }
@@ -142,7 +140,6 @@ describe('local canvas: adding properties', () => {
             )
         })
         expect(r!).toEqual({ ok: false, error: 'Enter a whole number.' })
-        // No stray "Rating" definition, no extra undo step.
         expect(meta.current.metaProperties.map((p) => p.name)).toEqual(['Hours'])
         expect(history).toHaveLength(1)
     })
@@ -222,7 +219,6 @@ describe('local canvas: undo / redo of every edit', () => {
         expect(meta.current.metaProperties.map((p) => p.id)).toEqual([hours.id])
         expect(await valueOf(meta, POINT)).toEqual(['9–5'])
         expect(await valueOf(meta, ROUTE)).toEqual(['All day'])
-        // And it survives a reload of the sidecar.
         expect(readMetaLocal(BASE).values).toHaveLength(2)
 
         await redo(meta, history[2])
@@ -271,7 +267,6 @@ describe('change property type', () => {
         await undo(meta, history[2])
         expect(meta.current.metaProperties[0]!.type).toBe('text')
         expect(await valueOf(meta, POINT)).toEqual(['12'])
-        // The value that had been cleared is back, on its object.
         expect(await valueOf(meta, ROUTE)).toEqual(['a dozen'])
 
         await redo(meta, history[2])
@@ -381,8 +376,6 @@ describe('shared canvas', () => {
         })
         expect(upsert.variables.object).not.toHaveProperty('createdBy')
 
-        // The cell was empty, so undo deletes it, addressed by CELL (an
-        // upsert keeps the server's row id, so ids can't be trusted).
         await undo(meta, history[0])
         const del = ops.find((o) => o.operationName === 'deleteMetaValueByCell')!
         expect(del.variables).toEqual({ propertyId: 'p', objectId: 'point-1' })

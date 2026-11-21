@@ -15,16 +15,6 @@ export const META_OBJECT_LABELS: Record<MetaObjectType, string> = {
     text: 'Text',
 }
 
-/**
- * The object the meta properties panel is about: exactly one selected element
- * of a type that takes meta properties (point, route, area, radius map,
- * geo-text). Null for everything else: nothing selected, a multi-selection,
- * pencil, image, or a tool mode.
- *
- * Reads `selectedComponent` the same way the properties toolbar does
- * (`group.data.elementData`), so the panel and the toolbar agree on what is
- * selected.
- */
 export function useSelectedMetaObject(): SelectedMetaObject | null {
     const { selectedComponent, selectedGroup } = useBaseContext()
     if (selectedGroup) return null

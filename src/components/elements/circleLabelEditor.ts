@@ -17,19 +17,6 @@ import {
     getCircleLabelGroup,
 } from '../../factory/circleLabel'
 
-// The map circle's naming overlay.
-//
-// A DOM <textarea> floated over the canvas, not a Two.js affordance — the same
-// shape as point.tsx's showLabelInput and text.tsx's editor, and it lives in
-// its own module because circle.tsx has no room for 200 lines of it.
-//
-// It is a TEXTAREA rather than point.tsx's <input> because a circle's label
-// wraps: Enter inserts a newline here and blur commits, matching text.tsx.
-//
-// What it must never do is touch `width`/`height`. A circle's size is its
-// radius; craftbase's equivalent editor grew the shape to fit the text, which
-// is exactly the behaviour this element cannot have.
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
@@ -37,7 +24,6 @@ export interface CircleLabelEditorOptions {
     two: ShapeLike
     group: ShapeLike
     id: string
-    /** Live scale of the label sub-group, folded into the on-screen metrics. */
     getLabelScale: () => number
     updateComponentBulkPropertiesInLocalStore?: (
         id: string,
@@ -49,10 +35,6 @@ export function editorIdFor(id: string): string {
     return `circle-label-input-${id}`
 }
 
-/**
- * Open the label editor for a circle. No-op in pan mode, or if one is already
- * open for this element.
- */
 export function openCircleLabelEditor({
     two,
     group,
@@ -60,20 +42,11 @@ export function openCircleLabelEditor({
     getLabelScale,
     updateComponentBulkPropertiesInLocalStore,
 }: CircleLabelEditorOptions): void {
-    // Pan mode navigates, it does not author. This editor is reached by a
-    // dblclick bound to our own SVG node, so the canvas-level guard in
-    // newCanvas never sees it — and on a map base pan is a tool the user sits
-    // in, so without this a stray double-tap while panning drops them into a
-    // text field.
     if (isPanMode()) return
 
     const elementId = editorIdFor(id)
     if (document.getElementById(elementId)) return
 
-    // Anchor off the ELLIPSE, not the label: an empty label has no glyphs and
-    // therefore no usable bounding box, which is the state this opens in most
-    // often. `children[0]` is the ellipse by construction (circle.tsx unshifts
-    // it), and the label sub-group is appended after it.
     const ellipse = group?.children?.[0]
     const ellipseElem = ellipse?._renderer?.elem as
         | SVGGraphicsElement
@@ -83,13 +56,8 @@ export function openCircleLabelEditor({
     const ellipseRect = ellipseElem.getBoundingClientRect()
     const sceneScale = two?.scene?.scale || 1
     const labelScale = getLabelScale() || 1
-    // A circle's label folds its own counter-scale on top of the camera, the
-    // same way a point's folds its group's.
     const effScale = sceneScale * labelScale
 
-    // Read off elementData rather than React props: size and family are
-    // editable from the toolbar and props are frozen at mount, so the prop copy
-    // goes stale the moment the user picks either.
     const record = group.elementData ?? {}
     const fontFamily = circleLabelFontFamilyOf(record)
     const fontSize = circleLabelFontSizeOf(record)
@@ -98,19 +66,10 @@ export function openCircleLabelEditor({
 
     const cssFontSize = fontSize * effScale
     const cssLineH = lineHeightFor(fontSize) * effScale
-    // Wrap the editor where the rendered label will wrap — the same
-    // `circleWrapWidth`, in surface units, brought onto the screen by the
-    // camera AND the label's counter-scale. (The rendered label is measured in
-    // surface units too: the wrap is taken at the scale-1 reference — see
-    // buildCircleLabel.) This used to apply the 4em floor here and nowhere
-    // else, so on a small circle the overlay wrapped one way and the committed
-    // label another.
     const cssWidth =
         circleWrapWidth(record.width ?? ellipse?.width ?? 100, fontSize) *
         effScale
 
-    // The rendered label steps aside so the glyphs aren't drawn twice at
-    // slightly different metrics.
     const labelGroup = getCircleLabelGroup(group)
     const renderedOpacity = labelGroup?.opacity ?? 1
     if (labelGroup) labelGroup.opacity = 0
@@ -142,7 +101,6 @@ export function openCircleLabelEditor({
     const centreX = ellipseRect.left + ellipseRect.width / 2
     const centreY = ellipseRect.top + ellipseRect.height / 2
 
-    // Grow downward from the caret and keep the block centred on the circle.
     const autoSize = (): void => {
         const lineCount = Math.max(
             1,
@@ -158,16 +116,12 @@ export function openCircleLabelEditor({
     autoSize()
     input.addEventListener('input', autoSize)
 
-    // On-screen ✓/✗ (mobile has no Enter or Escape). The buttons are React
-    // chrome in base.tsx; this is their other end.
     const onEditRequest = (e: Event): void => {
         const detail = (e as CustomEvent<{ id?: string }>).detail
         if (detail?.id && detail.id !== id) return
         if (e.type === TEXT_EDIT_CANCEL_EVENT) {
             input.value = valueAtOpen
         }
-        // Commit runs on blur either way — cancel just restores first, so
-        // "cancel" and "confirm" share one write path.
         input.blur()
     }
     window.addEventListener(TEXT_EDIT_COMMIT_EVENT, onEditRequest)
@@ -190,9 +144,6 @@ export function openCircleLabelEditor({
         const labelPatch = setProperties(group.elementData ?? record, {
             label: value,
         })
-        // Frozen props mean React won't re-render this element, so the scene
-        // nodes and elementData here are the live copies — keep both in step
-        // with the store write.
         if (group.elementData && labelPatch.metadata) {
             group.elementData.metadata = labelPatch.metadata
         }
@@ -210,15 +161,11 @@ export function openCircleLabelEditor({
         }
         two.update()
 
-        // Properties only — naming a circle leaves its geometry alone, and
-        // `setProperties` carries the existing geometry through unchanged.
         updateComponentBulkPropertiesInLocalStore?.(id, labelPatch)
     }
 
     input.addEventListener('blur', commit)
     input.addEventListener('keydown', (event: KeyboardEvent) => {
-        // Enter is a newline here, not a commit: this label wraps. Escape
-        // keeps what was typed, same as every other text editor on the canvas.
         if (event.key === 'Escape') {
             event.preventDefault()
             input.blur()

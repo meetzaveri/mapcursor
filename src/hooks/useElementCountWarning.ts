@@ -18,20 +18,6 @@ interface UseElementCountWarningResult {
     dismissPerfWarning: () => void
 }
 
-/**
- * Warns once when a base grows past the point where the canvas starts to feel
- * slow — either by crossing the threshold live, or by opening/refreshing a
- * base that is already over it.
- *
- * Two sources feed the same one-shot latch:
- *   - saved bases: a server-side aggregate count, which lands well before the
- *     full component store has loaded and mounted, so the user is warned
- *     *before* the slow render rather than after it.
- *   - both modes: the live component store, for crossings during a session.
- *
- * The latch re-arms if the base drops back under the threshold, so a user who
- * deletes their way down and builds back up is warned again.
- */
 export const useElementCountWarning = ({
     componentStore,
     isPersisted,
@@ -50,7 +36,6 @@ export const useElementCountWarning = ({
         setShowPerfWarning(false)
     }, [])
 
-    // Saved bases: authoritative count straight from the server.
     const { data: countData } = useQuery(GET_BASE_COMPONENT_COUNT_QUERY, {
         variables: { baseId },
         fetchPolicy: 'network-only',
@@ -62,15 +47,11 @@ export const useElementCountWarning = ({
         if (count != null && count > PERFORMANCE_WARNING_THRESHOLD) warnOnce()
     }, [countData, warnOnce])
 
-    // Live crossings during a session.
     useEffect(() => {
         const count = countBaseElements(componentStore)
         if (count > PERFORMANCE_WARNING_THRESHOLD) {
             warnOnce()
         } else if (count > 0) {
-            // Re-arm only on a real drop below the threshold. An empty store
-            // means the base hasn't loaded yet, and disarming against it would
-            // let the aggregate's warning fire a second time once rows arrive.
             hasWarnedRef.current = false
         }
     }, [componentStore, warnOnce])

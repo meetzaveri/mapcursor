@@ -1,20 +1,3 @@
-// Generic single-select dropdown.
-//
-// A listbox, not a menu: every option is a value for one setting and exactly one
-// is selected at a time — which is why the trigger reflects the selection and
-// the panel carries a checkmark. (Use the menu-drawer pattern instead for a list
-// of unrelated *actions*.)
-//
-// Options may carry an icon. Icons are passed as components rather than
-// elements so this file owns their sizing — `?react` SVG imports ship a 48px
-// intrinsic size, and every caller re-specifying `w-4 h-4` is how they drift.
-// They must paint with `currentColor` to inherit the selected/muted ink.
-//
-// Positioned with plain CSS absolute layout (no portal): the trigger is a small
-// chrome control anchored near a viewport corner, so there is no clipping
-// ancestor to escape. Tooltip's portal machinery is for triggers that can sit
-// anywhere inside scrolling content.
-
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { ComponentType, ReactElement, SVGProps } from 'react'
 
@@ -23,13 +6,9 @@ export type DropdownIcon = ComponentType<SVGProps<SVGSVGElement>>
 export interface DropdownOption<T extends string> {
     value: T
     label: string
-    /** Optional leading icon. Must paint with `currentColor`. */
     icon?: DropdownIcon
-    /** Second line under the label — room for the "what is this" hint. */
     description?: string
-    /** Greyed out and unselectable. Pair with `badge` to say why. */
     disabled?: boolean
-    /** Small trailing pill, e.g. "Soon". */
     badge?: string
 }
 
@@ -37,34 +16,18 @@ interface DropdownProps<T extends string> {
     value: T
     options: readonly DropdownOption<T>[]
     onChange: (value: T) => void
-    /**
-     * Icon shown at the head of the trigger, in place of the selected option's
-     * own icon. Use it when the control's *identity* matters more than its
-     * current value (the base switcher shows a swap glyph, not the active base).
-     */
     triggerIcon?: DropdownIcon
-    /** Overrides the trigger's text. Defaults to the selected option's label. */
     triggerLabel?: string
-    /** Icon-only trigger. The label still ships as the accessible name. */
     hideTriggerLabel?: boolean
-    /** Which panel edge lines up with the trigger. */
     align?: 'left' | 'right'
-    /** Side the panel opens toward. */
     placement?: 'bottom' | 'top'
     disabled?: boolean
-    /** Accessible name for the trigger. Falls back to the resolved label. */
     ariaLabel?: string
     className?: string
-    /**
-     * Appended to the trigger's classes — the hook for matching the height of
-     * whatever chrome this sits beside. Sizing is the caller's business; colour
-     * and state styling are not.
-     */
     triggerClassName?: string
     panelMinWidth?: number
 }
 
-/** Gap in px between the trigger and the panel. */
 const PANEL_GAP = 6
 
 const Chevron = ({ open }: { open: boolean }): ReactElement => (
@@ -122,8 +85,6 @@ function Dropdown<T extends string>({
     panelMinWidth = 200,
 }: DropdownProps<T>): ReactElement {
     const [open, setOpen] = useState(false)
-    // Which option the keyboard is on. Kept separate from `value`: arrowing
-    // through the list must not commit a base switch on every keypress.
     const [activeIndex, setActiveIndex] = useState(-1)
     const rootRef = useRef<HTMLDivElement | null>(null)
     const listboxId = useId()
@@ -138,8 +99,6 @@ function Dropdown<T extends string>({
         setActiveIndex(-1)
     }, [])
 
-    // Pointer-down (not click) so the panel closes on the press that starts an
-    // interaction elsewhere, rather than after it completes.
     useEffect(() => {
         if (!open) return
         const onPointerDown = (e: MouseEvent): void => {
@@ -157,7 +116,6 @@ function Dropdown<T extends string>({
         if (option.value !== value) onChange(option.value)
     }
 
-    // Step to the next selectable option, skipping disabled ones. Wraps.
     const step = (from: number, delta: number): number => {
         const n = options.length
         for (let i = 1; i <= n; i++) {
@@ -259,10 +217,6 @@ function Dropdown<T extends string>({
                             ? `${listboxId}-${activeIndex}`
                             : undefined
                     }
-                    // `text-left` is not decorative: the app root still carries
-                    // Create React App's `.App { text-align: center }`, which
-                    // every descendant inherits. Stated here so the panel reads
-                    // the same wherever it is mounted.
                     className="absolute bg-card-bg border border-border-panel rounded-lg
                         shadow-lg py-1 w-max max-w-[calc(100vw-20px)] z-20 text-left"
                     style={{
@@ -326,8 +280,6 @@ function Dropdown<T extends string>({
                                         {option.badge}
                                     </span>
                                 )}
-                                {/* Reserve the tick column on every row so labels
-                                    stay on one x-position as the selection moves. */}
                                 <span
                                     className={`shrink-0 w-3 text-ink ${
                                         isSelected ? '' : 'invisible'

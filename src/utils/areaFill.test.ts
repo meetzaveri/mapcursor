@@ -13,7 +13,6 @@ import {
 import { strokeToAreaFill } from './misc'
 import { polygonGeometry } from './geometry'
 
-/** A square area `side` surface units across, as a record. */
 const square = (side: number) => ({
     metadata: {
         geometry: polygonGeometry([
@@ -65,7 +64,6 @@ describe('areaOpacityOf', () => {
         ).toBe(0.3)
     })
 
-    // Unchanged look for every area drawn before opacity meant the fill.
     it('defaults to the half-strength wash', () => {
         expect(areaOpacityOf({})).toBe(AREA_DEFAULT_OPACITY)
         expect(areaOpacityOf({ opacity: null })).toBe(AREA_DEFAULT_OPACITY)
@@ -80,7 +78,6 @@ describe('areaOpacityOf', () => {
 })
 
 describe('areaHatchStep', () => {
-    // ~20 lines across: a 640-unit square wants a 32-unit gap, i.e. 2^5.
     it('sizes the gap from the area itself', () => {
         expect(areaHatchStep(square(640))).toBe(5)
     })
@@ -94,7 +91,6 @@ describe('areaHatchStep', () => {
         expect(areaHatchStep(square(5))).toBeLessThan(0)
     })
 
-    // Rounded to a power of two, so nudging a vertex does not re-space it.
     it('ignores a small reshape', () => {
         expect(areaHatchStep(square(660))).toBe(areaHatchStep(square(640)))
     })
@@ -106,8 +102,6 @@ describe('areaHatchStep', () => {
 })
 
 describe('areaFillPatternTransform', () => {
-    // Fixed per pattern: there is no camera in it, so the hatch scales with
-    // the map like the area does.
     it("scales the 8-unit tile to the step's gap", () => {
         expect(areaFillPatternTransform(3)).toBe('scale(1) rotate(45)')
         expect(areaFillPatternTransform(5)).toBe('scale(4) rotate(45)')
@@ -129,7 +123,6 @@ describe('areaFillFor', () => {
         ).toBe('rgba(255,0,0,0.3)')
     })
 
-    // At 100% the interior must hide what is under it.
     it('is fully opaque at 100%', () => {
         expect(
             areaFillFor(null, '#ff0000', null, { ...square(100), opacity: 1 })

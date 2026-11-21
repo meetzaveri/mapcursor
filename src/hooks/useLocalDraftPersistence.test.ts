@@ -5,8 +5,6 @@ import { DRAFT_STORAGE_KEY } from '../constants/misc'
 import { renderHook, unmountAllHooks } from '../utils/testing/renderHook'
 import type { ComponentRecord, ComponentStore } from '../types/base'
 
-// The load path treats a draft as over budget via this check. A flag lets one
-// test hold a draft behind the rescue modal without writing 3 MB.
 const overBudget = { value: false }
 vi.mock('../utils/baseSizeGuard', async (importOriginal) => {
     const actual =
@@ -47,7 +45,6 @@ const storedIds = (): string[] | null => {
     return Object.keys(JSON.parse(raw).components ?? {})
 }
 
-// The hook with a real component store, the way base.tsx drives it.
 function useHarness(): {
     store: ComponentStore
     setStore: (next: ComponentStore) => void
@@ -73,8 +70,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-    // A mounted hook keeps its `pagehide` listener, and would act on the next
-    // test's draft (they share one localStorage key).
     unmountAllHooks()
     vi.useRealTimers()
 })
@@ -94,7 +89,6 @@ describe('useLocalDraftPersistence: an emptied canvas', () => {
         act(() => result.current.setStore({}))
         flushSave()
 
-        // Before the fix the draft still held `a`, so a reload brought it back.
         expect(storedIds()).toBeNull()
         expect(result.current.api.draftSizeBytes).toBe(0)
     })
@@ -122,8 +116,6 @@ describe('useLocalDraftPersistence: an emptied canvas', () => {
 
 describe('useLocalDraftPersistence: an empty store that is NOT a deletion', () => {
     it('leaves the draft alone on the first render, before anything loads', () => {
-        // A draft with no elements restores nothing, so the store is empty
-        // from the first render on. That is "not loaded", not "deleted".
         writeDraft({})
         renderHook(useHarness)
         flushSave()
@@ -145,7 +137,6 @@ describe('useLocalDraftPersistence: an empty store that is NOT a deletion', () =
             window.dispatchEvent(new Event('pagehide'))
         })
 
-        // The user hasn't chosen yet; their only copy must survive.
         expect(localStorage.getItem(DRAFT_STORAGE_KEY)).toBe(raw)
     })
 })

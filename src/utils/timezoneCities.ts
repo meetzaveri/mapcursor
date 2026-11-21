@@ -1,48 +1,13 @@
-// Where to open the map when we haven't been told.
-//
-// The browser's IANA timezone is the one location signal that needs no
-// permission, no prompt, and no network — `Intl.DateTimeFormat()
-// .resolvedOptions().timeZone` is available synchronously on every browser we
-// support, desktop and mobile. It is coarse (a zone is a country-sized region)
-// but it is never *absurd*, which is the whole bar for a starting view: landing
-// a New York user in New York is right, landing them in Ahmedabad is not.
-//
-// IANA zone ids are named after a representative city by convention
-// (`America/New_York`, `Asia/Tokyo`), so the table below is mostly just that
-// convention made into coordinates. When a zone is missing we fall back to the
-// table entry whose CURRENT UTC offset is closest, preferring the same region
-// prefix — which lands somewhere on roughly the right meridian rather than
-// nowhere at all.
-
-/**
- * The map zoom that ZUI `scale = 1` ("100%") represents, and therefore the zoom
- * every fresh anchor is pinned at. z16 is shop/area detail — the zoom you draw
- * at most. The reachable window spans roughly [zoom - 4.1, zoom + 3] given the
- * map base's ZUI scale limits; see mapType.ts for that arithmetic.
- *
- * It lives here rather than in mapType so the host can reference it without
- * importing the map provider — that module carries the ~1MB maplibre chunk
- * behind a dynamic import, and a static import would defeat it.
- */
 export const DEFAULT_ANCHOR_ZOOM = 16
 
-/** [lng, lat] — MapLibre's order, matching MapAnchor. */
 export type LngLat = [number, number]
 
 export interface TimezoneCity {
-    /** IANA zone id. */
     zone: string
-    /** Shown to the user, so they understand where they landed and why. */
     city: string
     lngLat: LngLat
 }
 
-/**
- * Legacy/alias zone ids some browsers still report, mapped to the canonical id
- * used in the table. Without these an Indian user on a browser reporting
- * `Asia/Calcutta` would miss an exact match and fall through to offset
- * guessing — which happens to work here, but not everywhere.
- */
 const ZONE_ALIASES: Record<string, string> = {
     'Asia/Calcutta': 'Asia/Kolkata',
     'Asia/Saigon': 'Asia/Ho_Chi_Minh',
@@ -59,10 +24,7 @@ const ZONE_ALIASES: Record<string, string> = {
     GB: 'Europe/London',
 }
 
-// Ordered loosely west → east. Coordinates are city centres, good to a few
-// hundred metres, which is far finer than this feature needs.
 const TIMEZONE_CITIES: readonly TimezoneCity[] = [
-    // — Pacific / Americas —
     {
         zone: 'Pacific/Honolulu',
         city: 'Honolulu',
@@ -137,7 +99,6 @@ const TIMEZONE_CITIES: readonly TimezoneCity[] = [
         lngLat: [-52.7126, 47.5615],
     },
 
-    // — Atlantic / Europe / Africa —
     {
         zone: 'Atlantic/Reykjavik',
         city: 'Reykjavík',
@@ -186,7 +147,6 @@ const TIMEZONE_CITIES: readonly TimezoneCity[] = [
     { zone: 'Africa/Nairobi', city: 'Nairobi', lngLat: [36.8219, -1.2921] },
     { zone: 'Europe/Moscow', city: 'Moscow', lngLat: [37.6173, 55.7558] },
 
-    // — Middle East / Asia —
     { zone: 'Asia/Riyadh', city: 'Riyadh', lngLat: [46.6753, 24.7136] },
     { zone: 'Asia/Tehran', city: 'Tehran', lngLat: [51.389, 35.6892] },
     { zone: 'Asia/Dubai', city: 'Dubai', lngLat: [55.2708, 25.2048] },
@@ -218,7 +178,6 @@ const TIMEZONE_CITIES: readonly TimezoneCity[] = [
     { zone: 'Asia/Seoul', city: 'Seoul', lngLat: [126.978, 37.5665] },
     { zone: 'Asia/Tokyo', city: 'Tokyo', lngLat: [139.6917, 35.6895] },
 
-    // — Oceania —
     { zone: 'Australia/Perth', city: 'Perth', lngLat: [115.8575, -31.9505] },
     {
         zone: 'Australia/Adelaide',
@@ -244,11 +203,6 @@ const TIMEZONE_CITIES: readonly TimezoneCity[] = [
     { zone: 'Pacific/Fiji', city: 'Suva', lngLat: [178.4419, -18.1416] },
 ]
 
-/**
- * Last resort, when the browser reports no timezone at all and the offset probe
- * also fails. London is the honest choice for "we have no idea": it is the zero
- * meridian, so it is the least *wrong* guess rather than an arbitrary one.
- */
 const FALLBACK_CITY: TimezoneCity = {
     zone: 'Europe/London',
     city: 'London',
@@ -257,7 +211,6 @@ const FALLBACK_CITY: TimezoneCity = {
 
 const byZone = new Map(TIMEZONE_CITIES.map((c) => [c.zone, c]))
 
-/** The browser's IANA zone, or null if it can't say. */
 export function browserTimezone(): string | null {
     try {
         return Intl.DateTimeFormat().resolvedOptions().timeZone || null
@@ -266,10 +219,6 @@ export function browserTimezone(): string | null {
     }
 }
 
-/**
- * A zone's CURRENT offset from UTC in minutes (east positive), read live so DST
- * is accounted for rather than baked into the table.
- */
 function zoneOffsetMinutes(zone: string): number | null {
     try {
         const parts = new Intl.DateTimeFormat('en-US', {
@@ -288,14 +237,6 @@ function zoneOffsetMinutes(zone: string): number | null {
     }
 }
 
-/**
- * The city to open the map on for `zone` (defaults to the browser's).
- *
- * Exact table hit first. Failing that, the closest entry by current UTC offset,
- * preferring one sharing the zone's region prefix — so an unlisted
- * `Europe/Ljubljana` lands on another Central-European city rather than on a
- * same-offset African one.
- */
 export function resolveTimezoneCity(
     zone: string | null = browserTimezone()
 ): TimezoneCity {
@@ -314,8 +255,6 @@ export function resolveTimezoneCity(
     for (const candidate of TIMEZONE_CITIES) {
         const candidateOffset = zoneOffsetMinutes(candidate.zone)
         if (candidateOffset === null) continue
-        // Same-region entries win any offset tie and survive a modest offset
-        // gap, which is what keeps the guess on the right continent.
         const sameRegion = candidate.zone.split('/')[0] === region
         const score =
             Math.abs(candidateOffset - offset) + (sameRegion ? 0 : 240)

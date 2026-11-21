@@ -2,8 +2,6 @@ import type { ReactElement } from 'react'
 import { useImageSrc } from './useImageSrc'
 import type { MetaPropertyType } from '../../types/metaProperty'
 
-// `YYYY-MM-DD` is a calendar date, not an instant: format it in UTC so a
-// user west of Greenwich doesn't see the day before.
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
     day: 'numeric',
     month: 'short',
@@ -20,7 +18,6 @@ export function formatMetaDate(value: string): string {
 interface MetaValueViewProps {
     type: MetaPropertyType
     value: unknown
-    /** Image only: open the full-size view. */
     onOpenImage?: (src: string) => void
 }
 
@@ -55,7 +52,6 @@ function ImageThumb({
     )
 }
 
-/** A stored value, read-only, formatted for its type. */
 export default function MetaValueView({
     type,
     value,

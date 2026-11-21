@@ -1,13 +1,3 @@
-// Every tool mapcursor ships still draws something.
-//
-// This is the broadest, shallowest test in the suite: arm each tool in turn,
-// make its gesture, and assert a record of the right componentType landed in
-// the store. It is deliberately not picky about geometry — the per-element
-// specs own that. What it catches is a tool that stopped being wired at all:
-// a deleted factory, a renamed componentType, an element module whose filename
-// no longer matches its type (elementModules.ts keys chunks by componentType,
-// so those two drift silently and only fail at runtime).
-
 import { test, expect } from './helpers/test.js'
 import {
     setupLocalBase,
@@ -21,7 +11,6 @@ import {
     getDraftComponents,
 } from './helpers/index.js'
 
-/** componentTypes present in the local draft, deduped. */
 async function typesInDraft(page) {
     const draft = await getDraftComponents(page)
     return [...new Set(Object.values(draft ?? {}).map((c) => c.componentType))]

@@ -1,19 +1,3 @@
-// Mobile controls for editing an element's text.
-//
-// Two states, one corner:
-//
-//   • Editing → ✓ / ✗. A phone has no Enter or Escape, so the only way out of
-//     an open label editor was to tap somewhere else and hope that counted as
-//     "done" — and there was no way at all to abandon an edit. Mirrors the ✓/✗
-//     the multi-click geo draw already puts in this slot.
-//   • A text element selected, not editing → ✏️. Entering the editor was a
-//     double-TAP on a label a few pixels tall; the pencil is the same thing
-//     with a target you can hit.
-//
-// Both talk to the element's own imperative editor through the window events in
-// constants/misc.ts — the editors are DOM overlays built inside the Two.js
-// element components, with no React surface to reach them by.
-
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import { useBaseContext } from '../../views/Base/baseContext'
@@ -26,20 +10,15 @@ import {
 } from '../../constants/misc'
 import OkIcon from '../../assets/ok.svg?react'
 import CloseIcon from '../../assets/close.svg?react'
-// The same pencil the toolbar's freehand tool uses (utils/constants.ts) — one
-// pencil in the product, not two.
 import PencilIcon from '../../wireframeAssets/pencil.svg?react'
 
-/** Element kinds whose text is edited through an overlay we can drive. */
 const EDITABLE_TEXT_TYPES: ReadonlySet<string> = new Set([
     'text',
     'point',
-    // A circle's label editor speaks the same TEXT_EDIT_* handshake.
     'circle',
 ])
 
 interface MobileTextControlsProps {
-    /** True while a multi-click draw owns this corner with its own ✓/✗. */
     drawInProgress: boolean
 }
 
@@ -49,9 +28,6 @@ const MobileTextControls = ({
     const { selectedComponent, isRubberMode, isPencilMode } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
 
-    // Which element's editor is open, if any. Tracked by id rather than a bare
-    // boolean so the buttons address exactly that editor — two labels can be on
-    // screen and only one of them is being typed into.
     const [editingId, setEditingId] = useState<string | null>(null)
 
     useEffect(() => {
@@ -77,8 +53,6 @@ const MobileTextControls = ({
     const selectedType: string | undefined =
         selected?.group?.data?.elementData?.componentType
 
-    // Keep the open editor focused: a press that moves focus blurs it, and blur
-    // is what commits.
     const keepFocus = (e: { preventDefault: () => void }): void =>
         e.preventDefault()
 
@@ -103,15 +77,6 @@ const MobileTextControls = ({
                     type="button"
                     title="Done editing"
                     aria-label="Done editing"
-                    // preventDefault on the press, act on the click. Two things
-                    // hang on that split. The press must NOT move focus, or the
-                    // editor blurs and commits before we can say which of the
-                    // two answers this is — ✗ would silently become ✓. And the
-                    // action must NOT run on the press, because ending the edit
-                    // swaps this button out for the delete button that shares
-                    // this slot: the tap's own click then landed on the delete
-                    // button that had appeared under the finger, and the
-                    // element the user was editing was gone.
                     onPointerDown={keepFocus}
                     onMouseDown={keepFocus}
                     onClick={(): void => request(TEXT_EDIT_COMMIT_EVENT)}
@@ -144,8 +109,6 @@ const MobileTextControls = ({
             title="Edit text"
             aria-label="Edit text"
             onClick={(): void => {
-                // The same event placement uses to open a fresh element's
-                // editor; point.tsx and text.tsx both answer it.
                 window.dispatchEvent(
                     new CustomEvent('triggerTextInput', {
                         detail: { elementId: selectedId },
@@ -154,8 +117,6 @@ const MobileTextControls = ({
             }}
             style={{
                 position: 'fixed',
-                // Above the delete button (64), which is above the
-                // element-properties button (16).
                 bottom: '112px',
                 right: '10px',
                 zIndex: 20,

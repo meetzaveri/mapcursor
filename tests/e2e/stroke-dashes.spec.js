@@ -1,12 +1,3 @@
-// Dashed and dotted map strokes stay dashed at every zoom and every width.
-//
-// A stroke's WIDTH is counter-scaled to stay near-constant on screen, but its
-// dash pattern used to be a fixed `[8]` in surface units. Zoomed out (z11) the
-// dashes shrank to a fraction of a pixel and "dashed" drew solid, and round
-// caps closed the gaps on an 8px stroke at any zoom. The pattern is now sized
-// on screen (src/utils/strokeDashes.ts) and re-derived on every zoom, width and
-// type change. These read the rendered `stroke-dasharray` in SCREEN px.
-
 import { test, expect } from './helpers/test.js'
 import {
     clickPointerTool,
@@ -18,7 +9,6 @@ import {
     triggerUndoKeyboard,
 } from './helpers/index.js'
 
-/** Each pencil/route stroke's dash pattern and width, in screen px. */
 const strokes = (page) =>
     page.evaluate(() => {
         const two = window.__mcTwo
@@ -41,7 +31,6 @@ const strokes = (page) =>
             })
     })
 
-/** Gap actually seen between round-capped dashes: the caps eat one width. */
 const visibleGap = (s) => (s.dash?.[1] ?? 0) - s.width
 
 async function zoomBy(page, box, deltaY, notches) {
@@ -82,7 +71,6 @@ test.describe('dashed map strokes', () => {
         expect(drawn.dash[0] + drawn.width).toBeGreaterThanOrEqual(7)
         expect(visibleGap(drawn)).toBeGreaterThanOrEqual(5)
 
-        // Zoom back in: the on-screen pattern is held, not scaled with the map.
         await zoomBy(page, box, -400, 12)
         const [zoomed] = await strokes(page)
         expect(zoomed.dash).not.toBeNull()
@@ -111,7 +99,6 @@ test.describe('dashed map strokes', () => {
         expect(all.map((s) => s.type).sort()).toEqual(['pencil', 'route'])
         for (const s of all) {
             expect(s.dash, `${s.type} rendered solid`).not.toBeNull()
-            // [8] with round caps left ~0px here.
             expect(
                 visibleGap(s),
                 `${s.type} gaps closed up (${visibleGap(s)}px)`

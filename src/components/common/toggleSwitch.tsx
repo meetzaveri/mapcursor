@@ -8,8 +8,6 @@ interface ToggleSwitchProps {
     disabled?: boolean
 }
 
-// A small accessible on/off switch. Uses the amber `accent` token when on and a
-// neutral track when off; the knob slides between the two ends.
 const ToggleSwitch = ({
     checked,
     onChange,

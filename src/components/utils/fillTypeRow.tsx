@@ -6,11 +6,6 @@ import { normalizeAreaFillType } from '../../utils/areaFill'
 import type { AreaFillType } from '../../utils/areaFill'
 import AreaFillSwatch, { svgSafeId } from './areaFillSwatch'
 
-// The fill-type picker for an area: solid, hachure, cross-hatch.
-//
-// Shared by the properties toolbar and the legend-preset wizard, for the same
-// reason the stroke rows are (see strokeRows.tsx): one value, one widget.
-
 const FILL_TYPES: { value: AreaFillType; label: string }[] = [
     { value: 'solid', label: 'Solid' },
     { value: 'hachure', label: 'Hachure' },
@@ -26,7 +21,6 @@ export const FillTypeRow = ({
     onChange: (v: AreaFillType) => void
 }): ReactElement => {
     const current = normalizeAreaFillType(value)
-    // Each swatch defines its own <pattern>, so ids must be unique per row.
     const idPrefix = `fill-type-${svgSafeId(useId())}`
     return (
         <div id="fill-type-section" className="pt-3 px-2">

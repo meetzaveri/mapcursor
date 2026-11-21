@@ -18,7 +18,6 @@ await p.setContent(`<body style="margin:0;background:#f5f0e8">
 const info = await p.evaluate(() => {
     const svg = document.getElementById('probe')
     const ink = document.getElementById('ink')
-    // getBBox(true) includes stroke; fall back to the fill box + half stroke.
     const strokeBox = ink.getBBox({ stroke: true })
     return {
         pathBox: ink.getBBox(),

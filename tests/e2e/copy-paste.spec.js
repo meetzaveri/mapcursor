@@ -1,13 +1,3 @@
-// Copy and paste (Cmd/Ctrl+C, Cmd/Ctrl+V).
-//
-// The clipboard clones a record, re-keys its id, offsets it and hands the
-// selection to the clone. Two things make it worth testing per element type
-// rather than once: the absolute-vertex family (area, route, pencil) stores its
-// geometry in `metadata` and is positioned off `vertexMetadataCenter` rather
-// than x/y, and a point carries its label in metadata too. A clone that keeps
-// the source's id, or lands back on the source's coordinates, looks identical
-// on screen until you move one of them.
-
 import { test, expect } from './helpers/test.js'
 import {
     setupLocalBase,
@@ -27,8 +17,6 @@ const recordsOf = async (page, type) => {
     return Object.values(draft ?? {}).filter((c) => c.componentType === type)
 }
 
-// useLocalDraftPersistence debounces its writes, so a read taken straight after
-// a gesture sees the PREVIOUS draft. Poll until the expected count lands.
 async function waitForRecords(page, type, count) {
     await expect.poll(async () => (await recordsOf(page, type)).length, {
         timeout: 10_000,
@@ -65,7 +53,6 @@ test.describe('copy/paste', () => {
         await expectComponentCount(page, 2)
 
         const circles = await waitForRecords(page, 'circle', 2)
-        // Distinct ids, or the two are the same row and one will vanish on load.
         expect(new Set(circles.map((c) => c.id)).size).toBe(2)
     })
 
@@ -84,7 +71,6 @@ test.describe('copy/paste', () => {
 
         const points = await waitForRecords(page, 'point', 2)
         expect(new Set(points.map((p) => p.id)).size).toBe(2)
-        // The label rides in metadata; a clone that drops it is a blank pin.
         expect(
             points.every(
                 (p) => p.metadata?.properties?.label === 'The Old Peacock'
@@ -122,8 +108,6 @@ test.describe('copy/paste', () => {
 
             const [source] = await waitForRecords(page, type, 1)
 
-            // Select through the rendered node — these are paths, so a centre
-            // click on the bounding box can miss the stroke entirely.
             await page.evaluate((id) => {
                 window.dispatchEvent(
                     new CustomEvent('selectComponent', { detail: { id } })
@@ -136,8 +120,6 @@ test.describe('copy/paste', () => {
             const all = await waitForRecords(page, type, 2)
             expect(new Set(all.map((r) => r.id)).size).toBe(2)
 
-            // These types own their geometry in `metadata`, so the clone's
-            // vertices — not its x/y — are what must have moved.
             const verts = all.map((r) =>
                 r.metadata?.geometry?.coordinates ?? null
             )

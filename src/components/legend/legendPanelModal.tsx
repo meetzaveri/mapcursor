@@ -1,10 +1,3 @@
-// The legend on a phone.
-//
-// Same list, same wizard, different container — exactly the split place search
-// already uses (`placeSearch.tsx` / `placeSearchModal.tsx`), and for the same
-// reason: a phone's top-right corner is the share button and nothing else, so
-// the pinned panel has nowhere to live. Reached from the hamburger menu.
-
 import type { ReactElement } from 'react'
 
 import Modal from '../common/modal'
@@ -29,8 +22,6 @@ export default function LegendPanelModal({
 
     return (
         <>
-            {/* Closed while the wizard is up: two stacked modals would put the
-                list's backdrop over the wizard's own controls. */}
             <Modal open={open && !wizard.wizardOpen} onClose={onClose}>
                 <div
                     style={{

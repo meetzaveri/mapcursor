@@ -1,15 +1,3 @@
-// Export the current canvas viewport as a PNG.
-//
-// Two.js runs the SVG renderer in fullscreen mode (see src/newCanvas.tsx), so
-// the live <svg> element IS the viewport: any scene content panned/zoomed
-// outside the window sits outside the SVG's 0..W / 0..H box and is clipped for
-// free when we rasterize at viewport size. We therefore never touch the live
-// scene — we clone the SVG, re-create its background (the map raster, or the
-// canvas's own fill when that is unavailable
-// all carry over), embed the web font(s) used on canvas (the rasterizer has no
-// access to document fonts), stamp a screen-space watermark, then draw the SVG
-// onto a <canvas> and download it as PNG.
-
 import {
     SVG_NS,
     embedFonts,
@@ -18,27 +6,15 @@ import {
 } from './svgExportShared'
 import { DEFAULT_TEXT_FONT_FAMILY } from '../constants/misc'
 
-// Light-theme fallbacks, used only if the live computed style can't be read.
-const CANVAS_BG_FALLBACK = '#fafafc' // --color-canvas (App.css)
+const CANVAS_BG_FALLBACK = '#fafafc'
 const WATERMARK_TEXT = 'Made with mapcursor.com'
-const MAX_DPR = 2 // cap device-pixel scaling to bound output file size
+const MAX_DPR = 2
 
-/**
- * Rasterizes the active base's backdrop to a data URL sized to the viewport.
- * Supplied by the base provider (see src/bases); `null` means "nothing to
- * draw", which sends the export down its solid-fill path.
- */
 export type BackdropCapture = (
     width: number,
     height: number
 ) => Promise<string | null>
 
-/**
- * Download the currently-visible viewport as a PNG. Resolves once the download
- * has been triggered; rejects if the SVG can't be found or rasterization fails.
- * Font embedding failures are non-fatal (image still produced, text may fall
- * back to a system font).
- */
 export async function downloadViewportAsImage(
     captureBackdrop?: BackdropCapture
 ): Promise<void> {
@@ -58,14 +34,9 @@ export async function downloadViewportAsImage(
     clone.setAttribute('height', String(height))
     clone.setAttribute('viewBox', `0 0 ${width} ${height}`)
 
-    // Don't bake the on-screen selection box/handles into the exported image.
     stripSelectionChrome(clone)
     await prepareImagesForExport(clone)
 
-    // A base that paints its own backdrop (the map) hands back a raster of the
-    // live view; anything else returns null and we fall through to painting the
-    // the solid fill. Capture failures are non-fatal — a missing
-    // backdrop is better than a failed export.
     let backdrop: string | null = null
     if (captureBackdrop) {
         try {
@@ -83,13 +54,6 @@ export async function downloadViewportAsImage(
     await rasterizeAndDownload(svgString, width, height)
 }
 
-/**
- * Re-create the canvas background as SVG content.
- *
- * The map backdrop is a raster captured from MapLibre; when it is missing
- * (capture failed, or the map hasn't mounted) we fall back to the canvas's own
- * resolved background colour so the export is never transparent.
- */
 function injectBackground(
     cloneSvg: SVGSVGElement,
     liveSvg: SVGSVGElement,
@@ -97,8 +61,6 @@ function injectBackground(
     height: number,
     backdrop: string | null
 ): void {
-    // The backdrop raster already *is* the background — painting a fill under
-    // it would only show through wherever the raster has alpha.
     if (backdrop) {
         const image = document.createElementNS(SVG_NS, 'image')
         image.setAttribute('x', '0')
@@ -121,7 +83,6 @@ function injectBackground(
     cloneSvg.insertBefore(solid, cloneSvg.firstChild)
 }
 
-/** Bottom-right, screen-space watermark (fixed regardless of zoom/pan). */
 function appendWatermark(
     svg: SVGSVGElement,
     width: number,
@@ -136,11 +97,9 @@ function appendWatermark(
     text.setAttribute('fill', '#6B7180')
     text.setAttribute('fill-opacity', '0.8')
     text.textContent = WATERMARK_TEXT
-    // Last child → drawn on top of everything.
     svg.appendChild(text)
 }
 
-/** Draw the serialized SVG onto a HiDPI canvas and trigger a PNG download. */
 function rasterizeAndDownload(
     svgString: string,
     width: number,

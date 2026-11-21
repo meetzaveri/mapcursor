@@ -58,17 +58,11 @@ import {
     VERTEX_PATH_REVERTED_EVENT,
 } from '../components/utils/vertexHandles'
 
-// Two.js scene-group shapes are typed loosely until the canvas internals
-// converge (Stages 7–9). Bulk-prop bags are also row-shaped; we accept
-// `Partial<ComponentRecord>` plus an `[key: string]: unknown` escape hatch
-// for the few fields (relativeX/Y, etc.) that don't live on the DB row type.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
 type BulkProps = Partial<ComponentRecord> & Record<string, unknown>
-
-// ---- history entry discriminated union ----
 
 interface AddEntry {
     action: 'ADD'
@@ -110,11 +104,6 @@ interface BatchEntry {
     timestamp?: number
 }
 
-/**
- * A meta property edit (hooks/useMetaProperties.ts). Each op carries both
- * sides, so undo and redo need no capture step. Replayed through
- * `applyMetaHistoryRef`, since the meta hook is composed after this one.
- */
 interface MetaEntry {
     action: 'META'
     ops: MetaHistoryOp[]
@@ -129,10 +118,6 @@ export type HistoryEntry =
     | BatchEntry
     | MetaEntry
 
-// ---- hook options ----
-
-// Apollo mutate signatures vary by typing source; keep them loose at the
-// boundary. base.tsx (Stage 10) will wire in real Apollo types.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApolloMutate = (options?: any) => any
 
@@ -154,10 +139,6 @@ export interface ComponentHistoryOptions {
     selectedComponent: ShapeLike | null
     selectedGroupRef: MutableRefObject<ShapeLike | null>
     stripTypename: (input: unknown) => unknown
-    /**
-     * Replays a `META` entry. Set by base.tsx once useMetaProperties exists
-     * (it is composed after this hook, and needs `recordToHistoryLog`).
-     */
     applyMetaHistoryRef?: MutableRefObject<
         | ((ops: MetaHistoryOp[], direction: MetaHistoryDirection) => Promise<void>)
         | null
@@ -176,43 +157,24 @@ export interface ComponentHistoryApi {
     clearHistory: (isPersisted: boolean, localDraftKey?: string) => void
 }
 
-// Applies a single property back to a Two.js shape during undo/redo.
 function applyPropertyToTwoJSGroup(
     group: ShapeLike,
     name: string,
     value: unknown,
     two: ShapeLike
 ): void {
-    // A point's pin is not children[0]: its shadow discs and any selection
-    // chrome come first. getPointCircle skips both.
     const shape =
         group.elementData?.componentType === 'point'
             ? getPointCircle(group)
             : group.children?.[0]
     if (!shape) return
 
-    // Multiline text (standalone or shape-with-text) is a stack of Two.Text
-    // line nodes — text props must hit EVERY node, not just children[0].
-    // Empty for non-text shapes, so this stays a no-op there.
     const textNodes: ShapeLike[] = getShapeTextNodes(group)
     const isStandaloneText = isStandaloneTextType(
         group.elementData?.componentType
     )
-    // A circle's label is a sub-group of Two.Text nodes, deliberately invisible
-    // to getShapeTextNodes (that is what keeps the dead shape-with-text path
-    // dead) — so every revert that touches it has to rebuild explicitly, or
-    // undo is a silent no-op on screen while the store rolls back.
     const isCircle = group.elementData?.componentType === 'circle'
 
-    // Reverting has to reach `elementData` too, not just the painted node.
-    //
-    // `elementData` is the frozen mount snapshot, and it is what the properties
-    // toolbar, the group overlay and the legend chip row all READ. applyProperty
-    // writes both on the way in; undo only ever wrote the Two.js node, so a
-    // reverted element looked right while every control still reported the
-    // value that had just been undone. Most visible with the legend binding,
-    // which is pure bookkeeping and has no painted form at all — without the
-    // case below, undoing a preset left the chip row still showing it selected.
     const meta = group.elementData
 
     switch (name) {
@@ -224,14 +186,8 @@ function applyPropertyToTwoJSGroup(
             if (meta) meta.fill = value
             break
         case 'stroke':
-            // A point's ring is a fixed white (POINT_BORDER_COLOR), and its
-            // stroke column mirrors its fill, so painting the column would
-            // replace the ring with the pin colour.
             if (meta?.componentType !== 'point') shape.stroke = value
             if (meta) meta.stroke = value
-            // An area's fill is a light shade of its stroke and is never
-            // persisted, so reverting the stroke has to re-derive it — without
-            // this the outline snaps back but the wash stays the old colour.
             if (group.elementData?.componentType === 'area') {
                 shape.fill = areaFillFor(
                     two,
@@ -242,12 +198,6 @@ function applyPropertyToTwoJSGroup(
             }
             break
         case 'linewidth':
-            // Geo strokes are counter-scaled: what route/area/geo-pencil paint
-            // is `linewidth * computeCounterScale(...)`, re-applied on every
-            // `zoomChanged`. Writing the logical width raw leaves the mark
-            // hairline-thin below the anchor until the next zoom nudges it
-            // back. Same rule applyProperty follows on the way in; the record
-            // keeps the logical width, only what is painted is scaled.
             shape.linewidth = isStrokeScaled(group.elementData)
                 ? (value as number) *
                   computeCounterScale(
@@ -256,7 +206,6 @@ function applyPropertyToTwoJSGroup(
                   )
                 : value
             if (meta) meta.linewidth = value
-            // The dash pattern is sized from the width (utils/strokeDashes).
             if (isStrokeScaled(group.elementData)) {
                 applyStrokeDashes(
                     shape,
@@ -268,16 +217,9 @@ function applyPropertyToTwoJSGroup(
         case 'width':
         case 'height':
             shape[name] = value
-            // A circle's label wraps to its width, and reapplyTextFromMeta
-            // re-flows it afterwards off elementData — so the reverted width
-            // has to land there too, not just on the Two.js node.
             if (isCircle && group.elementData) group.elementData[name] = value
             break
         case 'textColor':
-            // A circle's label reads its ink off this column, and its line
-            // nodes are invisible to getShapeTextNodes (see isCircle above) —
-            // so paint them explicitly and mirror the column onto elementData,
-            // which is what the next rebuild reads.
             if (isCircle) {
                 if (group.elementData) group.elementData.textColor = value
                 getCircleLabelNodes(group).forEach(
@@ -285,8 +227,6 @@ function applyPropertyToTwoJSGroup(
                 )
                 break
             }
-            // Standalone text records color as a top-level prop; it renders
-            // via each line node's `.fill`. Revert all lines, not just line 1.
             if (textNodes.length > 0) {
                 textNodes.forEach((n: ShapeLike) => (n.fill = value))
             } else {
@@ -309,27 +249,15 @@ function applyPropertyToTwoJSGroup(
             if (meta) meta.strokeType = value
             break
         case 'fillType':
-            // Repainted from the stroke the element carries now, which a
-            // stroke revert in the same entry may already have restored.
             if (meta?.componentType === 'area') {
                 shape.fill = areaFillFor(two, meta.stroke, value, meta)
                 meta.fillType = value
             }
             break
         case 'zoomResistant': {
-            // The text counter-scale switch. It has no Two.js field of its
-            // own — the element component owns the scaled node and the
-            // selection outline — so mirror it onto elementData (what
-            // resolveResist and the group-overlay copies read) and let the component re-scale itself against the
-            // live camera. Covers undo and redo alike: applyBulkProps routes
-            // every reverted key through here.
             const resistType = group.elementData?.componentType
             if (resistType !== 'text') break
             group.elementData.zoomResistant = value
-            // resolveResist, the same reader applyProperty used, so a record
-            // with its own properties.resist reverts to that and not to the
-            // TEXT_RESIST default. The fontSize the switch rescaled rides the
-            // same bulk entry and is reverted by the `metadata` case.
             window.dispatchEvent(
                 new CustomEvent(TEXT_RESIST_CHANGED_EVENT, {
                     detail: {
@@ -341,17 +269,11 @@ function applyPropertyToTwoJSGroup(
             break
         }
         case 'opacity':
-            // A circle carries opacity on its ELLIPSE, not its group: it is
-            // created half-transparent so the basemap reads through it, and a
-            // half-transparent NAME over a basemap is unreadable. Group-level
-            // opacity would multiply onto both. Mirrors circle.tsx.
             if (isCircle) {
                 shape.opacity = value
                 group.opacity = 1
                 break
             }
-            // An area's opacity is its fill's alpha; its border stays at full
-            // strength. Mirrors applyProperty.
             if (meta?.componentType === 'area') {
                 group.opacity = 1
                 shape.opacity = 1
@@ -359,10 +281,6 @@ function applyPropertyToTwoJSGroup(
                 shape.fill = areaFillFor(two, meta.stroke, meta.fillType, meta)
                 break
             }
-            // Everything else: apply at the GROUP level (shape + text dim
-            // uniformly and repaint reliably) and neutralize the leaf/text so
-            // they don't compound with the group's opacity. Mirrors
-            // applyProperty and the *-with-text components.
             group.opacity = value
             shape.opacity = 1
             if (textNodes.length > 0) {
@@ -370,17 +288,9 @@ function applyPropertyToTwoJSGroup(
             }
             break
         case 'metadata': {
-            // Only the PROPERTIES half maps onto Two.js fields; the geometry
-            // half is reverted by the path/position branches below.
             const revertedProps = readProperties({ metadata: value })
             if (Object.keys(revertedProps).length > 0) {
-                // A circle's label is rebuilt wholesale by reapplyTextFromMeta
-                // (which runs after width lands, and has the Two instance) —
-                // the per-key pokes below would find nothing, since a circle's
-                // label is invisible to getShapeTextNodes by design.
                 if (isCircle) break
-                // Fallback single node for legacy/non-multiline shapes where
-                // getShapeTextNodes finds no text layer.
                 const fallbackTextNode: ShapeLike =
                     typeof shape?.value === 'string'
                         ? shape
@@ -394,11 +304,6 @@ function applyPropertyToTwoJSGroup(
                 Object.entries(revertedProps).forEach(
                     ([k, v]) => {
                         if (k === 'opacity') {
-                            // Opacity is applied at the GROUP level (see
-                            // applyProperty and the *-with-text components) so
-                            // the shape + text dim uniformly and repaint
-                            // reliably. Reset the leaf/text so they don't
-                            // compound with the group's opacity.
                             group.opacity = v
                             shape.opacity = 1
                             if (textNodes.length > 0) {
@@ -407,14 +312,10 @@ function applyPropertyToTwoJSGroup(
                                 )
                             }
                         } else if (k === 'textFontSize' || k === 'fontSize') {
-                            // Standalone text stores size as `fontSize`,
-                            // shape-with-text as `textFontSize` — honor both.
                             applyToText((n) => {
                                 n.size = v
                                 n.leading = v
                             })
-                            // Standalone multiline must re-stack at the new
-                            // line height (shape-with-text reflows elsewhere).
                             if (isStandaloneText && textNodes.length > 1) {
                                 const lh = lineHeightFor(Number(v))
                                 const cnt = textNodes.length
@@ -434,9 +335,6 @@ function applyPropertyToTwoJSGroup(
                                 n.fill = v
                             })
                         }
-                        // Other metadata keys (textContent, textBaseLine,
-                        // hasText) have no direct Two.js field mapping; skip
-                        // rather than pollute random properties on the shape.
                     }
                 )
             }
@@ -480,8 +378,6 @@ export function useComponentHistory({
         setBucketLog(next)
     }
 
-    // ---- per-action apply helpers (shared by undo and redo dispatchers) ----
-
     const applyRemove = (id: string): void => {
         const two = twoJSInstanceRef.current
         const group = two?.scene.children.find(
@@ -513,11 +409,6 @@ export function useComponentHistory({
         onPermissionError?: () => void
     ): void => {
         const two = twoJSInstanceRef.current
-        // A DELETE entry snapshots prevState as { ...store[id] }; if the
-        // component wasn't in the store at delete time (transient/group ids,
-        // double-delete, already-removed), that snapshot is {}. Restoring it
-        // would write a { baseId }-only entry that later breaks Share's bulk
-        // insert (componentType NOT NULL). Same guard as applyBatch.
         if (!componentInfo || !componentInfo.componentType) return
         const restoredState = { ...componentInfo, baseId }
         const updatedStore = {
@@ -552,10 +443,6 @@ export function useComponentHistory({
         const two = twoJSInstanceRef.current
         const updatedStore = { ...stateRefForComponentStore.current }
         const current = updatedStore[id]
-        // Restore the position through the GEOMETRY — the x/y columns are a
-        // cache of it, so reverting them alone would leave the record's own
-        // coordinates at the post-move position and the undo would come back on
-        // the next load.
         const placement = moveGeometryTo(current, x, y) ?? { x, y }
         if (current) {
             updatedStore[id] = { ...current, ...placement }
@@ -569,8 +456,6 @@ export function useComponentHistory({
         if (group) {
             group.translation.x = x
             group.translation.y = y
-            // The element's frozen props keep a stale snapshot otherwise, and
-            // the next drag would measure its delta from the old origin.
             if (group.elementData) {
                 Object.assign(group.elementData, placement)
             }
@@ -584,14 +469,6 @@ export function useComponentHistory({
         requestAnimationFrame(() => two?.update())
     }
 
-    // Text *content* has no single Two.js field, so applyPropertyToTwoJSGroup
-    // deliberately skips it. The React fallback is also dead on undo:
-    // ElementRenderWrapper freezes each element's props at mount, so the
-    // shape/text components' metadata-reflow effects never re-fire. This
-    // rebuilds the visible text from the restored metadata directly on the
-    // scene — the same direct-mutation contract every other undo prop uses.
-    // Call it AFTER width has been applied so shape-with-text reflows to the
-    // reverted box width, not the post-edit one.
     const reapplyTextFromMeta = (
         group: ShapeLike,
         meta: BulkProps['metadata']
@@ -603,10 +480,6 @@ export function useComponentHistory({
         const ct = group.elementData?.componentType
 
         if (isStandaloneTextType(ct)) {
-            // Standalone multiline text is a stack of Two.Text nodes owned by
-            // the newText/text component (extraLineNodesRef). Rebuilding them from
-            // here would desync that ref and orphan nodes on the next edit, so
-            // let the component re-stack through its own path instead.
             if (typeof m.content !== 'string') return
             if (group.elementData) {
                 group.elementData.metadata = {
@@ -625,16 +498,6 @@ export function useComponentHistory({
             return
         }
 
-        // A point's label is a Two.Text node the factory owns, so rebuild the
-        // whole pin from the restored record — cheap (two nodes) and it can't
-        // drift from what a fresh mount would draw.
-        //
-        // The rebuild re-reads the colour, so `elementData` has to be caught up
-        // FIRST: applyPropertyToTwoJSGroup writes reverted colours onto the
-        // Two.js node only, leaving elementData holding the pre-undo value.
-        // Rebuilding off that would repaint the circle in the colour we just
-        // undid. The store row is the authority here — applyBulkProps commits
-        // the revert to it before touching the scene.
         if (ct === 'point') {
             const elementData = group.elementData
             if (elementData) {
@@ -643,16 +506,6 @@ export function useComponentHistory({
                     elementData.fill = record.fill
                     elementData.stroke = record.stroke
                 }
-                // REPLACE, don't merge. A revert is as often the removal of a
-                // key as a change to one: styling a point that had never been
-                // styled writes `textFontFamily` onto a metadata object that
-                // did not have it, and merging the reverted object over the
-                // current one would leave that key standing. The store row is
-                // the reverted authority (applyBulkProps commits it first);
-                // `m` covers a revert that never reached the store.
-                // The store row is the reverted authority when it carries a
-                // geometry; `replaceProperties` covers a revert that never
-                // reached the store, keeping the element's own geometry.
                 elementData.metadata =
                     record && readGeometry(record)
                         ? record.metadata
@@ -669,25 +522,10 @@ export function useComponentHistory({
             return
         }
 
-        // A circle's label is a sub-group of Two.Text nodes the circleLabel
-        // factory owns, so rebuild it from the restored record — the same
-        // contract the point above uses, and for the same reason: the per-node
-        // pokes in applyPropertyToTwoJSGroup cannot see it (getShapeTextNodes
-        // returns [] for a circle by design).
         if (ct === 'circle') {
             const elementData = group.elementData
             if (elementData) {
                 const record = stateRefForComponentStore.current[elementData.id]
-                // REPLACE, don't merge. A revert is as often the removal of a
-                // key as a change to one: naming a circle that had never been
-                // named writes `label` onto a metadata object that did not have
-                // it, and merging the reverted object over the current one
-                // would leave that key standing. The store row is the reverted
-                // authority (applyBulkProps commits it first); `m` covers a
-                // revert that never reached the store.
-                // The store row is the reverted authority when it carries a
-                // geometry; `replaceProperties` covers a revert that never
-                // reached the store, keeping the element's own geometry.
                 elementData.metadata =
                     record && readGeometry(record)
                         ? record.metadata
@@ -696,8 +534,6 @@ export function useComponentHistory({
                 if (record?.width !== undefined) {
                     elementData.width = record.width
                 }
-                // Ink is a COLUMN, not metadata, so it does not ride the
-                // replace above — and the rebuild below re-reads it.
                 if (record?.textColor !== undefined) {
                     elementData.textColor = record.textColor
                 }
@@ -727,7 +563,6 @@ export function useComponentHistory({
             if (m.hasText && typeof m.textContent === 'string') {
                 applyShapeText(two, group, ct, width, m)
             } else {
-                // Reverting to a no-text state — clear any rendered lines.
                 const layer = findShapeTextLayer(group)
                 if (layer) {
                     renderShapeTextLayer(
@@ -742,10 +577,6 @@ export function useComponentHistory({
         }
     }
 
-    // A resize revert carries no `metadata`, so reapplyTextFromMeta does not
-    // run for it — but a circle's label wraps to the inscribed box, which is a
-    // function of the width just reverted. Re-flow it here so undoing a resize
-    // puts the name back the way undoing an edit does.
     const rewrapCircleAfterResize = (
         group: ShapeLike,
         props: BulkProps
@@ -754,7 +585,6 @@ export function useComponentHistory({
         if (!two || !group) return
         if (group.elementData?.componentType !== 'circle') return
         if (props.width === undefined && props.height === undefined) return
-        // Already rebuilt by the metadata path — don't do it twice.
         if (props.metadata) return
         const record = group.elementData
         buildCircleLabel(two, group, {
@@ -827,10 +657,6 @@ export function useComponentHistory({
             if (props.metadata) reapplyTextFromMeta(group, props.metadata)
             rewrapCircleAfterResize(group, props)
 
-            // Route and area own their path + vertex handles (frozen props, so
-            // no re-render). Sync elementData for later drags/reload, then let
-            // the component re-flow through its own refs via this event (works
-            // for undo AND redo).
             if (
                 props.metadata &&
                 VERTEX_PATH_TYPES.has(group.elementData?.componentType)
@@ -893,7 +719,6 @@ export function useComponentHistory({
         entries: HistoryEntry[],
         direction: 'undo' | 'redo'
     ): void => {
-        // direction: 'undo' (DELETE→insert, ADD→remove) or 'redo' (DELETE→remove, ADD→insert)
         const two = twoJSInstanceRef.current
         const updatedStore = { ...stateRefForComponentStore.current }
 
@@ -948,9 +773,6 @@ export function useComponentHistory({
                     deleteComponent({ variables: { id } })
                 }
             } else if (e.action === 'UPDATE_BULK') {
-                // Used by group bulk-apply: a single BATCH carries one
-                // UPDATE_BULK per group child, so one undo press rolls them
-                // all back together.
                 const propsToApply: BulkProps | undefined =
                     direction === 'undo' ? e.prevProps : e.bulkObj
                 if (!propsToApply) return
@@ -965,8 +787,6 @@ export function useComponentHistory({
                     (c: ShapeLike) => c?.elementData?.id === e.id
                 )
                 if (sceneGroup) {
-                    // Position sync — group ungroup batches include x/y so
-                    // the original scene shapes need to translate back.
                     if (propsToApply.x !== undefined)
                         sceneGroup.translation.x = propsToApply.x
                     if (propsToApply.y !== undefined)
@@ -974,7 +794,6 @@ export function useComponentHistory({
                     Object.entries(propsToApply).forEach(([name, val]) => {
                         applyPropertyToTwoJSGroup(sceneGroup, name, val, two)
                     })
-                    // ArrowLine vertex handling
                     const hasArrowVertices =
                         propsToApply.x1 !== undefined ||
                         propsToApply.y1 !== undefined ||
@@ -1007,7 +826,6 @@ export function useComponentHistory({
                             )
                         }
                     }
-                    // Pencil path reconstruction
                     if (
                         sceneGroup.elementData?.componentType === 'pencil' &&
                         propsToApply.metadata
@@ -1034,7 +852,6 @@ export function useComponentHistory({
                             })
                         }
                     }
-                    // Keep the elementData snapshot in sync.
                     if (sceneGroup.elementData) {
                         Object.entries(propsToApply).forEach(([k, v]) => {
                             sceneGroup.elementData[k] = v
@@ -1055,9 +872,6 @@ export function useComponentHistory({
                         )
                     }
                 }
-                // If a group is currently focused and contains this child,
-                // also mutate the visible coreObj so undo/redo reflects on
-                // screen without waiting for the user to ungroup.
                 const activeGroup = selectedGroupRef?.current
                 const groupChildren = activeGroup?.elementData?.children
                 if (Array.isArray(groupChildren)) {
@@ -1069,9 +883,6 @@ export function useComponentHistory({
                             (c: ShapeLike) => c?.elementData?.id === e.id
                         )
                         if (coreObj) {
-                            // Opacity persists top-level now; the case 'opacity'
-                            // in applyPropertyToTwoJSGroup sets coreObj.opacity,
-                            // so no pre-reset is needed here.
                             Object.entries(propsToApply).forEach(
                                 ([name, val]) => {
                                     applyPropertyToTwoJSGroup(
@@ -1083,7 +894,6 @@ export function useComponentHistory({
                                 }
                             )
                         }
-                        // Mirror onto the child entry inside elementData.children
                         groupChildren.forEach((c: ShapeLike) => {
                             if (c?.id === e.id) {
                                 Object.entries(propsToApply).forEach(
@@ -1111,15 +921,12 @@ export function useComponentHistory({
         requestAnimationFrame(() => two?.update())
     }
 
-    // ---- public recorders ----
-
     const recordToHistoryLog = (entry: HistoryEntry): void => {
         const updatedLog: HistoryEntry[] = [
             ...historyLogRef.current,
             { ...entry, timestamp: Date.now() },
         ]
         writeHistory(updatedLog)
-        // Fresh user action invalidates the redo branch
         writeBucket([])
     }
 
@@ -1132,17 +939,8 @@ export function useComponentHistory({
         writeBucket([])
     }
 
-    // Capture the post-action ("next") state needed to redo this entry.
-    // Only UPDATE_VERTICES and UPDATE_BULK need extra capture — for
-    // ADD/DELETE/BATCH the original entry already contains everything redo needs.
     const captureNextState = (entry: HistoryEntry): HistoryEntry => {
         if (entry.action === 'ADD') {
-            // The ADD entry's componentInfo is snapshotted at create time. For
-            // arrows (and any element whose post-create geometry is applied with
-            // skipHistory), that snapshot is stale — e.g. an arrow is pre-created
-            // off-screen at -9999 with zero-length vertices, then drawn later.
-            // Re-read the live store here (still present, since undo's
-            // applyRemove runs after this) so redo re-inserts the final geometry.
             const current = stateRefForComponentStore.current[entry.id]
             return current ? { ...entry, componentInfo: { ...current } } : entry
         }
@@ -1200,10 +998,6 @@ export function useComponentHistory({
         const updatedBucket = [...bucketLogRef.current, enrichedForRedo]
         writeBucket(updatedBucket)
 
-        // An active group overlay shows static copies of its members, so it
-        // can't reflect an undo that moved/removed them underneath. Signal it to
-        // dismiss (reveal the now-updated real members + drop the overlay). Sent
-        // after applyBatch so members are already at their reverted state.
         window.dispatchEvent(new CustomEvent('historyApplied'))
     }
 
@@ -1237,9 +1031,6 @@ export function useComponentHistory({
             void applyMetaHistoryRef?.current?.(entry.ops, 'redo')
         }
 
-        // Push the original-shape entry back into historyLog without going
-        // through recordToHistoryLog — that would clear bucketLog and break
-        // consecutive redos.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const cleanEntry: any = { ...entry }
         delete cleanEntry.nextX
@@ -1251,8 +1042,6 @@ export function useComponentHistory({
         ]
         writeHistory(updatedLog)
 
-        // See undoLastAction: dismiss any active group overlay so it can't show
-        // stale copies of members a redo just moved/re-added.
         window.dispatchEvent(new CustomEvent('historyApplied'))
     }
 

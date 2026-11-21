@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Each case re-imports the module because the queue is module-level state.
 const loadModule = async () => {
     vi.resetModules()
     return import('./analytics')
@@ -35,8 +34,6 @@ describe('trackEvent', () => {
         })
     })
 
-    // Without this, a funnel spanning a redesign is one undifferentiated pile
-    // of events with no way to split before from after.
     it('stamps the build on every event, payload or not', async () => {
         const track = installTracker()
         const { trackEvent } = await loadModule()
@@ -49,8 +46,6 @@ describe('trackEvent', () => {
         expect(__BUILD_SHA__).toEqual(expect.any(String))
     })
 
-    // The case the queue exists for: the Umami script is deferred, so the
-    // earliest funnel events fire before it lands.
     it('queues events fired before the script loads, then flushes them', async () => {
         const { trackEvent } = await loadModule()
 
@@ -72,8 +67,6 @@ describe('trackEvent', () => {
         })
     })
 
-    // An ad blocker never delivers `window.umami`. Holding the queue and the
-    // interval open for the whole session would be a leak for nothing.
     it('gives up after the timeout instead of polling forever', async () => {
         const { trackEvent } = await loadModule()
 
@@ -113,7 +106,6 @@ describe('once-only funnel steps', () => {
         expect(onceEver('something_else')).toBe(true)
     })
 
-    // A reload must not re-fire it: it is a "first ever", not a "first today".
     it('onceEver survives a fresh module load', async () => {
         const first = await loadModule()
         expect(first.onceEver('first_element_drawn')).toBe(true)
@@ -133,8 +125,6 @@ describe('once-only funnel steps', () => {
         expect(oncePerSession('first_tool_selected')).toBe(true)
     })
 
-    // Over-counting is visible and arguable; a step that silently never fires
-    // is indistinguishable from a step nobody reaches.
     it('over-counts rather than going silent when storage throws', async () => {
         const { onceEver } = await loadModule()
         const getItem = vi

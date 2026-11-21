@@ -1,12 +1,3 @@
-// Ported from craftbase. Paint an image element's bitmap as a native SVG <image> inside its Two.js
-// group. Two.Image would render the bitmap as a pattern-filled path, whose
-// pattern offset/scale drifts on resize; a raw <image> sized to the frame rect
-// is exact and survives the exporters (they clone the live SVG).
-//
-// Two.js only writes nodes it owns, so a foreign child inserted at the front of
-// the group's <g> is left alone across renders. The frame rect stays on top as
-// the transparent hit/selection/resize target.
-
 import { getImageAssetUrl } from './assetStore'
 import { scheduleRender } from './renderScheduler'
 import { SVG_NS } from './svgExportShared'
@@ -17,24 +8,15 @@ type TwoLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
-// Marker on the injected node so exporters can find it.
 export const IMAGE_NODE_ATTR = 'data-mc-image'
 
-// Fill/stroke of the frame rect before the bitmap loads, and when the asset
-// is missing. Once loaded the frame goes transparent: it stays only as the
-// hit/selection/resize target, with the native <image> painted under it.
 export const IMAGE_PLACEHOLDER_FILL = 'rgba(128, 128, 128, 0.12)'
 export const IMAGE_PLACEHOLDER_STROKE = 'rgba(128, 128, 128, 0.6)'
 
-/** Detail of IMAGE_SETTLED_EVENT (constants/misc.ts). */
 export interface ImageSettledDetail {
     id: string
 }
 
-/**
- * Prefer the hosted URL (future shared-base uploads), else the local asset.
- * Exported because an `image` meta value resolves its thumbnail the same way.
- */
 export async function resolveImageSrc(
     ref: ImageAssetRef | null
 ): Promise<string | null> {
@@ -52,13 +34,6 @@ function isInScene(two: TwoLike, shape: ShapeLike): boolean {
     return false
 }
 
-/**
- * Resolve the bitmap and keep an <image> glued to `frame`'s size. Returns a
- * disposer. With `autoDispose` (group-select member copies, which nothing
- * explicitly tears down) the binding also releases itself once the group
- * leaves the scene. `onSettled` fires once, when the bitmap has painted or
- * the asset turned out to be missing.
- */
 export function attachImageNode(
     two: TwoLike,
     group: ShapeLike,
@@ -114,8 +89,6 @@ export function attachImageNode(
         settle()
     }
 
-    // Keep the placeholder frame until the bitmap has decoded, so the element
-    // never flashes empty between "frame cleared" and "pixels painted".
     const showLoaded = (): void => {
         if (disposed) return
         frame.fill = 'transparent'
@@ -131,7 +104,6 @@ export function attachImageNode(
                 showMissing()
                 return
             }
-            // The group's <g> only exists after a render; batch with the frame.
             scheduleRender(two, () => {
                 if (disposed) return
                 const groupEl: Element | undefined = group._renderer?.elem

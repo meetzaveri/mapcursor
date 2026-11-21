@@ -1,9 +1,6 @@
 import type { RandomUsername } from '../types/base'
 import { isInSelectionChrome } from './canvasChrome'
 
-// True on macOS/iOS, where ⌘ (metaKey) is the primary shortcut modifier; Ctrl
-// elsewhere. Prefer the modern userAgentData.platform, fall back to the legacy
-// navigator.platform. Computed once at module load — the OS doesn't change.
 export const isMac: boolean =
     typeof navigator !== 'undefined' &&
     /mac|iphone|ipad|ipod/i.test(
@@ -11,7 +8,6 @@ export const isMac: boolean =
         (navigator as any).userAgentData?.platform || navigator.platform || ''
     )
 
-/** Display label for the primary shortcut modifier: '⌘' on mac, 'Ctrl' else. */
 export const PRIMARY_MOD_LABEL: string = isMac ? '⌘' : 'Ctrl'
 
 export function strokeTypeToDashes(
@@ -22,10 +18,6 @@ export function strokeTypeToDashes(
     return []
 }
 
-// Area (closed geo polygon) fill is always a light shade of its stroke: the
-// stroke color at 0.7 opacity. Never stored — re-derived on every render and on
-// every stroke edit. Handles #rgb / #rrggbb / rgb() / rgba(); falls back to the
-// input (so 'transparent' / named colors pass through unchanged).
 const AREA_FILL_ALPHA = 0.5
 
 export function strokeToAreaFill(
@@ -35,7 +27,6 @@ export function strokeToAreaFill(
     if (!stroke) return `rgba(0,0,0,${alpha})`
     const hex = stroke.trim()
 
-    // #rgb or #rrggbb
     const shortHex = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(hex)
     const longHex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
     if (shortHex) {
@@ -51,7 +42,6 @@ export function strokeToAreaFill(
         return `rgba(${r},${g},${b},${alpha})`
     }
 
-    // rgb(r,g,b) or rgba(r,g,b,a) → override alpha
     const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(hex)
     if (rgb) {
         return `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${alpha})`
@@ -60,13 +50,6 @@ export function strokeToAreaFill(
     return stroke
 }
 
-// Two.js SVG renderer only sets stroke-dasharray when dashes.length > 0,
-// but never removes the attribute when dashes = []. Call this after setting
-// dashes = [] on a shape to ensure the SVG attribute is cleared.
-//
-// Typed loosely: the renderer-internal `_renderer.elem` lives on every Two.js
-// Shape but isn't part of the published types we depend on here. Sharpen when
-// Stages 7–9 converge on a canonical Two.js shape type.
 export function clearDashesOnTwoJSShape(
     shape:
         | {
@@ -81,8 +64,6 @@ export function clearDashesOnTwoJSShape(
     }
 }
 
-// elementOnBlurHandler is called from canvas event paths with raw DOM events
-// and a Two.js instance. Internals are still JS — keep parameters loose.
 export const elementOnBlurHandler = (
     e: FocusEvent | null | undefined,
     selectorInstance: { hide?: () => void } | null | undefined,
@@ -91,15 +72,12 @@ export const elementOnBlurHandler = (
     const blurListenerCB = (innerEvent: FocusEvent): void => {
         const target = innerEvent?.relatedTarget as HTMLElement | null
         if (target?.dataset?.parent === 'floating-toolbar') {
-            // no action required
         } else {
             selectorInstance?.hide?.()
         }
     }
 
     const related = e?.relatedTarget as HTMLElement | null
-    // Focus moving into the meta properties panel (or a dialog it opened) is
-    // editing the selection, not leaving it: keep the selection box up.
     if (
         related &&
         related.id !== 'floating-toolbar' &&

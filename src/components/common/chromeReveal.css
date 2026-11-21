@@ -1,8 +1,3 @@
-/* Animates the wrapper's child (or grandchild, for roots that are plain
-   containers around fixed elements) rather than the wrapper itself: a
-   transform on an ancestor would re-anchor every position: fixed descendant
-   to that ancestor. `translate` composes with any transform the child sets. */
-
 .mc-reveal-pending > *,
 .mc-reveal-pending.mc-reveal--deep > * > * {
     opacity: 0 !important;

@@ -1,12 +1,3 @@
-// Inspect the children of a focused group and report, per property:
-//   - the common value, if every child that *can* accept the property has it
-//     and they all agree
-//   - MIXED sentinel, if there's disagreement among accepting children
-//   - null, if no child in the group accepts the property at all
-//
-// The toolbar uses this to show a real value (or a "Mixed" indicator) when a
-// group is focused, instead of always falling back to defaults.
-
 import { readProperties } from './geometry'
 import type { ComponentMetadata } from '../types/base'
 
@@ -41,9 +32,6 @@ interface ChildMetadata {
     [key: string]: unknown
 }
 
-// Loose: child entries come from componentStore rows whose precise type is
-// being tightened across Stages 3–10. Index access via `[key]` covers the
-// fields read in readChildValue without locking the row shape down here.
 interface ChildEntry {
     componentType?: ComponentType | string
     fill?: string
@@ -72,11 +60,7 @@ interface DefaultsForInspect {
     defaultTextFontFamily: string
 }
 
-// Mirrors the acceptance map in applyGroupProperty.ts. Kept in sync manually
-// — this is small and changes rarely.
 const ACCEPTS: Record<InspectableProperty, Set<string>> = {
-    // Standalone text has no fill concept (its color is `textColor`); kept in
-    // sync with applyGroupProperty.ts ACCEPTS.fill.
     fill: new Set(['rectangle', 'circle', 'diamond', 'frame']),
     stroke: new Set([
         'rectangle',
@@ -142,14 +126,9 @@ function readChildValue(child: ChildEntry, key: InspectableProperty): unknown {
         case 'strokeType':
             return child.strokeType ?? 'solid'
         case 'opacity':
-            // Opacity lives in the top-level `opacity` field (legacy rows fall
-            // back to metadata.opacity; pencil never used metadata).
             if (typeof child.opacity === 'number') return child.opacity
             return meta.opacity ?? 1
         case 'textColor':
-            // A circle's label ink is a column too (see circleLabelColorOf) —
-            // `metadata.textFill` is the shape-with-text spelling, which a
-            // circle deliberately does not use.
             if (
                 child.componentType === 'text' ||
                 child.componentType === 'circle'

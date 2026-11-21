@@ -14,20 +14,18 @@ const contains = (haystack: Uint8Array, needle: number[]): boolean => {
     return false
 }
 
-// Big-endian TIFF with one IFD entry: Orientation (0x0112) = `orientation`.
 const tiffWithOrientation = (orientation: number): number[] => [
     ...ascii('MM'),
-    0x00, 0x2a, // TIFF magic
-    0x00, 0x00, 0x00, 0x08, // IFD offset
-    0x00, 0x01, // one entry
-    0x01, 0x12, // tag: Orientation
-    0x00, 0x03, // type: SHORT
-    0x00, 0x00, 0x00, 0x01, // count
-    0x00, orientation, 0x00, 0x00, // value
-    0x00, 0x00, 0x00, 0x00, // next IFD: none
+    0x00, 0x2a,
+    0x00, 0x00, 0x00, 0x08,
+    0x00, 0x01,
+    0x01, 0x12,
+    0x00, 0x03,
+    0x00, 0x00, 0x00, 0x01,
+    0x00, orientation, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
 ]
 
-// A JPEG segment: FF marker, then a big-endian length that counts itself.
 const segment = (marker: number, data: number[]): number[] => {
     const length = data.length + 2
     return [0xff, marker, length >> 8, length & 0xff, ...data]
@@ -37,25 +35,24 @@ const GPS_MARKER = ascii('GPSLatitude=51.5')
 
 const buildJpeg = (orientation: number): Uint8Array =>
     new Uint8Array([
-        0xff, 0xd8, // SOI
+        0xff, 0xd8,
         ...segment(0xe0, [...ascii('JFIF\0'), 1, 1, 0, 0, 1, 0, 1, 0, 0]),
         ...segment(0xe1, [
             ...ascii('Exif\0\0'),
             ...tiffWithOrientation(orientation),
             ...GPS_MARKER,
         ]),
-        ...segment(0xfe, ascii('shot on a phone')), // COM
-        ...segment(0xdb, [0, ...new Array<number>(64).fill(1)]), // DQT
-        ...segment(0xda, [1, 1, 0, 0, 0x3f, 0]), // SOS header
-        0x12, 0x34, 0xff, 0x00, 0x56, // entropy data, with a stuffed FF00
-        0xff, 0xd9, // EOI
+        ...segment(0xfe, ascii('shot on a phone')),
+        ...segment(0xdb, [0, ...new Array<number>(64).fill(1)]),
+        ...segment(0xda, [1, 1, 0, 0, 0x3f, 0]),
+        0x12, 0x34, 0xff, 0x00, 0x56,
+        0xff, 0xd9,
         ...ascii('trailing depth map with its own Exif'),
     ])
 
 describe('stripImageMetadata: JPEG', () => {
     it('drops EXIF (incl. GPS), comments and trailing bytes; keeps image data', () => {
         const input = buildJpeg(1)
-        // Guard against a vacuous pass: the input really carries all of it.
         expect(contains(input, ascii('Exif'))).toBe(true)
         expect(contains(input, GPS_MARKER)).toBe(true)
         expect(contains(input, ascii('shot on a phone'))).toBe(true)
@@ -73,8 +70,6 @@ describe('stripImageMetadata: JPEG', () => {
         expect(out!.orientation).toBe(1)
     })
 
-    // A rotated photo must be re-encoded by the caller, or it renders sideways
-    // once the tag is gone.
     it('reports the EXIF orientation it removed', () => {
         expect(stripImageMetadata(buildJpeg(6), 'image/jpeg')?.orientation).toBe(
             6
@@ -88,7 +83,6 @@ describe('stripImageMetadata: JPEG', () => {
     })
 })
 
-// The parser does not check CRCs, so zeros stand in for them.
 const pngChunk = (type: string, data: number[]): number[] => {
     const n = data.length
     return [

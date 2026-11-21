@@ -1,19 +1,3 @@
-// Map text must be resizable with a finger.
-//
-// geoText draws its edit chrome with the legacy objectSelector, whose corner
-// handles the browser hit-tests directly — there is no hit-slop layer like
-// selectionController's. Two things made them unhittable on touch:
-//
-//   1. geoText called `selector.update(l, r, t, b)` without the 5th `scale`
-//      argument (groupobject.tsx passes it), so setScale sized the dots as if
-//      the camera were at 1:1. Inside geoText's counter-scaled group on a
-//      zoomed-out map that rendered a 5.28px dot.
-//   2. Even sized correctly the dots target 4 screen px — a mouse figure. A
-//      finger's contact patch is ~10mm, so it never lands dead-centre.
-//
-// The gesture below deliberately touches OFF-centre, which is the part a
-// pixel-perfect synthetic tap would paper over.
-
 import { test, expect } from './helpers/test.js'
 import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
@@ -26,12 +10,7 @@ test.use({
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 const ANCHOR = { lngLat: [-121.95, 37.35], zoom: 16 }
 const LABEL = 'Santa Clara'
-// County level — 6 zoom stops out from the anchor, where the counter-scale is
-// doing real work and the old sizing bug was at its worst.
 const COUNTY_SCALE = Math.pow(2, 10 - 16)
-// Apple's HIG asks 44px; Material asks 48. A resize dot is a precision handle,
-// not a primary control, so this asserts the far weaker claim that it is at
-// least in the same order of magnitude as a fingertip.
 const MIN_TOUCH_TARGET_PX = 20
 
 const geoTextRecord = (id) => ({
@@ -73,15 +52,12 @@ async function openMapWithLabel(page) {
     await page.goto(`/map/${BASE_ID}`)
     await page.locator(`text=${LABEL}`).first().waitFor({ timeout: 15_000 })
 
-    // Zoom out through the ZUI — never by writing scene.scale/translation
-    // directly, which desyncs the ZUI's own camera and corrupts clientToSurface.
     await page.evaluate((s) => {
         window.__mcZui.zoomSet(s, 0, 0)
         window.dispatchEvent(new CustomEvent('zoomChanged', { detail: { scale: s } }))
         window.__mcTwo.update()
     }, COUNTY_SCALE)
 
-    // Centre the label so the gesture has room on every side.
     await page.evaluate((label) => {
         const el = Array.from(document.querySelectorAll('text')).find(
             (n) => n.textContent === label
@@ -95,7 +71,6 @@ async function openMapWithLabel(page) {
     }, LABEL)
 }
 
-/** A finger: real TouchEvents, which is what newCanvas's touch pipeline binds. */
 async function touchGesture(page, points) {
     await page.evaluate((pts) => {
         const fire = (type, x, y) => {
@@ -119,7 +94,6 @@ async function touchGesture(page, points) {
     }, points)
 }
 
-/** Label geometry plus its bottom-right resize handle, in screen px. */
 const readChrome = (page) =>
     page.evaluate((label) => {
         const el = Array.from(document.querySelectorAll('text')).find(
@@ -127,8 +101,6 @@ const readChrome = (page) =>
         )
         if (!el) return null
         const g = el.closest('g[data-component-id]')
-        // Two.js renders makeCircle as <path>; the four corner handles are the
-        // children of the innermost chrome group.
         const groups = Array.from(g.querySelectorAll('g'))
         const handleGroup = groups[groups.length - 1]
         const handle = handleGroup?.children?.[2]
@@ -142,7 +114,6 @@ const readChrome = (page) =>
         }
     }, LABEL)
 
-/** Screen-space centre of the label. */
 const labelCentre = (page) =>
     page.evaluate((label) => {
         const el = Array.from(document.querySelectorAll('text')).find(
@@ -156,7 +127,6 @@ const labelCentre = (page) =>
 test('a finger can grab the resize handle and scale map text', async ({ page }) => {
     await openMapWithLabel(page)
 
-    // Tap to select, which shows the chrome.
     const centre = await labelCentre(page)
     expect(centre, 'the label should be on screen').not.toBeNull()
     await touchGesture(page, [centre])
@@ -169,7 +139,6 @@ test('a finger can grab the resize handle and scale map text', async ({ page }) 
         `resize handle is ${before.handle.size.toFixed(1)}px — too small for a finger`
     ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX)
 
-    // Drag the handle outward, starting 6px off its centre.
     const OFF = 6
     await touchGesture(page, [
         { x: before.handle.x + OFF, y: before.handle.y + OFF },

@@ -1,7 +1,5 @@
 import type { ReactElement } from 'react'
 
-// Three swatches against three rules: a key, drawn the way a printed map draws
-// one. Shared by the menu drawer's Legend item and the mobile Legend button.
 const LegendIcon = ({ size = 14 }: { size?: number }): ReactElement => (
     <svg
         width={size}

@@ -145,21 +145,6 @@ export const UPDATE_BASE_VISIBILITY: TypedDocumentNode<
     }
 `
 
-/**
- * Share a base that is ALREADY persisted: publish it and refresh the view a
- * recipient lands on.
- *
- * Separate from `updateBaseVisibility` because re-sharing has to move the
- * landing view — the owner has almost certainly panned since the base was
- * created — while `updateBaseVisibility` is the create-time publish and has no
- * view to move.
- *
- * The anchor is deliberately NOT in the `_set`. It is the georeference every
- * stored element's x/y was measured against, so rewriting it would slide the
- * whole world under ink that stays put. It is written once, at create time.
- * Columns are named explicitly rather than taking a `bases_base_set_input`, so
- * this mutation can only ever touch these four.
- */
 export const SHARE_PERSISTED_BASE: TypedDocumentNode<
     SharePersistedBaseMutation,
     SharePersistedBaseMutationVariables
@@ -205,14 +190,6 @@ export const UPDATE_USER_REVISIT_COUNT: TypedDocumentNode<
     }
 `
 
-// --- Legend presets ----------------------------------------------------
-//
-// `createdBy` is never in an insert payload. Hasura stamps it from the
-// `x-hasura-user-id` header via a column preset on the insert permission
-// (see legends_preset.yaml), so the creator is recorded server-side and the
-// client cannot claim to be someone else. It IS selected back, which is what
-// lets a shared legend say who authored an entry.
-
 export const INSERT_LEGEND_PRESET: TypedDocumentNode<
     InsertLegendPresetMutation,
     InsertLegendPresetMutationVariables
@@ -230,10 +207,6 @@ export const INSERT_LEGEND_PRESET: TypedDocumentNode<
     }
 `
 
-/**
- * Used by `persistBase`, which has to carry a local canvas's whole legend over
- * in one shot before the components that reference it are inserted.
- */
 export const INSERT_BULK_LEGEND_PRESETS: TypedDocumentNode<
     InsertBulkLegendPresetsMutation,
     InsertBulkLegendPresetsMutationVariables
@@ -269,11 +242,6 @@ export const UPDATE_LEGEND_PRESET: TypedDocumentNode<
     }
 `
 
-/**
- * Deleting a preset must NOT disturb the marks it captioned. The FK is
- * `ON DELETE SET NULL`, so every bound element keeps its styling and simply
- * stops being explained — removing a caption is not a request to restyle a map.
- */
 export const DELETE_LEGEND_PRESET: TypedDocumentNode<
     DeleteLegendPresetMutation,
     DeleteLegendPresetMutationVariables
@@ -285,12 +253,6 @@ export const DELETE_LEGEND_PRESET: TypedDocumentNode<
     }
 `
 
-/**
- * The live binding, server-side: one statement restyles every element carrying
- * this preset's id. The client mirrors the same patch onto the in-memory store
- * and the Two.js scene (see utils/applyLegendPreset.ts) — this is the durable
- * half, not a substitute for it.
- */
 export const RESTYLE_COMPONENTS_BY_PRESET: TypedDocumentNode<
     RestyleComponentsByPresetMutation,
     RestyleComponentsByPresetMutationVariables
@@ -308,19 +270,6 @@ export const RESTYLE_COMPONENTS_BY_PRESET: TypedDocumentNode<
     }
 `
 
-// --- Meta properties -----------------------------------------------------
-//
-// Two tables: `meta_property` is the base-wide definition (the "column"),
-// `meta_propertyValue` is one object's value for one property (the "cell").
-// See .claude/context/meta-properties.md. As with legend presets, ids are
-// minted client-side and `createdBy` is stamped server-side by an insert
-// preset, so it is never in a payload. `orphanedAt` is written only by the
-// weekly sweep and is in no user permission.
-//
-// Field lists are written out in every document on purpose: codegen reads these
-// templates statically and cannot evaluate a `${...}` interpolation, so a shared
-// fragment string made it skip this WHOLE file and drop every mutation type.
-
 export const INSERT_META_PROPERTY: TypedDocumentNode<
     InsertMetaPropertyMutation,
     InsertMetaPropertyMutationVariables
@@ -337,7 +286,6 @@ export const INSERT_META_PROPERTY: TypedDocumentNode<
     }
 `
 
-/** Used by `persistBase` to carry a local base's definitions over in one shot. */
 export const INSERT_BULK_META_PROPERTIES: TypedDocumentNode<
     InsertBulkMetaPropertiesMutation,
     InsertBulkMetaPropertiesMutationVariables
@@ -351,10 +299,6 @@ export const INSERT_BULK_META_PROPERTIES: TypedDocumentNode<
     }
 `
 
-/**
- * Rename, reorder or retype. A retype also rewrites the property's values;
- * see changePropertyType in hooks/useMetaProperties.ts.
- */
 export const UPDATE_META_PROPERTY: TypedDocumentNode<
     UpdateMetaPropertyMutation,
     UpdateMetaPropertyMutationVariables
@@ -369,7 +313,6 @@ export const UPDATE_META_PROPERTY: TypedDocumentNode<
     }
 `
 
-/** Cascades to every value of this property (FK `ON DELETE CASCADE`). */
 export const DELETE_META_PROPERTY: TypedDocumentNode<
     DeleteMetaPropertyMutation,
     DeleteMetaPropertyMutationVariables
@@ -381,12 +324,6 @@ export const DELETE_META_PROPERTY: TypedDocumentNode<
     }
 `
 
-/**
- * Set one object's value for one property. An upsert on
- * (propertyId, objectId), so "set" and "change" are the same call and two tabs
- * can never create a second row for the same cell. On conflict the existing
- * row keeps its id; only `value` and the audit columns move.
- */
 export const UPSERT_META_VALUE: TypedDocumentNode<
     UpsertMetaValueMutation,
     UpsertMetaValueMutationVariables
@@ -410,7 +347,6 @@ export const UPSERT_META_VALUE: TypedDocumentNode<
     }
 `
 
-/** Used by `persistBase` and by paste of objects that carry values. */
 export const INSERT_BULK_META_VALUES: TypedDocumentNode<
     InsertBulkMetaValuesMutation,
     InsertBulkMetaValuesMutationVariables
@@ -424,7 +360,6 @@ export const INSERT_BULK_META_VALUES: TypedDocumentNode<
     }
 `
 
-/** Detach a property from one object. The definition is untouched. */
 export const DELETE_META_VALUE: TypedDocumentNode<
     DeleteMetaValueMutation,
     DeleteMetaValueMutationVariables
@@ -436,11 +371,6 @@ export const DELETE_META_VALUE: TypedDocumentNode<
     }
 `
 
-/**
- * Remove one object's value for one property, addressed by the CELL rather
- * than the row id. Undo/redo works in cells: an upsert onto an existing cell
- * keeps the server's row id, so a history entry can't rely on ids.
- */
 export const DELETE_META_VALUE_BY_CELL: TypedDocumentNode<
     DeleteMetaValueByCellMutation,
     DeleteMetaValueByCellMutationVariables

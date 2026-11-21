@@ -1,19 +1,7 @@
-// The query→suggestions half of place search, with no opinion about chrome.
-//
-// Two surfaces ask the same question now: the desktop field pinned to the top
-// bar, and the mobile modal behind the menu's "Search a place". They must debounce
-// identically (Nominatim's usage policy is a per-client budget, not a per-widget
-// one) and abort identically, so the behaviour lives here and each surface only
-// decides how it looks.
-
 import { useEffect, useState } from 'react'
 import { searchPlaces } from '../utils/placeSearch'
 import type { PlaceResult } from '../utils/placeSearch'
 
-/**
- * Debounce before hitting Nominatim. Their usage policy asks for ~1 req/sec, so
- * this is a politeness budget as much as a UX one.
- */
 export const PLACE_SEARCH_DEBOUNCE_MS = 450
 
 export interface PlaceSearchApi {
@@ -21,7 +9,6 @@ export interface PlaceSearchApi {
     setQuery: (value: string) => void
     results: PlaceResult[]
     searching: boolean
-    /** Clear the field and any results — used when the surface closes. */
     reset: () => void
 }
 

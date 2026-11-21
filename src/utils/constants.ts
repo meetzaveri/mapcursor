@@ -2,9 +2,6 @@ import type { FunctionComponent, SVGProps } from 'react'
 import CircleIcon from '../wireframeAssets/circle.svg?react'
 import TextIcon from '../wireframeAssets/text.svg?react'
 import PencilIcon from '../wireframeAssets/pencil.svg?react'
-// The select tool wears the brand mark itself — the plated cursor that is
-// also the favicon. It is the one toolbar glyph that is not a line icon on
-// currentColor, and that is deliberate: it is identity, not iconography.
 import PointerIcon from '../assets/favicon-indigo-bg.svg?react'
 import EraserIcon from '../wireframeAssets/eraser.svg?react'
 
@@ -82,7 +79,6 @@ export const allColorShades: string[] = [
     '#C0B6F2',
     '#EAE6FF',
 
-    // Brown — 6 shades, light → dark.
     '#EAD9C5',
     '#D2B089',
     '#B5824E',
@@ -105,8 +101,6 @@ export const allColorShades: string[] = [
     '#403294',
 ]
 
-// Fully transparent fill ("none"). Browsers accept rgba() in SVG
-// presentation attributes, so Two.js renders this as no paint.
 export const TRANSPARENT_FILL = 'rgba(0,0,0,0.0)'
 
 export const essentialShades: string[] = [
@@ -118,8 +112,6 @@ export const essentialShades: string[] = [
     '#0065FF',
 ]
 
-// Fill picker only — transparent ("no fill") and white kept, followed by light
-// pastel shades suited to fills (vs. the saturated stroke/text essentialShades).
 export const fillEssentialShades: string[] = [
     TRANSPARENT_FILL,
     '#FFFFFF',
@@ -129,17 +121,6 @@ export const fillEssentialShades: string[] = [
     '#B3D4FF',
 ]
 
-// Point fills only — deliberately the saturated stroke row, not the pastel
-// `fillEssentialShades` above.
-//
-// A pastel is right for a shape fill: it sits behind text and must not compete
-// with it. A point is the opposite — a ~10px dot that has to be findable against
-// CARTO Positron's pale greys and beiges, where a pastel disappears. That makes
-// a point's fill behave like ink, so it takes ink's palette. Transparent goes
-// too: black is far more use on a light basemap than an invisible pin.
-//
-// Aliased rather than inlined so the two can diverge in one edit, and so the
-// call site says which row it means.
 export const pointFillEssentialShades: string[] = essentialShades
 
 export interface DrawerElement {
@@ -162,15 +143,6 @@ export interface PrimarySection {
     elements: PrimaryElement[]
 }
 
-// The toolbar, in order. Every base is a map, so there is one list: the
-// navigation tools, the freehand/eraser pair, and the map objects.
-//
-// `shapes` is a drawer holding Area + Circle. On desktop it is flattened into
-// two flat buttons (see DESKTOP_FLATTENED_DRAWERS in shapesToolbar); on mobile
-// it stays a drawer, whose trigger shows the circle icon.
-//
-// The circle keeps elementName 'circle' because that is what buys the reuse:
-// addElement('circle') already lands on the drag-to-draw path.
 export const staticPrimaryElementData: PrimarySection[] = [
     {
         sectionName: 'Basic',
@@ -213,10 +185,6 @@ export const staticPrimaryElementData: PrimarySection[] = [
                     },
                     {
                         elementName: 'circle',
-                        // The tool is a radius map: click the centre, drag the
-                        // radius. `elementName` stays 'circle' — that is the
-                        // componentType the whole element pipeline is keyed on,
-                        // and renaming it would orphan every saved record.
                         elementDisplayName: 'Radius Map',
                         elementIcon: CircleIcon,
                     },
@@ -247,9 +215,6 @@ export const staticPrimaryElementData: PrimarySection[] = [
                 drawerData: [],
             },
             {
-                // One-shot action, not a mode: opens the file picker and
-                // inserts the picked images at the viewport centre. Local
-                // canvases only (hidden on shared ones, see shapesToolbar).
                 elementName: 'image',
                 elementDisplayName: 'Image',
                 elementIcon: ImageIcon,

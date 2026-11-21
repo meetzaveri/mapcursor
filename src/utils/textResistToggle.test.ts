@@ -3,7 +3,6 @@ import { rescaleTextSizeForResist } from './textResistToggle'
 import { computeCounterScale } from './counterScale'
 import { TEXT_RESIST } from '../constants/misc'
 
-/** What the user sees: size × camera × the group's own counter-scale. */
 const onScreen = (size: number, camera: number, resist: number): number =>
     size * camera * computeCounterScale(camera, resist)
 
@@ -35,7 +34,6 @@ describe('rescaleTextSizeForResist', () => {
     })
 
     it('grows the stored size when turned off zoomed out (the z8 bug)', () => {
-        // Without this the 18-unit label rendered at 18 × 0.004 ≈ 0.07px.
         const size = rescaleTextSizeForResist(18, 0.004, TEXT_RESIST, 0)
         expect(size * 0.004).toBeGreaterThan(8)
     })

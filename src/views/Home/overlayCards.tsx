@@ -1,8 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
 
-// Floating "data" chrome laid over each tool screenshot, styled like the app's
-// own panels (Legend, Properties, Styling) so the page reads as the product.
-
 export const OverlayCard = ({
     title,
     meta,
@@ -61,7 +58,6 @@ export const KeyValue = ({
     </div>
 )
 
-/** Monospace status tag, like the app's preset badges. */
 export const Tag = ({ children }: { children: ReactNode }): ReactElement => (
     <span className="font-mono text-[11px] uppercase tracking-wide text-accent-dark bg-accent/10 rounded px-1.5 py-0.5">
         {children}

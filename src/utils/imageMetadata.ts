@@ -1,19 +1,5 @@
-// Strip photo metadata (EXIF, GPS, XMP, IPTC, comments) from an image file's
-// bytes without re-encoding, so pixels and file size stay as they were. Used
-// by prepareImageFile for files that skip the downscale (canvas re-encodes
-// already drop all metadata).
-//
-// Each parser keeps only what rendering needs: image data, color profiles,
-// and GIF looping. Anything it doesn't recognise as needed is dropped, and
-// bytes after the end-of-image marker (where some phones append extra images
-// such as depth maps, with their own EXIF) are cut off.
-//
-// EXIF Orientation is read before the EXIF block is dropped. A caller must
-// re-encode when it is not 1, or the photo renders sideways without the tag.
-
 export interface StrippedImage {
     bytes: Uint8Array
-    /** EXIF Orientation (1-8), or 1 when absent. */
     orientation: number
 }
 
@@ -48,7 +34,6 @@ function concat(parts: Uint8Array[]): Uint8Array {
     return out
 }
 
-/** Orientation tag from a TIFF-structured EXIF payload, or 1. */
 export function readTiffOrientation(tiff: Uint8Array): number {
     if (tiff.length < 8) return 1
     const order = ascii(tiff, 0, 2)
@@ -79,8 +64,6 @@ function exifPayloadOrientation(payload: Uint8Array): number {
     return readTiffOrientation(tiff)
 }
 
-// ── JPEG ────────────────────────────────────────────────────────────────────
-
 function stripJpeg(b: Uint8Array): StrippedImage | null {
     if (b[0] !== 0xff || b[1] !== 0xd8) return null
     const parts: Uint8Array[] = [b.subarray(0, 2)]
@@ -88,11 +71,9 @@ function stripJpeg(b: Uint8Array): StrippedImage | null {
     let i = 2
     while (i < b.length) {
         if (b[i] !== 0xff) return null
-        // Fill bytes: any number of 0xFF may precede a marker.
         while (b[i + 1] === 0xff) i++
         const marker = b[i + 1] ?? -1
         if (marker === 0xd9) {
-            // EOI. Drop anything after it.
             parts.push(b.subarray(i, i + 2))
             return { bytes: concat(parts), orientation }
         }
@@ -107,9 +88,6 @@ function stripJpeg(b: Uint8Array): StrippedImage | null {
         const data = b.subarray(i + 4, end)
 
         if (marker === 0xda) {
-            // Start of scan: keep the header plus the entropy-coded data up
-            // to the next real marker (FF00 is a stuffed byte, FFD0-D7 are
-            // restart markers inside the scan).
             let j = end
             while (j < b.length) {
                 if (b[j] === 0xff) {
@@ -130,17 +108,15 @@ function stripJpeg(b: Uint8Array): StrippedImage | null {
         }
         const keep =
             !isApp && marker !== 0xfe
-                ? true // DQT, DHT, SOFn, DRI and other image data
-                : marker === 0xe0 || // JFIF
-                  marker === 0xee || // Adobe color transform
+                ? true
+                : marker === 0xe0 ||
+                  marker === 0xee ||
                   (marker === 0xe2 && ascii(data, 0, 12) === 'ICC_PROFILE\0')
         if (keep) parts.push(b.subarray(i, end))
         i = end
     }
     return null
 }
-
-// ── PNG ─────────────────────────────────────────────────────────────────────
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 const PNG_DROP = new Set(['eXIf', 'tEXt', 'zTXt', 'iTXt', 'tIME'])
@@ -166,8 +142,6 @@ function stripPng(b: Uint8Array): StrippedImage | null {
     }
     return null
 }
-
-// ── WebP ────────────────────────────────────────────────────────────────────
 
 const VP8X_FLAG_EXIF = 0x08
 const VP8X_FLAG_XMP = 0x04
@@ -209,12 +183,8 @@ function stripWebp(b: Uint8Array): StrippedImage | null {
     return { bytes: concat([header, body]), orientation }
 }
 
-// ── GIF ─────────────────────────────────────────────────────────────────────
-
-// Application extensions that carry playback, not metadata.
 const GIF_KEEP_APPS = new Set(['NETSCAPE2.0', 'ANIMEXTS1.0'])
 
-/** End offset of a GIF sub-block chain starting at `i`, or -1. */
 function skipSubBlocks(b: Uint8Array, i: number): number {
     while (i < b.length) {
         const size = b[i] ?? 0
@@ -254,7 +224,7 @@ function stripGif(b: Uint8Array): StrippedImage | null {
             const flags = b[i + 9] ?? 0
             let j = i + 10
             if (flags & 0x80) j += 3 * (1 << ((flags & 0x07) + 1))
-            const end = skipSubBlocks(b, j + 1) // +1: LZW minimum code size
+            const end = skipSubBlocks(b, j + 1)
             if (end < 0) return null
             parts.push(b.subarray(i, end))
             i = end
@@ -265,10 +235,6 @@ function stripGif(b: Uint8Array): StrippedImage | null {
     return null
 }
 
-/**
- * Remove metadata from an image's bytes. Returns null when the file can't be
- * parsed; the caller should then re-encode so no metadata slips through.
- */
 export function stripImageMetadata(
     bytes: Uint8Array,
     mimeType: string

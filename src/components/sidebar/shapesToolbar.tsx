@@ -24,25 +24,12 @@ const allElementsRaw = staticPrimaryElementData.flatMap(
     (section) => section.elements
 )
 
-// Tools whose secondary drawer behaves like a hover menu: the drawer opens on
-// hover (desktop) instead of waiting for a click, and clicking the parent icon
-// activates the mapped child straight away rather than only opening the drawer.
-// Keyed by parent tool → the child a bare click selects.
 const HOVER_DRAWER_DEFAULT_TOOL: Record<string, string> = {
     lines: 'line',
 }
 
-// The drawer closes the instant the pointer leaves it or its icon. The two are
-// separated visually by a 6px gap, which the pointer would otherwise have to
-// cross through dead space — one stray mousemove landing in there would close
-// the drawer before it could be reached. So the drawer's hover area is extended
-// upward by exactly that gap as transparent padding: the icon and the drawer
-// touch as far as the pointer is concerned, while the panel still renders 6px
-// clear of the toolbar.
 const HOVER_DRAWER_BRIDGE_PX = 6
 
-// Drawers that collapse into flat buttons on desktop, where there is room for
-// them.
 const DESKTOP_FLATTENED_DRAWERS: ReadonlySet<string> = new Set(['shapes'])
 
 const flattenDrawersForDesktop = (
@@ -89,17 +76,10 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
     const [openDrawer, setOpenDrawer] = useState<string | null>(null)
     const [drawerAnchor, setDrawerAnchor] = useState<DrawerAnchor | null>(null)
     const drawerRef = useRef<HTMLDivElement | null>(null)
-    // The map is a substrate to draw on, not a map viewer, so the resting
-    // gesture is select and reaching for pan is the explicit act.
     const homeTool = 'pointer'
 
-    // Eraser size selector: only while the eraser is the active tool and
-    // nothing on canvas is selected — a selection competing for the same
-    // toolbar space would be confusing, so it steps aside.
     const showEraserSizes = currentElement === 'rubber' && !selectedComponent
 
-    // Mobile Draw group (Pencil + Eraser in one button). The button shows, and
-    // a tap brings back, whichever of the two was used last.
     const [lastDrawTool, setLastDrawTool] = useState<DrawTool>(
         DRAW_GROUP.children[0]
     )
@@ -107,9 +87,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
         if (isDrawTool(currentElement)) setLastDrawTool(currentElement)
     }, [currentElement])
     const drawTriggerRef = useRef<HTMLDivElement | null>(null)
-    // Steps aside while the mobile styling panel is open: the panel sits over
-    // the same spot, and touching the canvas closes it, so the bar is back the
-    // moment drawing starts.
     const showDrawToolbar =
         isMobile && isDrawTool(currentElement) && !showMobileToolbarPanel
     const drawTools = allElementsRaw.filter((el) => isDrawTool(el.elementName))
@@ -123,12 +100,8 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
         isMobile
             ? groupToolsForMobile(allElementsRaw, lastDrawTool)
             : flattenDrawersForDesktop(allElementsRaw)
-    )
-        // Images are local-only for now; shared canvases don't offer the tool.
-        .filter((el) => !isPersisted || el.elementName !== IMAGE_COMPONENT)
+    ).filter((el) => !isPersisted || el.elementName !== IMAGE_COMPONENT)
 
-    // Mount: highlight the resting tool. `pointer` is the resting state, so a
-    // highlight is enough — no addElement call needed to activate it.
     useEffect(() => {
         setCurrentElementInBase(homeTool)
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,11 +123,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
         }
     }, [openDrawer])
 
-    // Hover-menu plumbing for the drawers listed in HOVER_DRAWER_DEFAULT_TOOL.
-    // Closing is immediate, so leaving the icon has to be able to tell "the
-    // pointer went into the drawer" (keep it open) from "the pointer went
-    // anywhere else" (close). It can't wait for the drawer's own mouseenter —
-    // by then the drawer would already be unmounted.
     const hoverDrawerRef = useRef<HTMLDivElement | null>(null)
 
     const closeHoverDrawer = (): void =>
@@ -169,9 +137,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
 
     const btnSize = isMobile ? 'w-8 h-8' : 'w-9 h-9'
     const iconSize = isMobile ? 'w-4 h-4' : 'w-5 h-5'
-    // The toolbar is pinned to the bottom of the screen on mobile and the top
-    // on desktop — point every tooltip away from the nearer edge so it never
-    // has to clamp back over its own trigger.
     const tooltipPlacement = isMobile ? 'top' : 'bottom'
 
     const shapeDrawerElements =
@@ -217,8 +182,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
 
     return (
         <div ref={drawerRef}>
-            {/* Mobile: undo/redo live in their own row above the primary toolbar
-                so the bottom row stays uncrowded. Desktop keeps them inline. */}
             {isMobile && (
                 <div
                     className="fixed bg-card-bg border border-border-panel shadow-panel rounded-card flex items-center flex-row px-1 py-1 gap-0.5"
@@ -276,8 +239,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                             HOVER_DRAWER_DEFAULT_TOOL
                                         )
                                     ) {
-                                        // Sliding onto any other tool dismisses an
-                                        // open hover drawer.
                                         closeHoverDrawer()
                                         return
                                     }
@@ -296,10 +257,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                     closeHoverDrawer()
                                 }}
                                 onClick={(e): void => {
-                                    // Mobile Draw group: a tap turns on the
-                                    // last-used draw tool (which opens the
-                                    // secondary toolbar), a second tap goes
-                                    // back to Select.
                                     if (isDrawGroup) {
                                         setOpenDrawer(null)
                                         pickTool(
@@ -309,11 +266,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                         )
                                         return
                                     }
-                                    // Hover-menu tools (e.g. Lines): a bare click
-                                    // picks the default child — the drawer is for
-                                    // switching to the alternative, not a required
-                                    // step. It stays open so that switch is one
-                                    // move away.
                                     const defaultTool =
                                         HOVER_DRAWER_DEFAULT_TOOL[
                                             element.elementName
@@ -354,8 +306,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                                     } else if (
                                         element.elementName === IMAGE_COMPONENT
                                     ) {
-                                        // One-shot file picker; the active
-                                        // tool stays as it was.
                                         setOpenDrawer(null)
                                         addElement(IMAGE_COMPONENT)
                                     } else {
@@ -372,11 +322,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                         </Tooltip>
                     )
                 })}
-                {/* Eraser size selector — desktop only, inline in the same
-                    pill right next to the eraser icon (separated by the same
-                    divider style used before undo/redo). Hidden on mobile in
-                    favour of the above-toolbar drawer rendered below, since
-                    the fixed-width bottom bar has no room to grow inline. */}
                 {!isMobile && showEraserSizes && (
                     <>
                         <div className="bg-border-panel w-px h-6 mx-1" />
@@ -398,10 +343,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
             </div>
 
             {openDrawer && shapeDrawerElements.length > 0 && drawerAnchor && (
-                // Outer element is the hover area, not the visible panel: on
-                // desktop it starts flush with the icon's bottom edge and pads
-                // the 6px gap transparently (HOVER_DRAWER_BRIDGE_PX), so the
-                // pointer never crosses dead space on its way in.
                 <div
                     ref={hoverDrawerRef}
                     onMouseLeave={(): void => {
@@ -470,9 +411,6 @@ const ShapesToolbar = ({ addElement }: ShapesToolbarProps): ReactElement => {
                 </div>
             )}
 
-            {/* Mobile Draw group's secondary toolbar: Pencil | Eraser, plus
-                the eraser sizes while erasing. Up for as long as a draw tool
-                is current. Desktop keeps pencil, eraser and sizes inline. */}
             {showDrawToolbar && isDrawTool(currentElement) && (
                 <MobileDrawToolbar
                     triggerRef={drawTriggerRef}

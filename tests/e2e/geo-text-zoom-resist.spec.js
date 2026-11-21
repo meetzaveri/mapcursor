@@ -1,19 +1,3 @@
-// The "Zoom resistant" switch on map text — and, more importantly, that it is
-// PER RECORD.
-//
-// geoText renders in Two.js surface space, so its on-screen size is
-// `fontSize * zuiScale` unless something counter-scales it. By default
-// something does (GEO_TEXT_RESIST), which is what geo-text-zoom-legibility
-// guards. This spec covers the opt-out: the `zoomResistant` column, `false`
-// meaning "resist 0, scale with the geography".
-//
-// The load-bearing assertion is the second test. Zoom-resistance is applied by
-// a `zoomChanged` event broadcast to EVERY element, and the toggle reaches a
-// live element through another broadcast event (props are frozen at mount by
-// ElementRenderWrapper). Both are shouted at the whole canvas and filtered by
-// id on the far side — so "A opted out, B did not, in the same frame" is
-// exactly the property a regression here would break.
-
 import { test, expect } from './helpers/test.js'
 import {
     baseRow,
@@ -21,14 +5,12 @@ import {
     pointAt,
     triggerUndoKeyboard,
 } from './helpers/index.js'
-// Plain constants, safe to import in Node (CLAUDE.md).
 import {
     SELECTION_HANDLE_FILL,
     selectionHandleRadiusPx,
 } from '../../src/utils/selectionTheme.ts'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
-// Santa Clara County, at the default anchor zoom.
 const ANCHOR = { lngLat: [-121.95, 37.35], zoom: 16 }
 const FONT_SIZE = 18
 
@@ -37,7 +19,6 @@ const SCALING_ID = 'bbbbbbbb-2222-2222-2222-222222222222'
 const RESISTANT_LABEL = 'Stays Legible'
 const SCALING_LABEL = 'Grows With Map'
 
-// Mirrors the band in geo-text-zoom-legibility.spec.js.
 const MIN_LEGIBLE_PX = 6
 const MAX_REASONABLE_PX = 60
 
@@ -50,8 +31,6 @@ const geoTextRecord = (id, content, zoomResistant) => ({
         content,
         fontSize: FONT_SIZE,
     }),
-    // The y offset above keeps the two labels from overlapping so each keeps
-    // its own box.
     x1: 0, x2: 0, y1: 0, y2: 0,
     fill: 'transparent', width: 120, height: 36,
     iconStroke: null, stroke: null, linewidth: 2, strokeType: null,
@@ -85,34 +64,11 @@ async function openMapBase(page, components) {
     await page.addInitScript(() => {
         localStorage.setItem('userId', 'test-user-id')
         localStorage.setItem('mapcursor_welcome_dismissed', '1')
-        // Keep the one-shot zoom tip out of the way; it is not under test here
-        // and it renders in the same corner of the viewport.
         localStorage.setItem('mapcursor_text_zoom_hint_dismissed', '1')
     })
     await page.goto(`/map/${BASE_ID}`)
 }
 
-/**
- * Each label's on-screen size, in CSS px: its `font-size` attribute pushed
- * through `getScreenCTM()` — the whole transform chain the app controls, the
- * camera's scale times the element group's counter-scale. That product is the
- * quantity this feature decides, and the one a regression moves.
- *
- * Deliberately NOT `getBoundingClientRect().height`, which this spec used to
- * read. Blink lays SVG text out with the font re-scaled to its on-screen ppem
- * and rounds that font's ascent and descent to whole pixels, so the ink height
- * comes back quantized — an 18px label measures 21px at scale 1, then 10, 5, 3
- * at 1/2, 1/4, 1/8 — and eventually stops shrinking altogether. On CI's Linux
- * font stack a label six map zooms out measured a flat 3px where the camera
- * called for 0.28, failing "it is not tracking the camera" against an app that
- * was tracking it exactly. The quantization is per-platform and per-font, so no
- * choice of threshold absorbs it; the ratios this spec asserts need a measure
- * that stays linear all the way down.
- *
- * Safe to read immediately: both the `zoomChanged` and the resist-change
- * handlers in text.tsx call `two.update()` synchronously, so the DOM is already
- * current when the dispatch returns.
- */
 const sizes = (page, labels) =>
     page.evaluate((labels) => {
         const nodes = Array.from(document.querySelectorAll('text'))
@@ -128,11 +84,6 @@ const sizes = (page, labels) =>
         return out
     }, labels)
 
-/**
- * The selection handles drawn on screen right now: white, round, non-zero,
- * inside a selection-chrome overlay that is not faded out. Screen centre and
- * diameter in CSS px.
- */
 const visibleHandleDots = (page) =>
     page.evaluate((fill) => {
         const shown = (el) => {
@@ -155,11 +106,6 @@ const visibleHandleDots = (page) =>
             }))
     }, SELECTION_HANDLE_FILL)
 
-/**
- * Drive the camera to a scale, then measure. Setting scene.scale + dispatching
- * `zoomChanged` is exactly what the canvas's own zoom handlers do (five
- * dispatch sites in newCanvas.tsx).
- */
 const sizesAt = async (page, scale, labels) => {
     await page.evaluate((s) => {
         const two = window.__mcTwo
@@ -182,14 +128,10 @@ test('opting out of zoom-resistance makes map text scale with the map', async ({
         timeout: 15_000,
     })
 
-    // At the anchor zoom (scale 1) the two models agree — resist only shows up
-    // once the camera moves away from 1.
     const atAnchor = await sizesAt(page, 1, [SCALING_LABEL])
     const anchorPx = atAnchor[SCALING_LABEL]
     expect(anchorPx, 'label missing at the anchor zoom').not.toBeNull()
 
-    // Six map zooms out: surface-space text should shrink by ~2^-6, taking it
-    // well under the legibility floor the resistant default holds above.
     const zoomedOut = await sizesAt(page, Math.pow(2, -6), [SCALING_LABEL])
     const outPx = zoomedOut[SCALING_LABEL]
 
@@ -208,8 +150,6 @@ test('zoom-resistance is per record: one label opts out, the other does not', as
     page,
 }) => {
     await openMapBase(page, [
-        // `null` is the shipped state for every row written before the column
-        // existed, and reads as zoom-resistant.
         geoTextRecord(RESISTANT_ID, RESISTANT_LABEL, null),
         geoTextRecord(SCALING_ID, SCALING_LABEL, false),
     ])
@@ -223,9 +163,6 @@ test('zoom-resistance is per record: one label opts out, the other does not', as
     const labels = [RESISTANT_LABEL, SCALING_LABEL]
     const baseline = await sizesAt(page, 1, labels)
 
-    // Sweep the reachable range (MAX_MAP_ZOOM 19 down to MIN_MAP_ZOOM 1 against
-    // a z16 anchor, per baseTypes/zoomLimits.ts). Both labels ride the same
-    // `zoomChanged` broadcast, in the same frame, and must diverge.
     for (const mapZoom of [19, 16, 13, 10, 5, 1]) {
         const scale = Math.pow(2, mapZoom - ANCHOR.zoom)
         const px = await sizesAt(page, scale, labels)
@@ -243,20 +180,12 @@ test('zoom-resistance is per record: one label opts out, the other does not', as
             `at map zoom ${mapZoom} the resistant label rendered at ${px[RESISTANT_LABEL]}px`
         ).toBeLessThan(MAX_REASONABLE_PX)
 
-        // The opted-out label tracks the camera: size ∝ zuiScale, at every
-        // stop. The measure is the transform chain rather than rasterized ink
-        // (see `sizes`), so this holds just as tightly at map zoom 1, where the
-        // label is drawn at ~0.01px, as it does at the anchor.
         const expected = baseline[SCALING_LABEL] * scale
         expect(
             px[SCALING_LABEL] / expected,
             `at map zoom ${mapZoom} the opted-out label rendered at ${px[SCALING_LABEL]}px, expected ≈${expected}px`
         ).toBeCloseTo(1, 2)
 
-        // The claim that holds at every stop, measurable or not: the two
-        // labels diverge in the predicted direction, from the same broadcast,
-        // in the same frame. Below the anchor the opted-out label is smaller;
-        // above it, larger; at the anchor the two models agree.
         if (scale < 1) {
             expect(
                 px[SCALING_LABEL],
@@ -286,17 +215,9 @@ test('toggling one label re-scales only that label, with no zoom', async ({
     })
 
     const labels = [RESISTANT_LABEL, SCALING_LABEL]
-    // Park the camera well away from the anchor so counter-scaling is doing
-    // visible work; then never move it again.
     const CAMERA = Math.pow(2, -5)
     const before = await sizesAt(page, CAMERA, labels)
 
-    // The resist half of what applyProperty does when the switch is turned
-    // off, on its own. Going through the bare event (rather than clicking) is
-    // deliberate: this is the frozen-props path the feature hinges on, and it
-    // is what undo/redo replays too. The real switch ALSO rescales fontSize so
-    // the label does not jump — that is the next test; here only the event is
-    // fired, so the label collapsing proves the event reached it.
     await page.evaluate((id) => {
         window.dispatchEvent(
             new CustomEvent('textResistChanged', {
@@ -307,13 +228,11 @@ test('toggling one label re-scales only that label, with no zoom', async ({
 
     const after = await sizes(page, labels)
 
-    // The toggled label collapsed to world scale immediately — no zoom gesture.
     expect(
         after[SCALING_LABEL],
         `toggled label stayed at ${after[SCALING_LABEL]}px (was ${before[SCALING_LABEL]}px) — the resist change never reached the element`
     ).toBeLessThan(before[SCALING_LABEL] / 2)
 
-    // ...and the other label, which heard the same broadcast, did not move.
     expect(
         after[RESISTANT_LABEL],
         `the untouched label moved from ${before[RESISTANT_LABEL]}px to ${after[RESISTANT_LABEL]}px — the toggle is leaking across records`
@@ -323,10 +242,6 @@ test('toggling one label re-scales only that label, with no zoom', async ({
 test('the Zoom resistant switch keeps the label exactly as it looked, zoomed far out', async ({
     page,
 }) => {
-    // The bug: at z8 turning the switch off dropped the label to world scale
-    // (18 units × camera 0.004 ≈ 0.07px) — too small even to click, so the
-    // user had to zoom to city level to find it again. The switch now
-    // rescales fontSize so the on-screen size is unchanged when it flips.
     await openMapBase(page, [geoTextRecord(RESISTANT_ID, RESISTANT_LABEL, null)])
     const label = page.locator(`text=${RESISTANT_LABEL}`).first()
     await label.waitFor({ timeout: 15_000 })
@@ -342,7 +257,6 @@ test('the Zoom resistant switch keeps the label exactly as it looked, zoomed far
     const toggle = page.locator('#floating-toolbar #zoom-resist-toggle')
     await expect(toggle).toBeVisible()
 
-    // OFF: same size on screen, and still big enough to grab.
     await toggle.click()
     const off = (await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]
     expect(
@@ -350,10 +264,6 @@ test('the Zoom resistant switch keeps the label exactly as it looked, zoomed far
         `turning the switch off moved the label from ${before}px to ${off}px`
     ).toBeCloseTo(before, 0)
 
-    // ...and its selection handles are still full-size and still work. The
-    // legacy selector capped each dot at 3x its base radius in LOCAL units,
-    // which at camera 0.004 (resistance off) rendered at ~0.06px — the text
-    // could no longer be resized.
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
     await page.waitForTimeout(200)
     const dots = await visibleHandleDots(page)
@@ -376,7 +286,6 @@ test('the Zoom resistant switch keeps the label exactly as it looked, zoomed far
         resized,
         `dragging a corner handle did not resize the text (${off}px → ${resized}px)`
     ).toBeGreaterThan(off * 1.1)
-    // Back to the pre-resize size, so the rest of the test measures the toggle.
     await triggerUndoKeyboard(page)
     await page.waitForTimeout(300)
     expect((await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]).toBeCloseTo(
@@ -384,14 +293,12 @@ test('the Zoom resistant switch keeps the label exactly as it looked, zoomed far
         0
     )
 
-    // From here on it scales with the map: zooming in 2x doubles it.
     const zoomedIn = (await sizesAt(page, CAMERA * 2, [RESISTANT_LABEL]))[
         RESISTANT_LABEL
     ]
     expect(zoomedIn / off).toBeCloseTo(2, 1)
     await sizesAt(page, CAMERA, [RESISTANT_LABEL])
 
-    // ON again: no jump the other way either.
     await toggle.click()
     const on = (await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]
     expect(on, `turning it back on moved the label to ${on}px`).toBeCloseTo(
@@ -399,8 +306,6 @@ test('the Zoom resistant switch keeps the label exactly as it looked, zoomed far
         0
     )
 
-    // One undo reverts one toggle — the switch AND the size together, so the
-    // label is unchanged on screen and still scales with the map.
     await triggerUndoKeyboard(page)
     await page.waitForTimeout(300)
     const undone = (await sizes(page, [RESISTANT_LABEL]))[RESISTANT_LABEL]

@@ -3,10 +3,8 @@ var two = new Two({
     autostart: true,
 }).appendTo(document.body)
 
-// ── Stage: everything that zooms/pans normally ───────────────────────────────
 var stage = new Two.Group()
 
-// 100 background rectangles
 for (var i = 0; i < 100; i++) {
     var x = Math.random() * two.width * 2 - two.width
     var y = Math.random() * two.height * 2 - two.height
@@ -17,26 +15,21 @@ for (var i = 0; i < 100; i++) {
     stage.add(rect)
 }
 
-// Red draggable shape (original)
 var shape = new Two.Rectangle(two.width / 2, two.height / 2, 50, 50)
 shape.noStroke().fill = '#C4501A'
 stage.add(shape)
 
-// ── Pin: lives inside stage so it pans with the world,
-//   but we counter-scale it every frame so it resists zoom ──────────────────
 var PIN_WORLD_X = two.width / 2 - 120
 var PIN_WORLD_Y = two.height / 2 - 80
 
 var pinGroup = new Two.Group()
 
-// Outer ring (fixed amber color)
 var pinRing = new Two.Circle(0, 0, 22)
 pinRing.fill = 'transparent'
 pinRing.stroke = '#E8C87A'
 pinRing.linewidth = 3
 pinGroup.add(pinRing)
 
-// Inner circle — transparent, just anchors the group size
 var pinInner = new Two.Circle(0, 0, 13)
 pinInner.fill = 'transparent'
 pinInner.noStroke()
@@ -45,7 +38,6 @@ pinGroup.add(pinInner)
 pinGroup.position.set(PIN_WORLD_X, PIN_WORLD_Y)
 stage.add(pinGroup)
 
-// ── DOM SVG pin icon — overlaid on top of canvas, position synced each frame ─
 var pinIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
 pinIcon.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
 pinIcon.setAttribute('viewBox', '0 0 24 24')
@@ -53,37 +45,17 @@ pinIcon.setAttribute('width', '20')
 pinIcon.setAttribute('height', '20')
 pinIcon.style.cssText =
     'position:fixed;pointer-events:none;transform:translate(-50%,-50%)'
-// Standard map-pin path
 pinIcon.innerHTML =
     '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z" fill="#E8C87A"/>'
 document.body.appendChild(pinIcon)
 
 two.add(stage)
 
-// ── ZUI setup ───────────────────────────────────────────────────────────────
 var scaleBadge = document.getElementById('scale-badge')
 var zui,
     currentScale = 1
 
 addZUI()
-
-// ── Counter-scale the pin on every frame ────────────────────────────────────
-//
-// Goal: at scale=1 (100% zoom) → pin looks normal (scale factor = 1)
-//       at scale=0.5 (50% zoom) → other elements are 50% screen size,
-//                                  pin should be ~50% screen size too
-//                                  (instead of 25% if fully scaled with stage)
-//
-// Formula: pinScale = 1 / (zuiScale ^ RESIST)
-//   RESIST = 0   → pin is fully fixed on screen (ignores zoom completely)
-//   RESIST = 0.5 → pin is "half resistant" — shrinks much slower than world
-//   RESIST = 1   → pin shrinks exactly with the world (no counter-scaling)
-//
-// At zuiScale=0.5:
-//   RESIST=1   → pinScale = 1/0.5   = 2.0 in group space → 1.0 screen = 10% of original intent
-//   RESIST=0.5 → pinScale = 1/0.707 = 1.41 in group space → 0.707 screen size ≈ ~50% visible
-//
-// We pick RESIST = 0.45 for a good "pin on a map" feel.
 
 var RESIST = 0.9
 
@@ -92,26 +64,19 @@ two.bind('update', function () {
     currentScale = zui.scale
     scaleBadge.textContent = 'scale: ' + currentScale.toFixed(2)
 
-    // Counter-scale: inverse of how much the stage has shrunk, softened by RESIST
     var counterScale = 1 / Math.pow(currentScale, RESIST)
     pinGroup.scale = counterScale
 
-    // Screen position of the pin world coordinate
     var wx = PIN_WORLD_X * zui.scale + stage.translation.x
     var wy = PIN_WORLD_Y * zui.scale + stage.translation.y
     pinIcon.style.left = wx + 'px'
     pinIcon.style.top = wy + 'px'
 
-    // Ring screen radius = pinRing.radius(22) * zui.scale * counterScale
-    // Icon is 24x24 viewBox, we want it to fit inside the ring (radius 13 = inner circle)
-    // innerCircle screen radius = 13 * zui.scale * counterScale
-    // So icon size = 2 * 13 * zui.scale * counterScale = 26 * zui.scale * counterScale
     var screenInnerDiameter = 26 * currentScale * counterScale
     pinIcon.setAttribute('width', screenInnerDiameter)
     pinIcon.setAttribute('height', screenInnerDiameter)
 })
 
-// ── ZUI + interaction ────────────────────────────────────────────────────────
 function addZUI() {
     var domElement = two.renderer.domElement
     zui = new Two.ZUI(stage)

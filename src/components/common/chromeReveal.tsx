@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
 import './chromeReveal.css'
+import { SKIP_CHROME_REVEAL } from '../../utils/e2eHooks'
 
 const BASE_DELAY_MS = 200
 const STAGGER_MS = 110
@@ -11,10 +12,8 @@ type Phase = 'pending' | 'active' | 'done'
 
 interface ChromeRevealProps {
     shown: boolean
-    /** Position in the entrance sequence; each step waits STAGGER_MS longer. */
     order: number
     from?: 'top' | 'bottom'
-    /** Animate grandchildren, for roots that only wrap fixed elements. */
     deep?: boolean
     children: ReactNode
 }
@@ -26,11 +25,13 @@ const ChromeReveal = ({
     deep = false,
     children,
 }: ChromeRevealProps): ReactElement => {
-    const [phase, setPhase] = useState<Phase>('pending')
+    const [phase, setPhase] = useState<Phase>(
+        SKIP_CHROME_REVEAL ? 'done' : 'pending'
+    )
     const delay = BASE_DELAY_MS + order * STAGGER_MS
 
     useEffect(() => {
-        if (!shown) return
+        if (!shown || SKIP_CHROME_REVEAL) return
         setPhase('active')
         const timer = window.setTimeout(
             () => setPhase('done'),

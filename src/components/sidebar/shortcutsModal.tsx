@@ -8,15 +8,10 @@ interface ShortcutsModalProps {
     onClose: () => void
 }
 
-// A key token is either a literal cap ('Z', '[', 'Enter') or a symbolic
-// modifier that resolves per-OS. Keeping them as tokens (not pre-joined
-// strings) lets us render each as its own <kbd> chip and swap the mac/other
-// glyphs in one place. Mirrors the metaKey-on-mac / ctrlKey-elsewhere split the
-// keyboard handlers use (see newCanvas.tsx + useCanvasClipboard.ts).
 type KeyToken =
-    | { type: 'mod' } // ⌘ on mac, Ctrl elsewhere
+    | { type: 'mod' }
     | { type: 'shift' }
-    | { type: 'alt' } // ⌥ on mac, Alt elsewhere
+    | { type: 'alt' }
     | { type: 'key'; label: string }
 
 const mod = (): KeyToken => ({ type: 'mod' })
@@ -29,8 +24,6 @@ const tokenLabel = (token: KeyToken): string => {
         case 'mod':
             return isMac ? '⌘' : 'Ctrl'
         case 'shift':
-            // Always spelled out as the word "Shift" (not the ⇧ glyph), on all
-            // platforms, per product preference.
             return 'Shift'
         case 'alt':
             return isMac ? '⌥' : 'Alt'
@@ -41,7 +34,6 @@ const tokenLabel = (token: KeyToken): string => {
 
 interface Shortcut {
     label: string
-    // One or more key combinations. Multiple entries render as "A or B".
     combos: KeyToken[][]
 }
 
@@ -120,9 +112,6 @@ const GROUPS: ShortcutGroup[] = [
     },
 ]
 
-// The map idiom: wheel zooms, drag moves the geography, shift+drag box-selects.
-// See the wheel handler and the empty-canvas mousedown branch in newCanvas.tsx —
-// this table has to be read alongside them.
 const MAP_NAVIGATION: ShortcutGroup = {
     title: 'Canvas navigation',
     items: [

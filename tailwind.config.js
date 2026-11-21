@@ -21,28 +21,14 @@ module.exports = {
         removeDeprecatedGapUtilities: true,
     },
     theme: {
-        // screens: {
-        //     sm: '640px',
-        //     md: '768px',
-        //     lg: '1024px',
-        //     xl: '1280px',
-        // },
-
         fontFamily: {
             ui: ['Inter', 'system-ui', 'sans-serif'],
             display: ['Inter', 'system-ui', 'sans-serif'],
             sketch: ['Avenir', 'system-ui', 'sans-serif'],
-            mono: ['Geist Mono', 'monospace'], // added — for coordinates, hex values, dimension chips
+            mono: ['Geist Mono', 'monospace'],
         },
-        // borderWidth: {
-        //     default: '1px',
-        //     0: '0',
-        //     2: '2px',
-        //     4: '4px',
-        // },
         extend: {
             colors: {
-                // ── existing palette ─────────────────────────────────────
                 primary: {
                     blue: '#0052CC',
                     red: '#BF2600',
@@ -114,54 +100,36 @@ module.exports = {
                     n20: '#F4F5F7',
                 },
 
-                // ── Warm Studio tokens ────────────────────────────────────
-                // Theming-relevant chrome tokens reference CSS variables (see
-                // :root + .dark in src/App.css) so a `.dark` class on <html>
-                // flips them with zero per-component edits. The variables hold
-                // space-separated RGB *channels* (e.g. `232 200 122`), wrapped
-                // here as `rgb(var(--x) / <alpha-value>)` so opacity modifiers
-                // like `bg-accent/30` keep working. Light/dark values live in
-                // App.css, not here.
-                // Canvas & surfaces
-                canvas: 'rgb(var(--color-canvas) / <alpha-value>)', // main canvas bg — the parchment
-                sidebar: 'rgb(var(--color-sidebar) / <alpha-value>)', // left/right panel bg
-                'card-bg': 'rgb(var(--color-card) / <alpha-value>)', // default shape/card fill
+                canvas: 'rgb(var(--color-canvas) / <alpha-value>)',
+                sidebar: 'rgb(var(--color-sidebar) / <alpha-value>)',
+                'card-bg': 'rgb(var(--color-card) / <alpha-value>)',
 
-                // Chrome
-                topbar: 'rgb(var(--color-topbar) / <alpha-value>)', // espresso top bar
+                topbar: 'rgb(var(--color-topbar) / <alpha-value>)',
                 'topbar-hover':
-                    'rgb(var(--color-topbar-hover) / <alpha-value>)', // tool hover bg in topbar
+                    'rgb(var(--color-topbar-hover) / <alpha-value>)',
 
-                // Accent — indigo. Same value as HANDLE_STROKE in
-                // constants/misc.ts, so UI chrome and selection chrome agree.
                 accent: {
-                    DEFAULT: 'rgb(var(--color-accent) / <alpha-value>)', // active tools, buttons, selections → bg-accent
-                    dark: 'rgb(var(--color-accent-dark) / <alpha-value>)', // highlighted card borders → bg-accent-dark
-                    glow: 'var(--color-accent-glow)', // focus rings → (use in CSS, not as a utility)
+                    DEFAULT: 'rgb(var(--color-accent) / <alpha-value>)',
+                    dark: 'rgb(var(--color-accent-dark) / <alpha-value>)',
+                    glow: 'var(--color-accent-glow)',
                 },
 
-                // Hint pills — tool guidance / one-shot tips. Its own token
-                // so a hint never wears the tooltip's inverted ink; see the
-                // note beside --color-hint in App.css.
                 hint: {
-                    DEFAULT: 'rgb(var(--color-hint) / <alpha-value>)', // pill fill  → bg-hint
-                    fg: 'rgb(var(--color-hint-fg) / <alpha-value>)', // pill text  → text-hint-fg
+                    DEFAULT: 'rgb(var(--color-hint) / <alpha-value>)',
+                    fg: 'rgb(var(--color-hint-fg) / <alpha-value>)',
                 },
 
-                // Text — all warm undertones, no cool grays
                 ink: {
-                    DEFAULT: 'rgb(var(--color-ink) / <alpha-value>)', // primary text, near-black  → text-ink
-                    mid: 'rgb(var(--color-ink-mid) / <alpha-value>)', // secondary text            → text-ink-mid
-                    muted: 'rgb(var(--color-ink-muted) / <alpha-value>)', // labels, hints, placeholders → text-ink-muted
+                    DEFAULT: 'rgb(var(--color-ink) / <alpha-value>)',
+                    mid: 'rgb(var(--color-ink-mid) / <alpha-value>)',
+                    muted: 'rgb(var(--color-ink-muted) / <alpha-value>)',
                 },
 
-                // Borders
                 border: {
-                    panel: 'rgb(var(--color-border-panel) / <alpha-value>)', // sidebar/panel dividers → border-border-panel
-                    card: 'rgb(var(--color-border-card) / <alpha-value>)', // card outlines, grid dots → border-border-card
+                    panel: 'rgb(var(--color-border-panel) / <alpha-value>)',
+                    card: 'rgb(var(--color-border-card) / <alpha-value>)',
                 },
 
-                // Canvas element fill palette (for shape fill picker)
                 fill: {
                     amber: '#E8C87A',
                     coral: '#E87A6A',
@@ -172,32 +140,25 @@ module.exports = {
                     neutral: '#C4B89A',
                 },
 
-                // Sticky note backgrounds
                 sticky: {
                     yellow: '#F2DC90',
                     coral: '#F2A090',
                 },
             },
 
-            // ── box shadows ───────────────────────────────────────────────
-            // Soft, low-opacity elevation. The previous `3px 3px 0` was a
-            // blur-less offset — an index-card motif, and most of what made the
-            // chrome read as a sketchbook rather than an instrument. A panel
-            // floating over a basemap needs to look like it is floating.
             boxShadow: {
-                panel: '0 1px 2px rgb(15 17 21 / 0.05), 0 6px 20px rgb(15 17 21 / 0.08)', // floating toolbars, drawers
-                card: '0 1px 2px rgb(15 17 21 / 0.06), 0 8px 24px rgb(15 17 21 / 0.06)', // panels, cards
+                panel: '0 1px 2px rgb(15 17 21 / 0.05), 0 6px 20px rgb(15 17 21 / 0.08)',
+                card: '0 1px 2px rgb(15 17 21 / 0.06), 0 8px 24px rgb(15 17 21 / 0.06)',
                 'card-accent':
-                    '0 2px 4px rgb(15 17 21 / 0.08), 0 12px 32px rgb(105 101 219 / 0.16)', // hover/selected — an indigo-tinted lift
-                focus: '0 0 0 3px var(--color-accent-glow)', // indigo focus ring
-                sticky: '2px 2px 8px rgba(0, 0, 0, 0.10)', // sticky note
+                    '0 2px 4px rgb(15 17 21 / 0.08), 0 12px 32px rgb(105 101 219 / 0.16)',
+                focus: '0 0 0 3px var(--color-accent-glow)',
+                sticky: '2px 2px 8px rgba(0, 0, 0, 0.10)',
             },
 
-            // ── border radius ─────────────────────────────────────────────
             borderRadius: {
-                card: '8px', // cards, panels, toolbars
-                panel: '12px', // modals, the largest floating surfaces
-                pill: '100px', // zoom bar, tags
+                card: '8px',
+                panel: '12px',
+                pill: '100px',
             },
 
             spacing: {

@@ -1,23 +1,3 @@
-// The opacity control, and — just as deliberately — where it is absent.
-//
-// Opacity is per-element only: `applyProperty` skips the `useElementDefaults`
-// sync for it, so dimming one element must never seed the next one. That is
-// load-bearing rather than fussy — a default of 0 would make every later
-// element invisible with no way to see what you were editing.
-//
-// Only an area carries the control, and on an area it means the FILL's
-// opacity: the interior fades, the border always paints at full strength, and
-// at 100% the fill hides what is under it. An area with no value
-// of its own is a half-strength fill, as areas have always been drawn.
-//
-// A circle (radius map) is created half-transparent so the basemap reads
-// through it, and has no control to change that. A point and a route omit the
-// section too: leaving it out of their property set IS how the control is
-// hidden.
-//
-// Pencil, text and image have the control hidden for now. Their opacity paths
-// are kept (see SETS in elementProperties.tsx), so it is a list entry away.
-
 import { test, expect } from './helpers/test.js'
 import {
     setupLocalBase,
@@ -34,8 +14,6 @@ const recordsOf = async (page, type) => {
     return Object.values(draft ?? {}).filter((c) => c.componentType === type)
 }
 
-// The draft writer is debounced, so a read taken straight after a gesture sees
-// the PREVIOUS draft. Poll until the record shows up.
 async function waitForRecords(page, type, count) {
     await expect.poll(async () => (await recordsOf(page, type)).length, {
         timeout: 10_000,
@@ -64,7 +42,6 @@ test.describe('opacity', () => {
                 new CustomEvent('selectComponent', { detail: { id } })
             )
         }, stroke.id)
-        // Its panel is up, with its stroke controls and nothing to dim it by.
         await page.waitForSelector('#floating-toolbar #stroke-width-section')
         await expect(
             page.locator('#floating-toolbar #slider-main')
@@ -82,11 +59,8 @@ test.describe('opacity', () => {
         await clickPointerTool(page)
         const b = await circle.boundingBox()
         await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
-        // Fill, not stroke width: a radius map is borderless, so its panel
-        // carries no stroke controls at all (see SETS.CIRCLE).
         await page.waitForSelector('#floating-toolbar [data-section="fill"]')
 
-        // Its 50% is the mark, not a setting (see SETS.CIRCLE).
         await expect(
             page.locator('#floating-toolbar #slider-main')
         ).toHaveCount(0)
@@ -120,12 +94,10 @@ test.describe('opacity', () => {
             { x: cx + 80, y: cy - 60 },
             { x: cx, y: cy + 60 },
         ])
-        // Select it by clicking its top edge.
         await clickPointerTool(page)
         await page.mouse.click(cx - 40, cy - 59)
         await page.waitForSelector('#floating-toolbar #slider-main')
 
-        // What the area paints: its group, its path and the path's fill.
         const painted = () =>
             page.evaluate(() => {
                 const g = Array.from(window.__mcTwo.scene.children).find(
@@ -140,11 +112,9 @@ test.describe('opacity', () => {
                 }
             })
 
-        // Created as the half-strength fill areas have always had.
         const before = await painted()
         expect(before.fill).toMatch(/,0\.5\)$/)
 
-        // Drag the knob past the end of the track: 100%.
         await page
             .locator('#floating-toolbar #slider-handle')
             .scrollIntoViewIfNeeded()
@@ -166,9 +136,7 @@ test.describe('opacity', () => {
             })
             .toBe(1)
         const after = await painted()
-        // A fully opaque interior: nothing behind it shows through.
         expect(after.fill).toMatch(/,1\)$/)
-        // Nothing dims the whole area, so the border is untouched.
         expect(after.groupOpacity).toBe(1)
         expect(after.pathOpacity).toBe(1)
         expect(after.stroke).toBe(before.stroke)

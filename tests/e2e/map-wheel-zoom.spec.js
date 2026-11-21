@@ -1,15 +1,3 @@
-// The camera input model: the map idiom, which is the only one there is.
-//
-// The wheel zooms, a drag over empty canvas moves the geography, and shift+drag
-// is what is left for box select. This is the idiom of every mapping product a
-// user arrives from, and it replaced a whiteboard idiom (wheel pans, modifier
-// zooms, drag marquees) that shared the same handlers in newCanvas.tsx.
-//
-// Note this is the only spec in the suite that drives a real `wheel` event and
-// a real mouse drag against the camera; every other zoom test reaches in
-// through `window.__mcZui` and a synthetic `zoomChanged`, which would have
-// passed no matter what the wheel handler did.
-
 import { test, expect } from './helpers/test.js'
 import {
     baseRow,
@@ -22,16 +10,11 @@ import {
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
 
-// Elland Road, Leeds. An anchor has to be present or the first-run "where are
-// you mapping?" prompt opens, and answering it calls enterPanMode() — which
-// would put every drag test in the pan tool and prove nothing about select
-// mode, the thing under test.
 const ANCHOR = { lngLat: [-1.5722, 53.7778], zoom: 16 }
 const LANDING = { lngLat: [-1.5722, 53.7778], zoom: 16 }
 
 const POINT_ID = '22222222-2222-2222-2222-222222222222'
 
-/** A pin on the map, at surface (0,0) — i.e. dead on the anchor. */
 const point = () => ({
     id: POINT_ID,
     componentType: 'point',
@@ -74,7 +57,6 @@ async function openMapBase(page, { components = [] } = {}) {
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.waitForSelector('#main-two-root svg', { timeout: 15_000 })
-    // The landing camera is applied a beat after mount; read a stable camera.
     await page.waitForTimeout(1200)
 }
 
@@ -93,8 +75,6 @@ test.describe('the wheel zooms', () => {
 
         expect(after.scale).toBeGreaterThan(before.scale)
 
-        // Scrolling the other way must come back down, so the sign is right
-        // and this isn't a one-directional accident.
         await page.mouse.wheel(0, 600)
         await page.waitForTimeout(300)
         const out = await page.evaluate(readCamera)
@@ -107,8 +87,6 @@ test.describe('the wheel zooms', () => {
         await openMapBase(page)
         const box = await getCanvasBox(page)
 
-        // Surface point under a deliberately off-centre cursor. If the zoom is
-        // cursor-anchored it stays put in client space across the zoom.
         const cx = box.x + box.width * 0.75
         const cy = box.y + box.height * 0.3
         const surfaceUnderCursor = () =>
@@ -156,8 +134,6 @@ test.describe('a drag over empty canvas pans', () => {
         expect(after.tx - before.tx).toBeLessThan(-80)
         expect(after.ty - before.ty).toBeLessThan(-50)
 
-        // The marquee's product is a groupobject; if the pan branch let the
-        // selector through, one would be sitting on the canvas.
         const groups = await page.$$('[data-label="groupobject_coord"]')
         expect(groups).toHaveLength(0)
     })
@@ -188,8 +164,6 @@ test.describe('a drag over empty canvas pans', () => {
     }) => {
         await openMapBase(page, { components: [point()] })
 
-        // null means "no pin on the canvas", which is a real assertion below.
-        // A missing handle is a different failure and must not masquerade as it.
         const pointPos = () =>
             page.evaluate(() => {
                 const two = window.__mcTwo
@@ -205,10 +179,6 @@ test.describe('a drag over empty canvas pans', () => {
 
         const camBefore = await page.evaluate(readCamera)
 
-        // Aim at the pin's own SVG node rather than at where the camera says
-        // surface (0,0) landed: the pin is a 10px circle, so a few pixels of
-        // drift between the record and the rendered group is the difference
-        // between grabbing it and grabbing the map behind it.
         const pin = await page
             .locator(`[data-component-id="${POINT_ID}"]`)
             .boundingBox()
@@ -225,8 +195,6 @@ test.describe('a drag over empty canvas pans', () => {
         const camAfter = await page.evaluate(readCamera)
         const endPos = await pointPos()
 
-        // The camera stayed put and the pin moved — the hit test claimed the
-        // gesture before the pan branch could.
         expect(camAfter.tx).toBeCloseTo(camBefore.tx, 0)
         expect(camAfter.ty).toBeCloseTo(camBefore.ty, 0)
         expect(Math.abs(endPos.x - startPos.x)).toBeGreaterThan(20)

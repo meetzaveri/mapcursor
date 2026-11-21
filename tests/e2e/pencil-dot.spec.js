@@ -8,11 +8,6 @@ import {
 
 const DRAFT_DEBOUNCE_MS = 700
 
-// A pencil click with no drag commits a dot: the mouseup handler turns the
-// single raw point into a hair-length segment (PENCIL_DOT_SEGMENT in
-// newCanvas.tsx) so the pencil's round caps paint it as a round mark. Two
-// identical anchors would NOT work — Two.js collapses them into a lone `M`
-// command that draws nothing.
 async function clickDot(page, x, y) {
     const countBefore = await page.$$eval(
         '[data-component-id]',
@@ -50,14 +45,11 @@ test.describe('Pencil — click without drag draws a dot', () => {
         const draft = await getDraftComponents(page)
         const record = draft?.[id]
         expect(record?.componentType).toBe('pencil')
-        // Two vertices, a hair apart — not a zero-length (invisible) path.
         const coords = record?.metadata?.geometry?.coordinates
         expect(record?.metadata?.geometry?.type).toBe('LineString')
         expect(coords).toHaveLength(2)
         expect(coords[1][0]).toBeGreaterThan(coords[0][0])
 
-        // The stroke path is the group's last <path>; it must carry round caps
-        // and a non-empty `d` with a line segment, or nothing is drawn.
         const stroke = await handle.$$eval('path', (els) => {
             const el = els[els.length - 1]
             return {

@@ -1,7 +1,3 @@
-// Note: these consts are not currently re-exported or imported elsewhere; the
-// file appears to be a reference/documentation of element shapes only. Kept
-// for parity with the legacy JS module — convert in-place rather than removing.
-
 interface CircleSchema {
     id: string
     name: 'circle'

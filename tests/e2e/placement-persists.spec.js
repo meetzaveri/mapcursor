@@ -1,21 +1,3 @@
-// A freshly drawn element stays where it was put.
-//
-// `metadata.geometry` is the single source of truth for position and the
-// `x`/`y` columns are a cache derived from it, so a record is only well-formed
-// while the two agree. Anything that writes the columns alone leaves a record
-// that looks right on screen — the canvas has already moved the live Two.js
-// group — and then renders at its CREATION coordinates on the next load,
-// because that is what its geometry still says.
-//
-// That is exactly what shipped: point, text and circle are created off-screen
-// (or with a toolbar placeholder position) and positioned by a later click, and
-// those placement paths wrote only the columns. Route and area were unaffected
-// because `finishGeoDraw` builds their geometry from the drawn vertices, which
-// is why the bug looked type-specific rather than structural.
-//
-// So this asserts the invariant at the point of creation, for every tool, and
-// then confirms it survives an actual reload.
-
 import { test, expect } from './helpers/test.js'
 import {
     setupLocalBase,
@@ -29,13 +11,6 @@ import {
     getDraftComponents,
 } from './helpers/index.js'
 
-/**
- * The origin a record's geometry reports, alongside the cached x/y columns.
- *
- * Read inline rather than through `geometryOrigin` — this inspects the draft
- * blob as JSON, and the assertion is about the two agreeing, so deriving one
- * from the shared helper would weaken it.
- */
 function originOf(record) {
     const geom = record?.metadata?.geometry
     if (!geom) return null
@@ -48,7 +23,6 @@ function originOf(record) {
     return { x: first[0], y: first[1] }
 }
 
-/** Every persisted record of `type`, with its origin and its cached columns. */
 async function recordsOfType(page, type) {
     const draft = await getDraftComponents(page)
     return Object.values(draft ?? {})
@@ -143,10 +117,6 @@ test.describe('a drawn element is persisted where it was put', () => {
             const [record] = await recordsOfType(page, type)
 
             expect(record.geometryType).toBe(geometry)
-            // The cache must equal the geometry's own origin. When it does not,
-            // the element renders correctly until the next load and then jumps
-            // to wherever its geometry was created — off-screen for a point or
-            // a text label, at the toolbar's placeholder for a circle.
             expect(
                 record.origin,
                 'the x/y columns disagree with the geometry at creation'
@@ -157,9 +127,6 @@ test.describe('a drawn element is persisted where it was put', () => {
     test('a point is still under the cursor after a reload', async ({
         page,
     }) => {
-        // The end-to-end version of the invariant above: the draft is the only
-        // thing carried across the reload, so if its geometry disagreed with
-        // its columns the pin would come back somewhere else entirely.
         const box = await getCanvasBox(page)
         await placePoint(page, {
             x: box.x + 300,
@@ -204,8 +171,6 @@ test.describe('a drawn element is persisted where it was put', () => {
                 }, before.id)
             )
 
-        // The factory takes its translation from the geometry, so this is the
-        // number that moved when the placement path wrote only the columns.
         expect(rendered).toEqual({ x: before.x, y: before.y })
     })
 })

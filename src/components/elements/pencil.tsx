@@ -24,12 +24,7 @@ function Pencil(props: ElementProps): ReactElement {
 
     const two = props.twoJSInstance
 
-    // A pencil drawn on a geographic base resists zoom the way a route does:
-    // only the stroke width counter-scales, so the strokes stay glued to the
-    // geography while remaining visible when the world zooms out. A board-base
-    // scribble is untouched — see isStrokeScaled.
     const geoResist = isStrokeScaled(props)
-    // `resolveResist` is the single reader — see the note in area.tsx.
     const resist = resolveResist(props)
     const baseLinewidth = props.linewidth ?? 1
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,8 +43,6 @@ function Pencil(props: ElementProps): ReactElement {
         const shapeRef = path || group.children[0]
         group.elementData = { ...props.itemData, ...props }
 
-        // Opacity persists in the top-level `opacity` field (pencil's
-        // `metadata` is the vertex array; legacy rows fall back to metadata).
         const pencilOpacity = readOpacity(props)
 
         if (props.parentGroup) {
@@ -63,22 +56,17 @@ function Pencil(props: ElementProps): ReactElement {
             group.opacity = pencilOpacity
             groupRef.current = group
             pathRef.current = shapeRef
-            // Seed the stroke counter-scale from the current camera so a geo
-            // stroke is legible before the first zoom event fires.
             const initialScale = two?.scene?.scale || 1
             if (geoResist) {
                 shapeRef.linewidth =
                     baseLinewidth * computeCounterScale(initialScale, resist)
             }
-            // Sized on screen from the width just set; see utils/strokeDashes.
             applyStrokeDashes(shapeRef, props.strokeType, initialScale)
             getEditComponents(two, group, 4)
 
             if (path) {
                 group.children.unshift(path)
             }
-            // SVG node exists only after a render. Batch this render with
-            // every other element mounting in this frame, then tag the node.
             scheduleRender(two, () => {
                 const groupEl = document.getElementById(group.id)
                 if (groupEl) {
@@ -136,8 +124,6 @@ function Pencil(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.x, props.y, props.fill, props.width, props.height])
 
-    // Only the stroke itself: dashing every group child also dashed the
-    // selection chrome getEditComponents adds to the group.
     useEffect(() => {
         if (pathRef.current) {
             applyStrokeDashes(
@@ -150,8 +136,6 @@ function Pencil(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.strokeType])
 
-    // Counter-scale only the stroke width on every camera change (geo strokes
-    // only). Reads the scale off each event — no stale closure, see CLAUDE.md.
     useEffect(() => {
         if (!geoResist) return
         const onZoom = (e: Event): void => {
@@ -160,8 +144,6 @@ function Pencil(props: ElementProps): ReactElement {
             if (!group || !path) return
             const scale = (e as CustomEvent<{ scale: number }>).detail?.scale
             if (!scale) return
-            // Logical width lives on elementData (kept in sync by the property
-            // panel); fall back to the mount-time base.
             const base = group.elementData?.linewidth ?? baseLinewidth
             path.linewidth = base * computeCounterScale(scale, resist)
             applyStrokeDashes(
@@ -177,7 +159,6 @@ function Pencil(props: ElementProps): ReactElement {
         }
     }, [two, geoResist, resist, baseLinewidth])
 
-    // Reserved for future toolbar wiring.
     void toggleToolbar
 
     return (

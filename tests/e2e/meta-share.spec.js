@@ -1,17 +1,3 @@
-// Sharing a canvas that has meta properties.
-//
-// What these protect:
-//
-//   1. The share dialog tells the user, in plain words, that images stay on
-//      this device: image elements, AND `image` properties (named), which are
-//      left off the shared canvas entirely.
-//   2. The share carries every other property and value across, re-keyed:
-//      definitions get new ids, and each value points at the SHARED copy of
-//      its object (persistBase re-mints component ids).
-//   3. Every meta write carries only columns the `user` role may insert, so
-//      Hasura would accept it. The mock below REFUSES anything else, like the
-//      component column guard in map-share.spec.js.
-
 import { test, expect } from './helpers/test.js'
 import {
     assertComponentColumns,
@@ -21,10 +7,6 @@ import {
 
 const LOCAL_BASE = '99999999-9999-9999-9999-999999999999'
 
-// The `user` role's insert columns, from mapcursor-hasura
-// metadata/databases/default/tables/meta_property.yaml and
-// meta_propertyValue.yaml. `createdBy` is an insert PRESET there, so a
-// payload that carries it is rejected; `orphanedAt` is the sweep's alone.
 const META_INSERT_COLUMNS = {
     insertBulkMetaProperties: [
         'baseId', 'createdAt', 'id', 'name', 'position', 'type', 'updatedAt', 'updatedBy',
@@ -171,7 +153,6 @@ test('sharing carries properties and values across, re-keyed, minus images', asy
         .poll(() => requests.some((r) => r.operationName === 'insertBulkMetaValues'))
         .toBe(true)
 
-    // Nothing was refused: every write carried only insertable columns.
     expect(requests.filter((r) => metaColumnErrors(r).length)).toEqual([])
     expect(assertComponentColumns(requests)).toBeGreaterThan(0)
 
@@ -183,7 +164,6 @@ test('sharing carries properties and values across, re-keyed, minus images', asy
     const [props] = requests
         .filter((r) => r.operationName === 'insertBulkMetaProperties')
         .map((r) => r.variables.objects)
-    // The image property is left behind, as the dialog said.
     expect(props.map((p) => p.name)).toEqual(['Opening hours'])
     expect(props[0].id).not.toBe('prop-hours')
     expect(props[0].baseId).toBe(sharedPoint.baseId)
@@ -199,7 +179,6 @@ test('sharing carries properties and values across, re-keyed, minus images', asy
         value: '9am–6pm',
     })
 
-    // Definitions before values: values carry them as a real FK.
     const order = requests.map((r) => r.operationName)
     expect(order.indexOf('insertBulkMetaProperties')).toBeLessThan(
         order.indexOf('insertBulkMetaValues')

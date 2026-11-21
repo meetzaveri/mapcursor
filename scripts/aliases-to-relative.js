@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// One-shot codemod: rewrite alias-style imports (rooted at src/) to relative
-// paths so craftbase can be consumed from outside its own vite config.
-//
-// Run from repo root: node scripts/aliases-to-relative.js
-//
-// Aliases come from jsconfig.json's baseUrl: "src" — every directory directly
-// under src/ is implicitly an alias.
 
 const fs = require('fs')
 const path = require('path')

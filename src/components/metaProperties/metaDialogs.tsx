@@ -12,10 +12,6 @@ import {
 } from '../../types/metaProperty'
 import type { MetaProperty, MetaPropertyType } from '../../types/metaProperty'
 
-// Dialogs the meta properties panel opens. Each carries
-// META_PANEL_DIALOG_ATTR, so clicking inside one is not "clicking away" from
-// the selected object (see utils/canvasChrome.ts).
-
 function PanelDialog({
     open,
     onClose,
@@ -47,7 +43,6 @@ export function RenamePropertyDialog({
 }: {
     property: MetaProperty | null
     onClose: () => void
-    /** Resolves to an error message, or null on success. */
     onRename: (name: string) => Promise<string | null>
 }): ReactElement {
     const [name, setName] = useState('')
@@ -100,7 +95,6 @@ export function DeletePropertyDialog({
     onDelete,
 }: {
     property: MetaProperty | null
-    /** How many objects hold a value for it; null when unknown (shared). */
     usageCount: number | null
     onClose: () => void
     onDelete: () => void
@@ -165,9 +159,7 @@ export function ChangeTypeDialog({
     property: MetaProperty | null
     isShared: boolean
     onClose: () => void
-    /** What the change would convert and clear. */
     preview: (to: MetaPropertyType) => Promise<TypeChangePlan | null>
-    /** Resolves to an error message, or null once changed. */
     onChange: (to: MetaPropertyType) => Promise<string | null>
 }): ReactElement {
     const [to, setTo] = useState<MetaPropertyType | null>(null)

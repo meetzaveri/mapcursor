@@ -6,25 +6,8 @@ import { useTopRightOffset } from '../../hooks/useTopRightOffset'
 import { usePlaceSearch } from '../../hooks/usePlaceSearch'
 import type { PlaceResult } from '../../utils/placeSearch'
 
-/** Desktop width. */
 const DESKTOP_WIDTH = 260
 
-/**
- * Place search for the map base — the standing "take me somewhere else" control.
- *
- * The first-visit modal (MapStartLocationModal) asks the same question once; this
- * is the answer to changing your mind afterwards, and the recovery path for
- * anyone who skipped it and landed on their timezone city.
- *
- * Only recentres the *backdrop*: the ink stays exactly where it is on the
- * canvas, so searching a new place re-anchors what the drawing sits on rather
- * than moving the drawing.
- *
- * **Desktop only.** A phone's top row is menu + share, and that
- * is the whole width — this field was squeezed into what was left and ended up a
- * few characters wide. On mobile the same search is a menu entry that opens
- * `placeSearchModal.tsx`; both share `usePlaceSearch`.
- */
 const PlaceSearch = (): ReactElement | null => {
     const { goToPlace } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
@@ -34,8 +17,6 @@ const PlaceSearch = (): ReactElement | null => {
     const [open, setOpen] = useState(false)
     const rootRef = useRef<HTMLDivElement | null>(null)
 
-    // Shared with the legend panel, which stacks under this field and has to
-    // start at the same right edge. See useTopRightOffset.
     const rightOffset = useTopRightOffset(isActive)
 
     useEffect(() => {
@@ -49,8 +30,6 @@ const PlaceSearch = (): ReactElement | null => {
             document.removeEventListener('mousedown', handleClickOutside)
     }, [open])
 
-    // Leaving the map base closes and clears — the control is meaningless on a
-    // base with nothing to recentre.
     useEffect(() => {
         if (!isActive) {
             setOpen(false)
@@ -74,19 +53,10 @@ const PlaceSearch = (): ReactElement | null => {
             style={{
                 top: '8px',
                 right: `${rightOffset}px`,
-                // One above the legend panel (11), which sits directly below
-                // this field: at equal z the panel wins by DOM order and its
-                // card covered the results dropdown.
                 zIndex: 12,
                 width: `${DESKTOP_WIDTH}px`,
             }}
         >
-            {/* The shell mirrors the shapes toolbar's chrome exactly — same
-                `bg-card-bg` / `border-border-panel` / `rounded-card`, same
-                `px-2 py-1` padding around an `h-9` row — so both sit at 46px
-                tall on the same 8px top offset and read as one band. Matching
-                the toolbar's structure rather than hard-coding a height keeps
-                them in step if the toolbar's button size ever changes. */}
             <div className="bg-card-bg border border-border-panel rounded-card px-2 py-1">
                 <input
                     type="text"

@@ -1,29 +1,11 @@
-// Map text must stay readable at every zoom.
-//
-// geoText renders in Two.js surface space, so without zoom-resistance its
-// on-screen size is `fontSize * zuiScale` — and on a map base zuiScale is
-// `2^(mapZoom - anchor.zoom)` across 18 stops. Against the z16 default anchor
-// that put an 18px label at 0.2px over a county: present in the DOM, invisible
-// on screen, and impossible to type into (the editing overlay sizes itself to
-// match the glyphs it covers). The counter-scale (GEO_TEXT_RESIST) is what
-// keeps the label inside a legible band instead.
-//
-// Guards the band, not an exact size: the resist constant is a tuning knob and
-// glyph metrics vary by font, so pinning exact pixels here would fail on any
-// future tweak that is still perfectly readable.
-
 import { test, expect } from './helpers/test.js'
 import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
-// Santa Clara County, at the default anchor zoom.
 const ANCHOR = { lngLat: [-121.95, 37.35], zoom: 16 }
 const LABEL = 'Santa Clara'
-// The mobile "M" size (MOBILE_TEXT_SIZES_OBJECT) — the case that was reported.
 const FONT_SIZE = 18
 
-// The whole reachable range: MAX_MAP_ZOOM (19) down to MIN_MAP_ZOOM (1),
-// per baseTypes/zoomLimits.ts.
 const MAP_ZOOMS = [19, 16, 13, 10, 5, 1]
 
 const MIN_LEGIBLE_PX = 6
@@ -78,11 +60,6 @@ test('map text stays legible across the whole map zoom range', async ({
     await page.goto(`/map/${BASE_ID}`)
     await page.locator(`text=${LABEL}`).first().waitFor({ timeout: 15_000 })
 
-    /**
-     * Drive the camera to a scale and report the label's on-screen height.
-     * Setting scene.scale + dispatching `zoomChanged` is exactly what the
-     * canvas's own zoom handlers do (five dispatch sites in newCanvas.tsx).
-     */
     const apparentHeightAt = async (scale) =>
         page.evaluate(
             ({ s, label }) => {

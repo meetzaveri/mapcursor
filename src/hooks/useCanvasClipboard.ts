@@ -19,8 +19,6 @@ import {
 import type { ComponentRecord, ComponentStore } from '../types/base'
 import type { HistoryEntry } from './useComponentHistory'
 
-// Two.js scene objects are typed loosely here; canvas-side typing converges
-// in Stages 7–9.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,10 +61,6 @@ export interface CanvasClipboardOptions {
         ((groups: ComponentRecord[]) => void) | null
     >
     stateRefForComponentStore: MutableRefObject<ComponentStore | undefined>
-    /**
-     * Called after a paste with source id → clone id, so data keyed by object
-     * id (meta property values) can follow the copies.
-     */
     onPasted?: (objectIdMap: Map<string, string>) => void
 }
 
@@ -86,8 +80,6 @@ export function useCanvasClipboard({
     onPasted,
 }: CanvasClipboardOptions): CanvasClipboardApi {
     const clipboardRef = useRef<ClipboardPayload | null>(null)
-    // Read through a ref: the paste listener is bound in an effect, and must
-    // call the latest callback (stale-closure rule, CLAUDE.md).
     const onPastedRef = useRef(onPasted)
     onPastedRef.current = onPasted
     const lastMouseRef = useRef<MousePosition>({
@@ -96,13 +88,6 @@ export function useCanvasClipboard({
         hasMoved: false,
     })
 
-    // Rebind a cloned arrow's port bindings so the paste stays attached:
-    // a binding to a shape cloned in the SAME paste is remapped to the clone
-    // (`idMap` old→new); a binding to a shape still on the canvas is kept
-    // (the copy docks beside the original's connector — the fan spreads
-    // them); a binding whose shape no longer exists is cleared. Returns the
-    // ports the pasted arrow docks to, so the caller can request a restack
-    // once the arrow has mounted (which glues its endpoints onto the ports).
     const rebindClonedArrow = (
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         cloned: any,
@@ -132,10 +117,6 @@ export function useCanvasClipboard({
         return ports
     }
 
-    // Once the pasted arrow is actually in the scene, ask newCanvas to
-    // restack its docked ports — that recomputes fan indices AND glues the
-    // pasted endpoints onto the ports. Must wait for the mount: a restack
-    // that runs before the arrow exists would re-fan the port without it.
     const restackWhenMounted = (
         arrowId: string,
         ports: { shapeId: string; edge: string }[]
@@ -148,16 +129,6 @@ export function useCanvasClipboard({
         })
     }
 
-    /**
-     * Move the selection onto the pasted element once it has mounted.
-     *
-     * Paste used to leave the SOURCE selected: the box and the properties panel
-     * stayed on the element you copied FROM, so the next property edit landed on
-     * the wrong shape. The clone is what the user is now looking at, so it is
-     * what should be selected. Waits for the mount — the canvas resolves the id
-     * against `two.scene.children`, and React renders the element
-     * asynchronously.
-     */
     const selectWhenMounted = (id: string): void => {
         if (!twoJSInstance) return
         pollUntilElement(twoJSInstance, id, () => {
@@ -167,7 +138,6 @@ export function useCanvasClipboard({
         })
     }
 
-    // Track cursor position so paste can land at mouse location
     useEffect(() => {
         const onMove = (e: MouseEvent): void => {
             lastMouseRef.current = {
@@ -180,7 +150,6 @@ export function useCanvasClipboard({
         return (): void => window.removeEventListener('mousemove', onMove)
     }, [])
 
-    // Copy handler (Ctrl+C / Cmd+C)
     useEffect(() => {
         const onCopyEvent = (evt: KeyboardEvent): void => {
             if (evt.key !== 'c' || !(evt.ctrlKey || evt.metaKey)) return
@@ -233,20 +202,9 @@ export function useCanvasClipboard({
                     }
                 }
                 if (isStandaloneTextType(elementData.componentType)) {
-                    // Multiline standalone text is a stack of Two.Text line
-                    // nodes (line 1 + satellites) in the same group;
-                    // children[0] alone is only line 1. Reconstruct the raw
-                    // string from every line node so the clone keeps all
-                    // lines.
                     const textNodes = getShapeTextNodes(liveGroup)
                     const firstNode = textNodes[0]
                     if (firstNode && typeof firstNode.value === 'string') {
-                        // Prefer the STORED color (elementData) over the live
-                        // node fill: in dark mode the node fill may be the
-                        // display-swapped white (resolveTextDisplayFill), and we
-                        // must not bake that into the copied component. Fall back
-                        // to the node fill only for legacy items lacking a stored
-                        // textColor.
                         item.textColor = item.textColor || firstNode.fill
                         const stored = readProperties(item)
                         Object.assign(
@@ -274,7 +232,6 @@ export function useCanvasClipboard({
         return (): void => window.removeEventListener('keydown', onCopyEvent)
     }, [twoJSInstance, zuiInstanceRef])
 
-    // Paste handler (Ctrl+V / Cmd+V)
     useEffect(() => {
         const onPasteEvent = (evt: KeyboardEvent): void => {
             if (evt.key !== 'v' || !(evt.ctrlKey || evt.metaKey)) return
@@ -288,7 +245,6 @@ export function useCanvasClipboard({
             if (!zuiInst?.zui) return
             evt.preventDefault()
 
-            // Resolve paste origin. Fall back to viewport center if cursor hasn't moved.
             let clientX = lastMouseRef.current.clientX
             let clientY = lastMouseRef.current.clientY
             if (!lastMouseRef.current.hasMoved) {
@@ -330,15 +286,8 @@ export function useCanvasClipboard({
                     newItem.y2 = dy
                 }
                 if (src.componentType === 'arrowLine') {
-                    // Keep the copy attached to whatever the original was
-                    // docked to (no same-paste counterparts on a single copy).
-                    // Plain lines never dock to ports, so this stays
-                    // arrowLine-only.
                     arrowPorts = rebindClonedArrow(newItem, new Map())
                 }
-                // Centring the clone under the cursor — and keeping its origin
-                // in step with its coordinates — is `cloneElementData`'s job
-                // now, uniformly for every geometry type.
                 addToLocalComponentStore(
                     newItem.id,
                     newItem.componentType,
@@ -348,18 +297,12 @@ export function useCanvasClipboard({
                     onPastedRef.current?.(new Map([[src.id, newItem.id]]))
                 }
                 restackWhenMounted(newItem.id, arrowPorts)
-                // Drop the source's selection now, take the clone's when it
-                // mounts. Clearing first matters on the element-owned chrome
-                // (geo objects, arrows): nothing else hides a box that was
-                // drawn by a component we are not about to touch.
                 window.dispatchEvent(new CustomEvent('clearSelector', {}))
                 selectWhenMounted(newItem.id)
                 return
             }
 
             if (clipboard.kind === 'group') {
-                // Map each source member's id to its clone's, so connectors
-                // pasted alongside their bound shapes re-dock to the CLONES.
                 const idMap = new Map<string, string>()
                 const newChildren = clipboard.items.map((child) => {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -385,22 +328,7 @@ export function useCanvasClipboard({
                     }
                 })
 
-                // Persist the pasted members to the store IMMEDIATELY, at
-                // absolute coords (paste origin + each child's relative offset).
-                // Previously the children were only written on the group's
-                // blur-materialize (groupobject's foundOriginalCount===0 path),
-                // which meant a reload while the pasted group was still selected
-                // lost them — they lived only as transient overlay copies, never
-                // in componentStore / the localStorage draft. Persisting here
-                // makes paste reload-safe and lets the overlay below be a pure
-                // selection over real standalones (see membersToHide), so blur
-                // takes the restore-opacity path instead of re-materialising —
-                // killing the teardown→async-rebuild flicker too.
                 const memberIds: string[] = []
-                // Record all member adds as ONE batch so a single undo removes
-                // the whole pasted group (not one shape per press). We pass
-                // skipHistory to addToLocalComponentStore and push an ADD entry
-                // per child, then commit them together via recordBatchToHistoryLog.
                 const pasteBatchEntries: HistoryEntry[] = []
                 newChildren.forEach((child: ComponentRecord) => {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -408,13 +336,6 @@ export function useCanvasClipboard({
                     const absX = px + (c.relativeX ?? 0)
                     const absY = py + (c.relativeY ?? 0)
 
-                    // The group child holds its geometry in the group's
-                    // RELATIVE space, so rebase it to the paste origin (mirrors
-                    // groupobject's blur-materialize). Without this the pasted
-                    // stroke renders near the surface origin instead of under
-                    // the group — i.e. "the pencil strokes disappear". Every
-                    // type takes this path: a member point's Point rebases the
-                    // same way a member route's LineString does.
                     const rebased = translateGeometry(c, px, py)
                     const memberData = {
                         ...c,
@@ -429,11 +350,6 @@ export function useCanvasClipboard({
                         memberData,
                         true
                     )
-                    // The history entry's componentInfo must mirror the stored
-                    // row: addToLocalComponentStore strips the transient
-                    // relativeX/relativeY (not DB columns), so strip them here
-                    // too — otherwise a redo in persisted mode would insert
-                    // those non-schema fields and fail.
                     const {
                         relativeX: _rx,
                         relativeY: _ry,
@@ -450,8 +366,6 @@ export function useCanvasClipboard({
                 }
                 onPastedRef.current?.(idMap)
 
-                // Glue every pasted connector's docked endpoints onto their
-                // (possibly remapped) ports once the arrows mount.
                 arrowRestacks.forEach(({ arrowId, ports }) =>
                     restackWhenMounted(arrowId, ports)
                 )
@@ -468,20 +382,9 @@ export function useCanvasClipboard({
                     fill: null,
                     stroke: null,
                     children: newChildren,
-                    // Hide the just-persisted standalones beneath the overlay in
-                    // the same update that paints the group's copies (atomic
-                    // swap — see groupobject.tsx). Because the standalones now
-                    // exist in the scene, the group's blur handler takes the
-                    // restore-opacity path (foundOriginalCount > 0) rather than
-                    // re-materialising them: no double-write, no flicker.
                     membersToHide: memberIds,
                 }
 
-                // Standalones mount asynchronously (React.lazy). Wait until the
-                // last one is in the scene before rendering the overlay so the
-                // group's atomic hide finds them — no brief double-paint of a
-                // standalone plus its overlay copy. Falls back to immediate
-                // render if there's nothing to wait on.
                 const lastId = memberIds[memberIds.length - 1]
                 if (lastId && twoJSInstance) {
                     pollUntilElement(twoJSInstance, lastId, () => {

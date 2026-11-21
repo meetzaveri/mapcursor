@@ -11,7 +11,6 @@ afterEach(() => {
 
 describe('assetIdForBytes', () => {
     it('is the SHA-256 hex of the bytes', async () => {
-        // SHA-256("abc")
         expect(await assetIdForBytes(bytes(0x61, 0x62, 0x63))).toBe(
             'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
         )
@@ -25,7 +24,6 @@ describe('assetIdForBytes', () => {
         expect(a).not.toBe(c)
     })
 
-    // Plain http on a LAN IP (mobile testing) has no SubtleCrypto.
     it('falls back to FNV when SubtleCrypto is missing', async () => {
         vi.stubGlobal('crypto', {})
         const id = await assetIdForBytes(bytes(1, 2, 3))

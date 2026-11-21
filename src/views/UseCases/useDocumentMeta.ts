@@ -1,11 +1,5 @@
 import { useEffect } from 'react'
 
-/**
- * Set the document title + meta description for this route. The app is an
- * SPA, so the static index.html title is shared across routes. Updating it
- * here gives this page a unique title/snippet when crawled and when shared.
- * The previous values are restored on unmount.
- */
 export function useDocumentMeta(title: string, description: string): void {
     useEffect(() => {
         const prevTitle = document.title

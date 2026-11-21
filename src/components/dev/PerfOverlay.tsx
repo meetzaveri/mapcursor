@@ -1,15 +1,3 @@
-// Dev-only performance overlay for the canvas.
-//
-// Purpose: make the pan/zoom paint cost VISIBLE and let it be validated on a
-// real GPU (headless Chromium can't reproduce it — it uses a software
-// rasteriser). Shows live FPS, the worst frame gap over the last window (the
-// stutter metric), the total element count, how many are currently
-// viewport-culled, and the live zoom. Includes a viewport-culling toggle and a
-// "seed N shapes" button so a dense base can be reproduced on demand.
-//
-// Reads the dev-only `window.__mcTwo` handle exposed by newCanvas. Rendered
-// only under import.meta.env.DEV, so it ships in no production bundle.
-
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { DRAFT_STORAGE_KEY } from '../../constants/misc'
@@ -30,7 +18,6 @@ function getTwo(): Two | null {
     return (window as any).__mcTwo ?? null
 }
 
-// Count total content elements + how many are currently culled.
 function countElements(two: Two): { total: number; culled: number } {
     let total = 0
     let culled = 0
@@ -44,8 +31,6 @@ function countElements(two: Two): { total: number; culled: number } {
     return { total, culled }
 }
 
-// Seed N simple shapes into a local draft and reload — mirrors the real
-// base-load path (draft restore), which is exactly the code we want to stress.
 function seedShapes(n: number): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const components: Record<string, any> = {}
@@ -94,16 +79,11 @@ const PerfOverlay = (): ReactElement => {
     const [maxGap, setMaxGap] = useState(0)
     const [total, setTotal] = useState(0)
     const [culled, setCulled] = useState(0)
-    // Stored as the raw scale multiplier and shown as "1.00×" (not "100%") so
-    // the overlay never collides with the ZoomControls "N%" readout that e2e
-    // asserts on via an exact-text match.
     const [zoom, setZoom] = useState(1)
     const [culling, setCulling] = useState(getViewportCullingEnabled())
     const [routeSnap, setRouteSnap] = useState(getRouteSnapEnabled())
     const [seedN, setSeedN] = useState(2000)
 
-    // Frame-rate + worst-frame-gap sampler. One rAF loop; publishes to state
-    // twice a second so React churn doesn't itself perturb the measurement.
     const frames = useRef(0)
     const windowMaxGap = useRef(0)
     const lastFrame = useRef(0)
@@ -143,7 +123,7 @@ const PerfOverlay = (): ReactElement => {
 
     useEffect(() => subscribeViewportCullingEnabled(setCulling), [])
 
-    const gapBad = maxGap > 20 // > ~1.2 frames == a dropped frame this window
+    const gapBad = maxGap > 20
 
     return (
         <div

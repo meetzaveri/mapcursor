@@ -15,17 +15,12 @@ interface SettingsModalProps {
 
 const ROUTE_SNAP_TOGGLE_ID = 'settings-route-snap'
 
-// The switch is the snap-to-road flag in featureFlags.ts, the same one the
-// canvas reads when a route draw starts. Off means no snapper, so the route draw
-// falls back to plain click-to-vertex segments with no road projection. The
-// canvas reads the flag once per draw, so a change applies to the next route.
 const SettingsModal = ({
     open,
     onClose,
 }: SettingsModalProps): ReactElement => {
     const [routeSnap, setRouteSnap] = useState(getRouteSnapEnabled())
 
-    // The dev perf overlay writes the same flag; stay in step with it.
     useEffect(() => subscribeRouteSnapEnabled(setRouteSnap), [])
 
     return (

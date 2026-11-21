@@ -34,9 +34,6 @@ import {
     SELECTION_HANDLE_LINEWIDTH_PX,
 } from '../utils/selectionTheme'
 
-// Two.js scene shapes carry codebase-specific bookkeeping (elementData,
-// _renderer, etc.) outside the published types. Stay loose here; Stage 12
-// can tighten once newCanvas converges in Stage 9.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -52,22 +49,11 @@ interface ShapeAdapter {
     resizable: boolean
     minWidth: number
     minHeight: number
-    // 'dimension' (default) → corner drag changes width/height. 'font' → corner
-    // drag scales the font size of a standalone text block (no w/h change). The
-    // box still tracks the rendered block via getLocalSize.
     resizeMode?: 'dimension' | 'font'
-    // Aspect ratio is held for the whole gesture, on every handle — what shift
-    // does on a corner, permanently. Set for the circle, which is a proximity
-    // radius and so has no oval state to be dragged into.
     lockAspect?: boolean
-    // The width/height to PERSIST at the end of a resize, when that differs
-    // from getLocalSize. getLocalSize/applySize speak surface units (what the
-    // box and the drag math use); a counter-scaled group stores its size in
-    // its own local units. Absent → getLocalSize is persisted.
     storedSize?: (shape: ShapeLike) => { width: number; height: number }
 }
 
-// Font spec for a single standalone text line node.
 function textNodeFontSpec(node: ShapeLike): FontSpec {
     return {
         family: node?.family || DEFAULT_TEXT_FONT_FAMILY,
@@ -76,10 +62,6 @@ function textNodeFontSpec(node: ShapeLike): FontSpec {
     }
 }
 
-// Surface-unit size of a standalone text block: widest measured line × the
-// stacked line height. measureTextWidth returns surface units (same space as a
-// shape's width), so this feeds the selection box directly — no screen↔surface
-// conversion needed.
 function textBlockLocalSize(group: ShapeLike): {
     width: number
     height: number
@@ -115,22 +97,14 @@ const DEFAULT_ADAPTER: ShapeAdapter = {
 }
 
 const TEXT_ADAPTER: ShapeAdapter = {
-    // currentShape is line 1 (group.children[0]); walk up to the group to size
-    // the whole multiline block.
     getLocalSize: (shape) => textBlockLocalSize(shape?.parent ?? shape),
-    applySize: () => {}, // sizing happens via font scaling, not w/h
+    applySize: () => {},
     resizable: true,
     resizeMode: 'font',
     minWidth: 20,
     minHeight: 20,
 }
 
-// An image's group may counter-scale (IMAGE_RESIST is 0 by default, so its
-// scale is normally 1, but a per-record resist can change that), so its on-map size is the frame's local size × group.scale. The adapter
-// converts at the boundary: the box and the drag math stay in surface units,
-// and the record keeps the LOCAL size, which is zoom-independent. No zoom hook
-// is needed: image.tsx sets group.scale and renders, and every render re-runs
-// syncToTarget (bound to Two's 'update' in _bindExternal).
 const groupScaleOf = (shape: ShapeLike): number => {
     const scale = shape?.parent?.scale
     return typeof scale === 'number' && scale > 0 ? scale : 1
@@ -152,9 +126,6 @@ const IMAGE_ADAPTER: ShapeAdapter = {
     minHeight: 20,
 }
 
-// A circle is drawn centre-out as a radius (see isRadialDraw in newCanvas), so
-// it is round by construction — resize has to keep it that way or the mark
-// stops meaning "everything within this distance".
 const CIRCLE_ADAPTER: ShapeAdapter = {
     ...DEFAULT_ADAPTER,
     lockAspect: true,
@@ -168,17 +139,12 @@ const SHAPE_ADAPTERS: Record<string, ShapeAdapter> = {
     image: IMAGE_ADAPTER,
 }
 
-// Handle dot diameter in *screen* px. Constant at every zoom, and the same
-// number the vertex handles and the legacy ObjectSelector use — a corner dot on
-// a map circle and a vertex dot on a route are one affordance, so they are one
-// size (see utils/selectionTheme).
 function handleScreenPx(): number {
     return selectionHandleRadiusPx() * 2
 }
 const HANDLE_HIT_SLOP_MOUSE = 3
 const HANDLE_HIT_SLOP_TOUCH = 8
 const MIN_SCALE_DIMENSION = 20
-// Surface-unit padding between the shape edge and the selection box border.
 export const SELECTION_PADDING = 5
 
 interface ToolbarState {
@@ -194,7 +160,6 @@ export function buildToolbarState(
     shape: ShapeLike
 ): ToolbarState {
     const componentType = group?.elementData?.componentType
-    // First line node of the (possibly multiline) text layer.
     const textChild = getShapeTextNodes(group)[0]
     return {
         element: {
@@ -234,17 +199,11 @@ interface SelectionControllerOptions {
             height: number
             x: number
             y: number
-            // Always carries the metadata envelope: a resize can move the
-            // origin, and the geometry — not the x/y columns — is what the
-            // factory reads back. A font resize additionally folds the new
-            // size + multiline content into its properties.
             metadata: ComponentMetadata
         }
     ) => void
     recordHistory?: () => void
     onDelete?: (group: GroupLike) => void
-    // Fired live while the selection is scaled/rotated so the host can drag
-    // connectors bound to the shape's ports along with the transform.
     onTransform?: (group: GroupLike) => void
 }
 
@@ -266,7 +225,6 @@ interface ScaleInteraction {
     initialHeight: number
     initialPosition: { x: number; y: number }
     initialRotation: number
-    // Font size at gesture start — only used for 'font' resizeMode (text).
     initialFontSize?: number
 }
 
@@ -309,7 +267,6 @@ export default class SelectionController {
 
     ui!: ShapeLike
     box!: ShapeLike
-    /** The four corner grab dots, clockwise from top-left. */
     handles: ShapeLike[] = []
 
     private _halfW = 0
@@ -360,24 +317,12 @@ export default class SelectionController {
         box.stroke = getSelectionStroke()
         box.linewidth = SELECTION_BOX_LINEWIDTH_PX
 
-        // One Two.Circle per corner, each placed by its own translation — NOT
-        // a Two.Points over box.vertices. Two.js's SVG renderer draws a point
-        // as `M x y a r r 0 1 0 0.001 0`: an arc ending 0.001 units from its
-        // start, in the box's local space. Chrome rasterises path data in
-        // float32, so once a corner sits ~33k+ units from the centre (any
-        // element placed while zoomed far out) the 0.001 rounds away, the arc's
-        // endpoints coincide, and per the SVG spec the arc is not drawn: the
-        // box showed with no grab dots. A circle's own path stays at its
-        // radius, and Two.Circle is drawn with curves, not that arc.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const handleLayer = new (Two as any).Group()
         this.handles = [0, 1, 2, 3].map(() => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const dot = new (Two as any).Circle(0, 0, handleScreenPx() / 2)
             dot.fill = SELECTION_HANDLE_FILL
-            // Fixed in both themes, unlike the box: a grab dot is indigo
-            // wherever it appears — route and area vertices, group corners,
-            // text, this box.
             dot.stroke = HANDLE_STROKE
             dot.linewidth = SELECTION_HANDLE_LINEWIDTH_PX
             handleLayer.add(dot)
@@ -444,12 +389,6 @@ export default class SelectionController {
         }
     }
 
-    /**
-     * Public re-assert of the selection overlay to the top of the scene.
-     * Called by the z-order reconcile after it re-sorts element groups, so the
-     * selection box never gets buried beneath a just-reordered element. No-op
-     * when nothing is selected.
-     */
     bringSelectionToFront(): void {
         if (!this.currentGroup) return
         this._bringToFront()
@@ -473,15 +412,9 @@ export default class SelectionController {
 
         this._bringToFront()
         this.ui.visible = true
-        // Per-shape `.dragger-picker { cursor: pointer }` (common.css) sits on
-        // the SVG node directly under the cursor and beats the root's inline
-        // cursor. This class lets CSS show `move` over the selected shape body.
         this.domElement.classList.add('shape-selected')
         this.syncToTarget()
         this.two.update()
-        // Tag the overlay so exports strip it. The `ui` lives at scene level
-        // (not in any element group), so it only reaches the full-scene PNG
-        // export — harmless to tag for the per-selection SVG export too.
         markSelectionChrome(this.ui)
 
         this._attachHoverListener()
@@ -515,31 +448,15 @@ export default class SelectionController {
         }
     }
 
-    /**
-     * Re-apply the theme-resolved stroke to the selection box. Called when the
-     * theme toggles so an active selection re-colors live (the stroke is
-     * otherwise only computed at _buildUi time). No-op safe when detached.
-     */
     applyThemeStroke(): void {
         if (this.box) this.box.stroke = getSelectionStroke()
-        // The handles are deliberately NOT repainted: their indigo is fixed in
-        // both themes, so a theme toggle only moves the box.
         this.two.update()
     }
 
-    // For CSS-transform move-drags: hand back the selection-chrome SVG node and
-    // its base position so the caller can translate the box in lockstep with the
-    // element (via a CSS transform) without a full-scene re-render. Returns null
-    // when nothing is selected or the chrome isn't mounted yet. `group` guards
-    // that the chrome actually belongs to the element being dragged.
     getChromeDragHandle(group: GroupLike): {
         node: SVGGraphicsElement
         baseX: number
         baseY: number
-        // The overlay's Two.js shape. The caller writes the `transform`
-        // ATTRIBUTE directly during a drag, so it needs a handle to flag the
-        // matrix dirty afterwards — otherwise Two.js sees a clean node and
-        // leaves the drag's last frame in place.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         shape: any
     } | null {
@@ -562,9 +479,6 @@ export default class SelectionController {
 
         const scale = this.zui.scale || 1
         this.box.linewidth = SELECTION_BOX_LINEWIDTH_PX / scale
-        // The dots are world-space circles inside a scaled scene, so both their
-        // radius and their outline are counter-scaled to stay constant on
-        // screen at every zoom.
         const radius = handleScreenPx() / 2 / scale
         const dotLinewidth = SELECTION_HANDLE_LINEWIDTH_PX / scale
 
@@ -575,11 +489,6 @@ export default class SelectionController {
         this.box.width = width + pad * 2
         this.box.height = height + pad * 2
 
-        // Standalone text is anchored left/middle at the group origin (the text
-        // extends RIGHT from translation.x and is vertically centered on
-        // translation.y). The box is centered on `ui`, so shift `ui` right by
-        // half the block width to wrap the text instead of sitting left of it.
-        // Shapes are centered on their origin, so no offset.
         const anchorOffsetX =
             this.currentAdapter?.resizeMode === 'font' ? width / 2 : 0
         this.ui.position.set(
@@ -591,8 +500,6 @@ export default class SelectionController {
         this._halfW = (width + pad * 2) / 2
         this._halfH = (height + pad * 2) / 2
 
-        // Corners from the half extents, not box.vertices: the Rectangle only
-        // rewrites its vertices on its next render, so they would lag a frame.
         const corners: readonly [number, number][] = [
             [-this._halfW, -this._halfH],
             [this._halfW, -this._halfH],
@@ -608,26 +515,15 @@ export default class SelectionController {
         })
     }
 
-    // ---------- Hit testing ----------
-
     hitTest(clientX: number, clientY: number): HitResult | null {
         if (!this.currentGroup || !this.ui.visible) return null
         if (this.currentAdapter && !this.currentAdapter.resizable) return null
 
         const surface = this.zui.clientToSurface(clientX, clientY)
         const scale = this.zui.scale || 1
-        // Grab radius is tied to the dot's HIT radius plus a few px of slop, so
-        // resize only fires on the dot — not in a bloated zone around it.
-        // Constant in screen px at any zoom.
-        //
-        // The hit radius, not the visual one: on touch the dot is now drawn
-        // smaller than it is grabbed, and reading the visual radius here would
-        // have quietly shrunk this zone along with the dot.
         const hitRadiusPx = selectionHandleHitRadiusPx() + this._hitSlopPx()
         const hitLimit = hitRadiusPx / scale
 
-        // Corners win over edges so the corner-resize/rotate zone isn't shadowed
-        // by the full-edge hit band at the box ends.
         const corner = this._atCorner(surface, hitLimit)
         if (corner) {
             const isOnInnerRing = this._withinCornerRadius(
@@ -643,8 +539,6 @@ export default class SelectionController {
         const isRect =
             this.currentGroup?.elementData?.componentType === 'rectangle'
         if (isRect) {
-            // Resize lives on the edge band only. Ports are connection points,
-            // not resize handles, so they're intentionally excluded here.
             const edge = this._atEdge(surface, hitLimit)
             if (edge) return { mode: 'scale', corner: edge }
         }
@@ -652,10 +546,6 @@ export default class SelectionController {
         return null
     }
 
-    // Public port hit test for the canvas: did this client point land on a
-    // connection port? Returns the hovered edge plus the port's anchor in
-    // surface coords (where a pulled-out connector's tail should pin). Null when
-    // nothing is selected or the cursor isn't over a port.
     private _vertexToSurface(v: { x: number; y: number }): {
         x: number
         y: number
@@ -688,10 +578,6 @@ export default class SelectionController {
         return null
     }
 
-    // Full-edge hit test: derotate the surface point into box-local space and
-    // check whether it sits within `limit` of any of the 4 borders (along the
-    // whole edge, not just its midpoint). Corners are handled by `_atCorner`
-    // first, so the band ends overlapping corners don't matter here.
     private _atEdge(
         point: { x: number; y: number },
         limit: number
@@ -707,8 +593,6 @@ export default class SelectionController {
         const hh = this.box.height / 2
         const withinX = lx >= -hw - limit && lx <= hw + limit
         const withinY = ly >= -hh - limit && ly <= hh + limit
-        // Edge midpoints in the box's local frame — the anchor `_beginScale`
-        // measures the drag against.
         if (withinX && Math.abs(ly + hh) <= limit) {
             return { name: 'n-resize', point: { x: 0, y: -hh } }
         }
@@ -733,8 +617,6 @@ export default class SelectionController {
         return distSq(point.x, point.y, p.x, p.y) < limit * limit
     }
 
-    // Touch arrives as synthetic mouse events, so the device pointer type is the
-    // only signal available — coarse (finger) pointers get a more forgiving slop.
     private _hitSlopPx(): number {
         const coarse =
             typeof window !== 'undefined' &&
@@ -742,8 +624,6 @@ export default class SelectionController {
         return coarse ? HANDLE_HIT_SLOP_TOUCH : HANDLE_HIT_SLOP_MOUSE
     }
 
-    // Is the surface point inside the selection box body (the drag zone)? Uses
-    // the same rotation convention as _vertexToSurface, derotated into box space.
     private _withinBody(point: { x: number; y: number }): boolean {
         const rot = this.ui.rotation || 0
         const dx = point.x - this.ui.position.x
@@ -757,8 +637,6 @@ export default class SelectionController {
             Math.abs(ly) <= this.box.height / 2
         )
     }
-
-    // ---------- Interaction lifecycle ----------
 
     beginInteraction(e: MouseEvent, hit: HitResult | null): boolean {
         if (!this.currentGroup || !hit) return false
@@ -838,8 +716,6 @@ export default class SelectionController {
             const surface = this.zui.clientToSurface(ev.clientX, ev.clientY)
             const hit = this.hitTest(ev.clientX, ev.clientY)
             if (!hit) {
-                // Over the shape body → move (4-way arrow drag cue); empty
-                // canvas → default.
                 this.domElement.style.cursor = this._withinBody(surface)
                     ? 'move'
                     : ''
@@ -878,8 +754,6 @@ export default class SelectionController {
     private _scaleMove(e: MouseEvent): void {
         if (!this.interaction || this.interaction.mode !== 'scale') return
         if (!this.currentAdapter) return
-        // Standalone text resizes by font size (anchored at its center), not by
-        // width/height like shapes.
         if (this.currentAdapter.resizeMode === 'font') {
             this._fontScaleMove(e)
             return
@@ -950,12 +824,6 @@ export default class SelectionController {
             'e-resize',
             'w-resize',
         ].includes(corner.name)
-        // Locked either by the gesture (shift on a corner) or by the shape
-        // itself (a circle, always). The edge arm is a guard, not a live path:
-        // hitTest only offers edge handles on a rectangle, so a circle carries
-        // the 4 corners alone. It matters if that ever widens, because an edge
-        // handle drives ONE dimension and the corner rule — min of both — would
-        // pick up the untouched axis's ratio of 1 and freeze the drag dead.
         if (this.currentAdapter.lockAspect || (e.shiftKey && !isEdgeOnly)) {
             const isVerticalEdge =
                 corner.name === 'n-resize' || corner.name === 's-resize'
@@ -971,9 +839,6 @@ export default class SelectionController {
         const minW = this.currentAdapter.minWidth ?? MIN_SCALE_DIMENSION
         const minH = this.currentAdapter.minHeight ?? MIN_SCALE_DIMENSION
 
-        // Shape-with-text: width is user-driven, height auto-fits the
-        // reflowed lines. The shape may be squeezed until each line holds
-        // just its widest single character (1 char/line) — but no further.
         const meta = this.currentGroup?.elementData?.metadata
         const rawText =
             meta && typeof meta.textContent === 'string' ? meta.textContent : ''
@@ -992,13 +857,9 @@ export default class SelectionController {
                 rawText,
                 font
             )
-            // Force the height to fit the wrapped lines (auto vertical
-            // adjust), preserving the drag direction's sign.
             const signH = newHeight < 0 ? -1 : 1
             newHeight =
                 signH * Math.max(Math.abs(newHeight), reflow.requiredHeight)
-            // Recompute scales so the anchored corner stays put for the
-            // (possibly taller) shape.
             scaleX = newWidth / initialWidth
             scaleY = newHeight / initialHeight
 
@@ -1072,10 +933,6 @@ export default class SelectionController {
 
         this.currentAdapter.applySize(this.currentShape, newWidth, newHeight)
         this.currentGroup.translation.set(nextX, nextY)
-        // A circle's label wraps to the inscribed box, which is a function of
-        // the width being dragged — so it has to re-flow live. Nothing else
-        // would tell the element: ElementRenderWrapper froze its props at
-        // mount, and the store write only lands on pointer-up.
         if (this.currentGroup.elementData?.componentType === 'circle') {
             buildCircleLabel(this.two, this.currentGroup, {
                 text: circleLabelOf(this.currentGroup.elementData),
@@ -1092,16 +949,10 @@ export default class SelectionController {
         this.callbacks.onTransform(this.currentGroup)
     }
 
-    // Font-size resize for standalone text: scale the size by how far the
-    // cursor moved relative to the block's center (mirrors the old per-element
-    // interactjs handle). Anchored at the center, so the block never translates.
     private _fontScaleMove(e: MouseEvent): void {
         if (!this.interaction || this.interaction.mode !== 'scale') return
         const { startSurface, initialPosition, initialFontSize, initialWidth } =
             this.interaction
-        // Text is anchored left/middle at the group origin, so its visual center
-        // is offset right by half the block width. Anchor the scaling there
-        // (mirrors the old per-element resize which keyed off the text center).
         const center = {
             x: initialPosition.x + (initialWidth ?? 0) / 2,
             y: initialPosition.y,
@@ -1114,8 +965,6 @@ export default class SelectionController {
         const curDist = Math.hypot(surface.x - center.x, surface.y - center.y)
         const factor = curDist / Math.max(startDist, 1)
         const base = initialFontSize ?? 36
-        // Clamped in screen px, not surface units — see textResize.ts. The
-        // group's own scale is its zoom-resistance counter-scale.
         const groupScale =
             typeof this.currentGroup.scale === 'number'
                 ? this.currentGroup.scale
@@ -1130,9 +979,6 @@ export default class SelectionController {
         this.callbacks.onTransform(this.currentGroup)
     }
 
-    // Resize every line node to `size` and re-stack the block at the new line
-    // height, vertically centered on the group origin. Matches newText's
-    // syncMultilineLayout so the live scene and a reload render identically.
     private _applyTextFontSize(group: ShapeLike, size: number): void {
         const nodes = getShapeTextNodes(group)
         const n = nodes.length
@@ -1142,8 +988,6 @@ export default class SelectionController {
             nd.leading = size
             nd.translation.set(0, (i - (n - 1) / 2) * lineH)
         })
-        // Re-fit the transparent gap hit area to the resized block so the text
-        // stays selectable across the whole block after a font resize.
         syncTextHitRect(this.two, group)
     }
 
@@ -1183,10 +1027,6 @@ export default class SelectionController {
                 this.currentAdapter.getLocalSize
             )(this.currentShape)
             const elementData = this.currentGroup?.elementData
-            // Dragging a corner anchors the opposite one, so a resize can move
-            // the origin. That move goes through the GEOMETRY — the x/y columns
-            // are a cache derived from it, and the factory reads the geometry
-            // back. Every type this controller resizes is a Point geometry.
             const geometryPatch = setGeometry(
                 elementData,
                 pointGeometry(
@@ -1205,8 +1045,6 @@ export default class SelectionController {
                 height: parseInt(String(height)),
                 ...geometryPatch,
             }
-            // Font resize (text): persist the new size + the multiline content
-            // so a reload restores the resized block.
             if (this.currentAdapter.resizeMode === 'font') {
                 const nodes = getShapeTextNodes(this.currentGroup)
                 const size = this.currentShape?.size

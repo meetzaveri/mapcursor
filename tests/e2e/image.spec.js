@@ -1,18 +1,3 @@
-// Image elements (local canvases only, for now).
-//
-// What these protect, roughly in the order each is likely to break:
-//
-//   1. Both ways in place the image where the user means: the drop point, or
-//      the CENTRE of the visible canvas for the toolbar tool. The toolbar case
-//      once measured #main-two-root, which has zero height, and put every
-//      picked image half off the top of the screen.
-//   2. An image is NOT zoom-resistant: it scales with the map like the ground
-//      under it (IMAGE_RESIST = 0), instead of holding its on-screen size.
-//   3. A resize sticks, and a reload brings the bitmap back from IndexedDB.
-//   4. Shift + eraser erases strokes but never the image; a plain eraser does.
-//   5. A JSON export carries the image's bytes, so the file is self-contained.
-//   6. Shared canvases don't offer the tool (images aren't hosted yet).
-
 import { test, expect } from './helpers/test.js'
 import {
     baseRow,
@@ -33,17 +18,11 @@ import {
     IMAGE_GROUP,
     PENDING_NODE,
 } from './helpers/images.js'
-// A plain constant, so it is safe to import in Node (CLAUDE.md).
 import { IMAGE_RESIST } from '../../src/constants/misc.ts'
-// Mirrors SELECTION_CHROME_ATTR in src/utils/svgExportShared.ts, which can't be
-// imported in Node: that module pulls in font assets.
 const SELECTION_CHROME_ATTR = 'data-mc-selection-chrome'
 
-// Natural size of the test bitmap: under the 480px placement cap, so at the
-// opening camera (scale 1) it lands at exactly this size.
 const IMG_W = 400
 const IMG_H = 300
-// Screen px of rounding slack.
 const TOL = 3
 
 async function placeByDrop(page) {
@@ -58,7 +37,6 @@ async function placeByDrop(page) {
     return drop
 }
 
-/** Wheel over the canvas centre until the camera scale has changed. */
 async function zoom(page, deltaY, notches) {
     const box = await getCanvasBox(page)
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -83,7 +61,6 @@ test.describe('image elements', () => {
         expect(Math.abs(r.cy - drop.clientY)).toBeLessThanOrEqual(TOL)
         expect(Math.abs(r.width - IMG_W)).toBeLessThanOrEqual(TOL)
         expect(Math.abs(r.height - IMG_H)).toBeLessThanOrEqual(TOL)
-        // The loading placeholder is gone once the bitmap painted.
         await expect(page.locator(PENDING_NODE)).toHaveCount(0)
     })
 
@@ -97,8 +74,6 @@ test.describe('image elements', () => {
         await waitForPaintedImage(page)
         const box = await getCanvasBox(page)
         const r = await imageRect(page)
-        // The bug this guards: centred on the wrapper div, whose height is 0,
-        // so the image straddled the top edge of the screen.
         expect(Math.abs(r.cx - (box.x + box.width / 2))).toBeLessThanOrEqual(TOL)
         expect(Math.abs(r.cy - (box.y + box.height / 2))).toBeLessThanOrEqual(TOL)
         expect(r.top).toBeGreaterThan(box.y)
@@ -116,7 +91,6 @@ test.describe('image elements', () => {
         expect(scale1).toBeLessThan(scale0 * 0.6)
         const zoomedOut = await imageRect(page)
 
-        // On screen ∝ scale^(1 - IMAGE_RESIST) = scale: it shrinks with the map.
         const expected = before.width * (scale1 / scale0) ** (1 - IMAGE_RESIST)
         expect(Math.abs(zoomedOut.width - expected)).toBeLessThanOrEqual(TOL)
         expect(zoomedOut.width).toBeLessThan(before.width * 0.6)
@@ -131,12 +105,6 @@ test.describe('image elements', () => {
     test('selected while zoomed far out, it still shows four corner handles', async ({
         page,
     }) => {
-        // Placed under a far-out camera, the image is huge in surface units,
-        // so the selection box's corners sit tens of thousands of units from
-        // its centre. The dots used to be one Two.Points path whose per-dot
-        // arc ends 0.001 units from its start; Chrome rasterises path data in
-        // float32, the 0.001 rounded away, and the arcs were not drawn — the
-        // box showed with no handles.
         const box = await getCanvasBox(page)
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
         for (let i = 0; i < 46; i++) {
@@ -180,7 +148,6 @@ test.describe('image elements', () => {
         await page.mouse.click(r.cx, r.cy)
         await page.waitForSelector('.shape-selected')
 
-        // The south-east handle sits at the corner plus the selection padding.
         await page.mouse.move(r.right + 5, r.bottom + 5)
         await page.mouse.down()
         await page.mouse.move(r.right + 65, r.bottom + 45, { steps: 8 })
@@ -221,7 +188,6 @@ test.describe('image elements', () => {
             await page.mouse.move(r.cx + 40, r.cy, { steps: 10 })
             await page.mouse.up()
             if (shift) await page.keyboard.up('Shift')
-            // The eraser removes 1s after marking.
             await page.waitForTimeout(1400)
         }
 

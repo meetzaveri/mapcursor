@@ -2,12 +2,6 @@ import { useEffect, useState } from 'react'
 import { resolveImageSrc } from '../../utils/imageNode'
 import { isImageAssetRef } from '../../types/asset'
 
-/**
- * Something an <img> can show for an `image` meta value: the hosted URL, or
- * a blob URL for the local asset (cached per asset in utils/assetStore.ts, so
- * a thumbnail and its lightbox share one). `null` while resolving, or when
- * the bytes are missing from this browser.
- */
 export function useImageSrc(value: unknown): {
     src: string | null
     missing: boolean

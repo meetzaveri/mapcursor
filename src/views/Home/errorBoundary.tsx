@@ -21,9 +21,7 @@ class ErrorBoundaryHomePageView extends React.Component<Props, State> {
     override componentDidCatch(
         _error: Error,
         _errorInfo: React.ErrorInfo
-    ): void {
-        // sentry.post()
-    }
+    ): void {}
 
     override render(): ReactNode {
         if (this.state.hasError) {

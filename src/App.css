@@ -2,89 +2,50 @@
 
 :root {
     --font-ui: 'Inter', system-ui, sans-serif;
-    /* The DISPLAY role, deliberately still its own token even though it now
-       resolves to the same family as --font-ui. Headings stay tagged as
-       headings, so reintroducing a contrasting display face is a one-line
-       change here rather than a hunt through every h1/h2. */
     --font-display: 'Inter', system-ui, sans-serif;
-    /* The canvas ROLE font — what newly drawn text gets. Kept in step with
-       DEFAULT_TEXT_FONT_FAMILY in src/constants/misc.ts. */
     --font-sketch: 'Avenir', system-ui, sans-serif;
     --font-mono: 'Geist Mono', monospace;
-    /* Legacy canvas family: no longer offered in the picker, still loaded
-       because records authored before the Avenir/Frutiger swap carry it. */
     --font-caveat-brush: 'Caveat Brush', cursive;
 
-    /* Graphite & Indigo palette — stored as space-separated RGB *channels* so
-       the Tailwind tokens `rgb(var(--x) / <alpha-value>)` keep opacity
-       modifiers (e.g. bg-accent/10) working. Raw-CSS usages wrap them in rgb().
-
-       The surfaces are cool and near-achromatic on purpose: the product's
-       substrate is a CARTO Positron basemap, and warm chrome fought it. The
-       accent is indigo because on a basemap every other hue is already spoken
-       for — blue is water, green is parks, tan is land and buildings,
-       red-orange is roads and POI. Violet-indigo is the one region of the wheel
-       that is cartographically vacant, so it can only read as "interface".
-
-       --color-accent is NOT a new colour: it is HANDLE_STROKE from
-       constants/misc.ts, the selection grab-dot. The UI chrome and the
-       selection chrome finally name the same thing. */
-    --color-canvas: 250 250 252; /* #fafafc */
-    --color-sidebar: 243 244 247; /* #f3f4f7 */
-    --color-card: 255 255 255; /* #ffffff */
-    --color-topbar: 20 22 28; /* #14161c */
-    --color-topbar-hover: 37 40 51; /* #252833 */
-    --color-accent: 105 101 219; /* #6965db — = HANDLE_STROKE */
-    --color-accent-dark: 75 71 184; /* #4b47b8 — 7.3:1 on white, carries text */
+    --color-canvas: 250 250 252;
+    --color-sidebar: 243 244 247;
+    --color-card: 255 255 255;
+    --color-topbar: 20 22 28;
+    --color-topbar-hover: 37 40 51;
+    --color-accent: 105 101 219;
+    --color-accent-dark: 75 71 184;
     --color-accent-glow: rgba(105, 101, 219, 0.2);
-    --color-ink: 20 22 28; /* #14161c */
-    --color-ink-mid: 74 80 97; /* #4a5061 */
-    --color-ink-muted: 107 113 128; /* #6b7180 — 4.8:1 on card */
-    --color-border-panel: 228 230 236; /* #e4e6ec */
-    --color-border-card: 216 219 227; /* #d8dbe3 */
+    --color-ink: 20 22 28;
+    --color-ink-mid: 74 80 97;
+    --color-ink-muted: 107 113 128;
+    --color-border-panel: 228 230 236;
+    --color-border-card: 216 219 227;
 
-    /* Hint pills — the product speaking to the user (tool guidance, one-shot
-       tips). Deliberately NOT the tooltip's inverted ink (`bg-ink`): a tooltip
-       labels the thing under the cursor, a hint is the system talking, and the
-       two were indistinguishable. Indigo is the accent already used for
-       "the interface is telling you something" (active tools, focus rings).
-       accent-dark rather than accent, because white text needs 7.3:1 here —
-       these pills float over an arbitrary basemap. */
-    --color-hint: 75 71 184; /* #4b47b8 — = --color-accent-dark */
+    --color-hint: 75 71 184;
     --color-hint-fg: 255 255 255;
 
-    /* dot-grid dot color — overridden in dark so the grid stays visible */
-    --color-dot-grid: 216 219 227; /* #d8dbe3 */
+    --color-dot-grid: 216 219 227;
 }
 
-/* Dark theme: a cool-graphite derivation, applied via a `dark` class on <html>
-   (set by useTheme + the pre-paint script in index.html). Surfaces go graphite,
-   ink flips to light-cool, and the accent LIGHTENS — #6965db does not clear
-   contrast on a #1b1f29 card. Which means "accent-dark" here denotes the
-   higher-contrast accent, and on a dark ground that is the lighter one. The
-   warm theme dodged this by shipping one amber in both themes.
-   Values are RGB channels to match :root above. */
 .dark {
-    --color-canvas: 15 17 21; /* #0f1115 */
-    --color-sidebar: 21 24 33; /* #151821 */
-    --color-card: 27 31 41; /* #1b1f29 */
-    --color-topbar: 11 13 17; /* #0b0d11 */
-    --color-topbar-hover: 37 40 51; /* #252833 */
-    --color-accent: 139 135 232; /* #8b87e8 */
-    --color-accent-dark: 168 165 240; /* #a8a5f0 */
+    --color-canvas: 15 17 21;
+    --color-sidebar: 21 24 33;
+    --color-card: 27 31 41;
+    --color-topbar: 11 13 17;
+    --color-topbar-hover: 37 40 51;
+    --color-accent: 139 135 232;
+    --color-accent-dark: 168 165 240;
     --color-accent-glow: rgba(139, 135, 232, 0.28);
-    --color-ink: 232 234 240; /* #e8eaf0 */
-    --color-ink-mid: 168 174 191; /* #a8aebf */
-    --color-ink-muted: 123 130 150; /* #7b8296 */
-    --color-border-panel: 39 43 54; /* #272b36 */
-    --color-border-card: 51 56 70; /* #333846 */
+    --color-ink: 232 234 240;
+    --color-ink-mid: 168 174 191;
+    --color-ink-muted: 123 130 150;
+    --color-border-panel: 39 43 54;
+    --color-border-card: 51 56 70;
 
-    /* A saturated indigo fill does not survive a graphite ground, so the hint
-       drops to a tinted dark surface carrying the lighter accent (6.4:1). */
-    --color-hint: 42 39 64; /* #2a2740 */
-    --color-hint-fg: 168 165 240; /* #a8a5f0 — = --color-accent-dark */
+    --color-hint: 42 39 64;
+    --color-hint-fg: 168 165 240;
 
-    --color-dot-grid: 51 56 70; /* #333846 */
+    --color-dot-grid: 51 56 70;
 }
 
 .caveat-brush-regular {
@@ -97,14 +58,11 @@ body {
     margin: 0;
     font-family: var(--font-ui);
 
-    /* font-weight: 700; */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
 #main-two-root svg {
-    /* background-image: url('./assets/ooorganize.svg') !important; */
-    /* background-repeat: no-repeat; */
 }
 
 code {
@@ -115,24 +73,16 @@ code {
 .App {
     text-align: center;
 }
-/* Backdrop slot for the active base provider (src/bases). Sits behind
-   #main-two-root (-9) so canvas ink always draws over it, and never takes
-   pointer events — every interaction belongs to the canvas above. Empty and
-   invisible on the board base, whose backdrop is the svg background below. */
 #mc-base-root {
     position: fixed;
     inset: 0;
     z-index: -10;
     pointer-events: none;
 }
-/* MapLibre's container, created by the map base inside the slot above. It fills
-   the slot; the slot's fixed/inset positioning does the rest. */
 #mc-map-bg {
     width: 100%;
     height: 100%;
 }
-/* The attribution link must stay clickable (OSM's terms require the credit be
-   reachable), so it opts back in to pointer events the slot turned off. */
 #mc-map-bg .maplibregl-ctrl-attrib {
     pointer-events: auto;
 }
@@ -143,43 +93,15 @@ code {
     background-color: rgb(var(--color-canvas));
     z-index: -1;
 }
-/* A base that paints its own backdrop (e.g. the map) needs the parchment out of
-   the way, otherwise it renders over the backdrop. mapBackdrop toggles this
-   class on <body>. */
 body.mc-opaque-backdrop #main-two-root svg {
     background-color: transparent;
 }
 
-/* #floating-toolbar {
-//   position: absolute;
-//   width: 340px;
-//   height: 40px;
-//   background: #091e42;
-//   visibility: hidden;
-//   border-radius: 10px;
-//   z-index: 99999;
-//   cursor: pointer;
-//   outline: none;
-// }
-*/
-
 #selector-rect {
     z-index: -1;
 }
-/* 
-#rsz-rect {
-    position: absolute;
-    background: transparent;
-    width: 100px;
-    height: 100px;
-    border: 1px solid #000;
-    opacity: 0;
-} */
 
-text
-/*
- g
- path */ {
+text {
     cursor: pointer !important;
 }
 
@@ -195,7 +117,6 @@ button:focus {
     background: transparent;
     border: none;
     color: #000;
-    /* font-family: 'Noto Sans JP'; */
     font-weight: 300;
     font-size: 16px;
     resize: none;

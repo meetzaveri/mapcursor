@@ -8,7 +8,6 @@ on:
 jobs:
     draft-release:
         runs-on: ubuntu-latest
-        # Only run when a PR merge commit is pushed (not direct pushes)
         if: github.event.head_commit.message != '' && contains(github.event.head_commit.message, 'Merge pull request')
 
         permissions:
@@ -42,17 +41,14 @@ jobs:
               if: steps.check_release.outputs.exists == 'false'
               id: notes
               run: |
-                  # Find the previous release tag
                   PREV_TAG=$(git tag --sort=-v:refname | head -n 1)
 
                   if [ -z "$PREV_TAG" ]; then
-                    # No previous tag, use all commits
                     COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges HEAD)
                   else
                     COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges "${PREV_TAG}..HEAD")
                   fi
 
-                  # Write to a temp file to preserve newlines
                   {
                     echo "## What's Changed"
                     echo ""

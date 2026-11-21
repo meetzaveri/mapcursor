@@ -1,17 +1,3 @@
-// "What does this Area mean?" — asked once, when a preset is created, so it
-// never has to be reconstructed from memory later. The question names the mark
-// being captioned rather than asking about a colour in the abstract, because
-// the answer is about the thing on the map, not about the paint.
-//
-// A wizard rather than one form because the pages are not equally relevant: the
-// TYPE picked on page one decides which style pages exist at all (a point has
-// no stroke, so it has no stroke page). Asking everything at once would mean
-// showing controls that do nothing for the chosen mark.
-//
-// Every page carries the live preview. The preview is the actual point of the
-// feature — a legend entry is a promise about how something looks — so it is
-// never more than one glance away while the styling is being chosen.
-
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 
@@ -44,11 +30,6 @@ import type {
 } from '../../types/legend'
 import type { LegendPresetInput } from '../../hooks/useLegendPresets'
 
-/**
- * Seed styles per type, taken from what the canvas already creates that mark
- * with (ELEMENT_DEFAULTS / CIRCLE_DEFAULTS). A wizard that opened on an
- * arbitrary colour would make the first page feel like a correction.
- */
 const SEED_STYLE: Record<LegendPresetType, LegendPresetStyle> = {
     point: { fill: '#FF5630' },
     area: {
@@ -59,19 +40,9 @@ const SEED_STYLE: Record<LegendPresetType, LegendPresetStyle> = {
         opacity: AREA_DEFAULT_OPACITY,
     },
     route: { stroke: '#3B82F6', linewidth: 3, strokeType: null },
-    // A radius map is borderless, so its preset is a colour and nothing else —
-    // it skips the stroke page entirely (see PRESET_STYLE_KEYS).
     circle: { fill: '#A32D2D' },
 }
 
-/**
- * An example of the KIND of thing this type gets used to mark, per type.
- *
- * Deliberately not one generic example: the four marks answer different
- * questions on a map — an area is a region, a route is a corridor, a point is
- * a place, a radius map is a catchment — and a placeholder that shows the wrong
- * shape of answer teaches the wrong thing about the tool.
- */
 const NAME_PLACEHOLDER: Record<LegendPresetType, string> = {
     area: 'e.g. Residential cluster',
     route: 'e.g. High traffic corridor',
@@ -81,11 +52,6 @@ const NAME_PLACEHOLDER: Record<LegendPresetType, string> = {
 
 type Page = 'type' | 'colour' | 'fill' | 'stroke' | 'review'
 
-/**
- * Which pages a type actually has. Derived from PRESET_STYLE_KEYS rather than
- * listed, so adding a key to a type adds its page automatically and the wizard
- * can never offer a control the apply path would ignore.
- */
 function pagesFor(type: LegendPresetType): Page[] {
     const keys = PRESET_STYLE_KEYS[type]
     const pages: Page[] = ['type']
@@ -100,7 +66,6 @@ function pagesFor(type: LegendPresetType): Page[] {
     return pages
 }
 
-/** The one colour key this type's preset carries. */
 function colourKeyFor(type: LegendPresetType): 'fill' | 'stroke' {
     return PRESET_STYLE_KEYS[type].includes('fill') ? 'fill' : 'stroke'
 }
@@ -109,7 +74,6 @@ export interface LegendPresetWizardProps {
     open: boolean
     onClose: () => void
     onSave: (input: LegendPresetInput) => void
-    /** Present when editing rather than creating. */
     editing?: LegendPreset | null
 }
 
@@ -125,8 +89,6 @@ export default function LegendPresetWizard({
     const [pageIndex, setPageIndex] = useState(0)
     const [colourExpanded, setColourExpanded] = useState(true)
 
-    // Reset on every open, so a cancelled wizard never leaks into the next one.
-    // Editing seeds from the preset; creating seeds from the type's defaults.
     useEffect(() => {
         if (!open) return
         if (editing) {
@@ -146,8 +108,6 @@ export default function LegendPresetWizard({
     const page = pages[pageIndex] ?? 'type'
     const colourKey = colourKeyFor(elementType)
 
-    // The preview needs a whole preset; mid-wizard there isn't one yet, so it
-    // gets a throwaway carrying exactly the fields it reads.
     const previewPreset: LegendPreset = {
         id: 'preview',
         baseId: null,
@@ -159,9 +119,6 @@ export default function LegendPresetWizard({
 
     const handleTypeChange = (next: LegendPresetType): void => {
         setElementType(next)
-        // Carry nothing across: the seed for the new type is what that mark is
-        // normally drawn with, and a route's 3px width is not an area's —
-        // switching to a radius map drops the width keys altogether.
         setStyle(SEED_STYLE[next])
     }
 
@@ -196,8 +153,6 @@ export default function LegendPresetWizard({
                     />
                 </div>
 
-                {/* Step indicator. Counts only the pages this TYPE has, so a
-                    point never shows a step it will skip. */}
                 <div
                     className="flex items-center gap-1 mb-4"
                     aria-hidden="true"
@@ -280,13 +235,6 @@ export default function LegendPresetWizard({
                     <ColorPicker
                         title="Colour"
                         currentColor={style[colourKey]}
-                        // The SATURATED row, not the pastel fill row — the same
-                        // call `pointFillEssentialShades` documents. A legend
-                        // colour's whole job is to be told apart from the other
-                        // legend colours at a glance, over CARTO Positron's
-                        // pale greys; a pastel is right behind text and wrong
-                        // as a mark. Transparent goes too: a caption for an
-                        // invisible mark is not a useful thing to offer.
                         essentialColors={essentialShades}
                         isExpanded={colourExpanded}
                         onToggleExpand={(): void =>
@@ -305,21 +253,14 @@ export default function LegendPresetWizard({
                             onChange={(v): void =>
                                 setStyle((s) => ({
                                     ...s,
-                                    // Solid is stored as null, as on the
-                                    // element itself.
                                     fillType: areaFillTypeToDb(v),
                                 }))
                             }
                         />
-                        {/* The fill's opacity, as in the properties toolbar:
-                            the border stays at full strength. An older preset
-                            with none reads as the default it was drawn at. */}
                         <div className="pt-3 px-2">
                             <SectionLabel>Opacity</SectionLabel>
                             <OpacitySlider
                                 currentOpacity={areaOpacityOf(style)}
-                                // Both update the draft, so the preview in
-                                // the corner follows the knob as it moves.
                                 handleOnDrag={(arr): void =>
                                     setStyle((s) => ({
                                         ...s,
@@ -350,8 +291,6 @@ export default function LegendPresetWizard({
                             onChange={(v): void =>
                                 setStyle((s) => ({
                                     ...s,
-                                    // Defaults store null for 'solid', matching
-                                    // what primary.tsx feeds new shapes.
                                     strokeType: v === 'solid' ? null : v,
                                 }))
                             }

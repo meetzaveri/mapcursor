@@ -34,7 +34,6 @@ export function createApolloClient(): ApolloClient<object> {
         headers: { ...headers, ...bearer() },
     }))
 
-    // A tab left open past the token's lifetime: refresh once, then retry.
     const retryOnAuthError = onError(
         ({ graphQLErrors, networkError, operation, forward }) => {
             const authFailed =
@@ -72,7 +71,6 @@ export function createApolloClient(): ApolloClient<object> {
             )
         },
         wsLink,
-        // retry sits before authLink so the retried request reads the new token
         from([retryOnAuthError, authLink, httpLink])
     )
 

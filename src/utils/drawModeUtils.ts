@@ -44,7 +44,6 @@ export function isPanMode(): boolean {
     return localStorage.getItem(PAN_MODE_KEY) === 'true'
 }
 
-// Returns true when the user is in normal select/pan mode (no draw tool active).
 export function isSelectPanMode(isPencilMode: boolean): boolean {
     return (
         !isPencilMode &&

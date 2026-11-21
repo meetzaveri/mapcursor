@@ -15,40 +15,17 @@ export interface BaseViewport {
 }
 
 export interface ParsedImport {
-    /** Only the records that passed validation. */
     components: ComponentStore
-    /** Restored on "Open as new canvas"; null when the file carried none. */
     viewport: BaseViewport | null
-    /** Total records seen in the file (valid + skipped). */
     total: number
-    /** Records dropped for being malformed / unknown. */
     skipped: number
-    /**
-     * The file's legend, or an empty list. Validated the same way records are —
-     * a preset whose `elementType` is not a mark this app can draw captions
-     * nothing, so it is dropped rather than shown as a dead legend row.
-     */
     legendPresets: LegendPreset[]
-    /**
-     * The anchor the file's records were measured against, or null when the
-     * file carries none. "Open as new canvas" adopts it; without it the new
-     * local base had no anchor at all, and the next load drew the imported
-     * canvas over the browser's timezone city.
-     */
     mapAnchor: MapAnchor | null
-    /** The file's meta properties (2.1+); empty when it has none. */
     metaProperties: MetaPropertySet
-    /** Image bytes (assetId → data URL) from a 2.1+ export; {} when absent. */
     assets: Record<string, string>
-    /** Image records left out because the target is a shared base. */
     excludedImages: number
 }
 
-/**
- * Open a native file picker and resolve with the chosen file's text — or null
- * if the user cancels. Accepts both the branded export (`.json`) and the raw
- * draft backup the load-side rescue produces (same `components` shape).
- */
 export function openBaseFilePicker(): Promise<string | null> {
     return new Promise((resolve) => {
         const input = document.createElement('input')
@@ -76,10 +53,6 @@ function isValidRecord(value: unknown): value is ComponentRecord {
         typeof r.componentType === 'string' &&
         r.componentType.length > 0 &&
         r.componentType !== GROUP_COMPONENT &&
-        // Geometry, not `x`/`y`, is what makes a record renderable: the columns
-        // are only a cache of it. Checking it here is also what stops a file
-        // written before the geometry envelope from importing as a set of rows
-        // that mount as nothing — they are counted in `skipped` instead.
         readGeometry(r) !== null
     )
 }
@@ -131,15 +104,9 @@ function isValidViewport(value: unknown): value is BaseViewport {
     )
 }
 
-/**
- * Parse + validate an imported base file. Mirrors `persistBase`'s defensive
- * skip: records missing a `componentType` (or geometry) are dropped and
- * counted rather than failing the whole import. Throws only when the file
- * isn't valid JSON or has no `components` object at all.
- */
 export function parseImportedBase(text: string): ParsedImport {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = JSON.parse(text) as any // throws on malformed JSON
+    const raw = JSON.parse(text) as any
     const rawComponents = raw?.components
     if (!rawComponents || typeof rawComponents !== 'object') {
         throw new Error('File does not contain a canvas (no components).')
@@ -161,8 +128,6 @@ export function parseImportedBase(text: string): ParsedImport {
         viewport: isValidViewport(raw?.viewport) ? raw.viewport : null,
         total: entries.length,
         skipped,
-        // Absent in a pre-legend file, which is not an error: those canvases
-        // simply have no legend, exactly as they did before the feature.
         legendPresets: parseLegendPresets(raw?.legendPresets),
         mapAnchor: isMapAnchor(raw?.mapAnchor) ? raw.mapAnchor : null,
         metaProperties: normalizeMetaSet(raw?.metaProperties),
@@ -171,11 +136,6 @@ export function parseImportedBase(text: string): ParsedImport {
     }
 }
 
-/**
- * Drop image records (and their bytes) from a parsed import. Shared bases
- * don't support images yet: they're never persisted, so an imported image
- * would render once and vanish on refresh.
- */
 export function excludeImages(parsed: ParsedImport): ParsedImport {
     const components: ComponentStore = {}
     let excluded = 0

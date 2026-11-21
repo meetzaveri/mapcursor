@@ -7,12 +7,9 @@ import { MIXED } from '../../utils/groupInspect'
 const STORAGE_KEY = 'mapcursor_saved_colors'
 const MAX_SAVED = 8
 
-// Checkerboard shown behind a transparent swatch so it reads as "no paint"
-// instead of rendering invisibly.
 const TRANSPARENT_SWATCH_BG =
     'repeating-conic-gradient(rgb(var(--color-border-card)) 0% 25%, rgb(var(--color-canvas)) 0% 50%) 0 0 / 8px 8px'
 
-// True for any rgba()/hsla() color with alpha 0.
 const isTransparentColor = (color?: string | null): boolean => {
     if (!color) return false
     const inner = /(?:rgba|hsla)\(([^)]+)\)/i.exec(color)?.[1]
@@ -21,8 +18,6 @@ const isTransparentColor = (color?: string | null): boolean => {
     return parts.length === 4 && parseFloat(parts[3] ?? '1') === 0
 }
 
-// Background style for a swatch/preview: checkerboard for transparent,
-// the color itself otherwise, falling back to a transparent box.
 const swatchBackground = (color?: string | null): string =>
     isTransparentColor(color) ? TRANSPARENT_SWATCH_BG : (color ?? 'transparent')
 
@@ -39,7 +34,6 @@ const persistSavedColors = (colors: string[]): void => {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(colors))
     } catch {
-        /* noop */
     }
 }
 
@@ -49,8 +43,6 @@ export interface ColorPickerProps {
     currentColor?: string
     isExpanded?: boolean
     onToggleExpand?: () => void
-    // Quick-access swatch row. Defaults to the shared essentialShades; the
-    // Fill picker passes fillEssentialShades to surface a transparent option.
     essentialColors?: string[]
 }
 
@@ -73,7 +65,6 @@ const ColorPicker = ({
             : (currentColor?.replace(/^#/, '') ?? '')
     )
 
-    // Support both controlled (isExpanded prop) and uncontrolled (local state) modes.
     const controlled = isExpanded !== undefined
     const expanded = controlled ? isExpanded : localExpanded
     const handleToggle =

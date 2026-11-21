@@ -38,13 +38,9 @@ const ZoomControls = (): ReactElement => {
 
     const zoom = (direction: 1 | -1): void => {
         if (!zui || !twoJSInstance) return
-        // One whole map zoom level per click (MAP_ZOOM_STEP).
         const delta = direction * (zoomStep || 1)
         zui.zui.zoomBy(delta, window.innerWidth / 2, window.innerHeight / 2)
         twoJSInstance.update()
-        // This zoom happens outside addZUI's event handlers, so nothing else
-        // will announce it — without this the map backdrop stays frozen at the
-        // previous camera.
         zui.notifyCameraChange?.()
         window.dispatchEvent(
             new CustomEvent('zoomChanged', {
@@ -53,10 +49,6 @@ const ZoomControls = (): ReactElement => {
         )
     }
 
-    // A percentage of an arbitrary surface is meaningless on a map — and once
-    // the range reaches whole-world zoom it reads "0%". Show the map zoom level
-    // instead, which is the number the camera is actually expressed in
-    // (mapZoom = anchor.zoom + log2(scale)).
     const mapAnchor = readBackdropConfig().mapAnchor
     const label = mapAnchor
         ? `z${Math.round(mapAnchor.zoom + Math.log2(scale))}`
@@ -72,8 +64,6 @@ const ZoomControls = (): ReactElement => {
                 className="w-7 h-7 flex items-center justify-center rounded text-ink-muted hover:bg-sidebar hover:text-ink transition-colors duration-150"
                 title="Zoom out"
             >
-                {/* stroke/color="currentColor" cancels the SVG's hardcoded
-                    #000 so it follows the theme-aware text color. */}
                 <ZoomOutIcon
                     className="w-5 h-5"
                     stroke="currentColor"
@@ -96,7 +86,6 @@ const ZoomControls = (): ReactElement => {
                     aria-label="Zoom in"
                 />
             </button>
-            {/* Locate me only makes sense over a map. */}
             {mapAnchor && (
                 <>
                     <span className="w-px h-5 bg-border-panel mx-0.5" />

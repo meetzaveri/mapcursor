@@ -8,24 +8,7 @@ import {
     waitForPaintedImage,
 } from './helpers/images.js'
 
-/**
- * Photo metadata is stripped before an image reaches storage. Ported from
- * craftbase. On a MAP this is not a nicety: a phone photo's EXIF carries the
- * GPS fix of where it was taken, which is exactly the kind of data a shared
- * canvas would leak. Every image path (canvas drop, toolbar, and the `image`
- * meta value) goes through storeImageFile, so one spec covers them all.
- *
- * Each test builds a real image in the page (canvas-encoded JPEG/PNG/WebP, or
- * a hand-built GIF), injects metadata blocks carrying a "SECRET" marker
- * string, drops it on the canvas, and then inspects the bytes that landed in
- * IndexedDB. Small images take the no-re-encode path, so the stored file must
- * keep its format and decode to exactly the same pixels, with metadata gone.
- */
 
-
-// Builds the test file in the page. `kind` picks the format; returns
-// { file: base64, clean: base64 | null } where `clean` is the expected stored
-// bytes when stripping must be lossless.
 async function buildImage(page, kind, opts = {}) {
     return page.evaluate(
         async ({ kind, opts }) => {
@@ -74,8 +57,6 @@ async function buildImage(page, kind, opts = {}) {
                     c = crcTable[(c ^ byte) & 255] ^ (c >>> 8)
                 return (c ^ 0xffffffff) >>> 0
             }
-            // Big-endian TIFF with one IFD0 entry: Orientation, plus a GPS
-            // marker string after the IFD (enough to prove the block is gone).
             const exifTiff = (orientation) =>
                 cat(
                     enc.encode('MM'),
@@ -134,7 +115,6 @@ async function buildImage(page, kind, opts = {}) {
                     iptc,
                     com,
                     clean.subarray(2),
-                    // Bytes after EOI, like a phone's appended depth map.
                     enc.encode('TRAILER-SECRET')
                 )
                 return { file: b64(file), clean: b64(clean) }
@@ -162,9 +142,6 @@ async function buildImage(page, kind, opts = {}) {
 
             if (kind === 'webp') {
                 const encoded = await canvasBytes(300, 200, 'image/webp')
-                // Chrome's canvas may emit the simple format (bare VP8) or
-                // the extended one (VP8X header first). Reuse its VP8X when
-                // present, else add one, so EXIF and XMP chunks are legal.
                 const u24 = (n) =>
                     new Uint8Array([n & 255, (n >> 8) & 255, (n >> 16) & 255])
                 const hasVp8x =
@@ -214,7 +191,6 @@ async function buildImage(page, kind, opts = {}) {
             }
 
             if (kind === 'gif') {
-                // 1x1 GIF89a with a looping NETSCAPE block (must survive).
                 const head = new Uint8Array([
                     0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, 0x80, 0, 0,
                     0xff, 0x00, 0x00, 0, 0, 0,
@@ -262,12 +238,9 @@ async function dropFile(page, base64, mimeType) {
         mimeType,
         name: 'photo',
     })
-    // The bitmap must actually paint: proves the stripped file still decodes.
     await waitForPaintedImage(page)
 }
 
-// Stored record plus its asset bytes (base64) and MIME type from IndexedDB.
-// The record's ImageAssetRef lives at metadata.properties.image.
 async function readStored(page) {
     await waitForDraftImages(page)
     const [record] = await draftImages(page)
@@ -278,8 +251,6 @@ async function readStored(page) {
 
 const latin1 = (base64) => Buffer.from(base64, 'base64').toString('latin1')
 
-// Our injected markers, plus the signatures of metadata blocks any encoder
-// might write (Safari's canvas adds EXIF to JPEG and PNG output).
 function expectNoMetadata(base64) {
     const text = latin1(base64)
     expect(text).not.toMatch(/SECRET/)
@@ -291,9 +262,6 @@ function expectNoMetadata(base64) {
     expect(text).not.toContain('ns.adobe.com/xap')
 }
 
-// Stripping must not touch pixels. Compare decoded pixels rather than bytes:
-// the reference is the browser's own canvas output, which in Safari carries
-// metadata of its own that the stripper rightly removes.
 async function expectSamePixels(page, storedBase64, referenceBase64, type) {
     const same = await page.evaluate(
         async ({ a, b, type }) => {
@@ -340,7 +308,6 @@ test.describe('Image metadata is stripped on add', () => {
     test('JPEG with a rotation tag is re-encoded upright, without metadata', async ({
         page,
     }) => {
-        // Orientation 6 = rotate 90° clockwise, so 300x200 displays as 200x300.
         const { file } = await buildImage(page, 'jpeg', { orientation: 6 })
 
         await dropFile(page, file, 'image/jpeg')
@@ -349,8 +316,6 @@ test.describe('Image metadata is stripped on add', () => {
         expectNoMetadata(asset.base64)
         expect(ref.naturalWidth).toBe(200)
         expect(ref.naturalHeight).toBe(300)
-        // Portrait on the canvas too (the local size is fitted to the screen
-        // cap, so compare the aspect, not the pixels).
         expect(record.height).toBeGreaterThan(record.width)
     })
 
@@ -371,8 +336,6 @@ test.describe('Image metadata is stripped on add', () => {
         page,
         browserName,
     }) => {
-        // WebKit's canvas can't encode WebP (it silently returns PNG), so
-        // the fixture can't be built there.
         test.skip(browserName === 'webkit', 'no WebP encoder in WebKit canvas')
         const { file, clean } = await buildImage(page, 'webp')
 
@@ -394,8 +357,6 @@ test.describe('Image metadata is stripped on add', () => {
 
         expectNoMetadata(asset.base64)
         expect(latin1(asset.base64)).toMatch(/NETSCAPE2\.0/)
-        // Hand-built, so the clean reference has no metadata in any
-        // browser and the bytes must match exactly.
         expect(asset.base64).toBe(clean)
     })
 })

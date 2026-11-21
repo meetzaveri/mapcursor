@@ -1,21 +1,3 @@
-// The geometry envelope's own arithmetic.
-//
-// Every element record carries `metadata: { geometry, properties }`, and the
-// two rules that make it work are asserted here rather than through the UI:
-//
-//   1. `geometry` is the single source of truth for position; `x`/`y` are a
-//      cache every writer derives from it, so the two cannot come apart. This
-//      is the invariant that replaced the old "move the origin, leave the
-//      vertices, watch the shape snap back on reload" bug class.
-//   2. A polygon's ring is STORED closed (RFC 7946) but RENDERED open, because
-//      `factory/area.ts` builds its path with `closed = true` and closes the
-//      shape itself.
-//
-// These are pure functions, so they are asserted in NODE — imported at the top
-// of the spec, never through `page.evaluate`. Serving raw TypeScript is a Vite
-// dev-server behaviour; against the production bundle CI runs on, an
-// `import('/src/**.ts')` inside the page 404s.
-
 import { test, expect } from './helpers/test.js'
 import {
     geometryCenter,
@@ -53,8 +35,6 @@ test.describe('geometry envelope', () => {
             x: 820,
             y: -410,
         })
-        // For a multi-point geometry the origin is the FIRST coordinate — the
-        // point the factory rebuilds the path relative to.
         expect(geometryFields(lineGeometry(LINE))).toMatchObject({
             x: 10,
             y: 20,
@@ -68,16 +48,10 @@ test.describe('geometry envelope', () => {
     test('stores a polygon ring closed but renders it open', () => {
         const geometry = polygonGeometry(SQUARE)
         const ring = geometry.coordinates[0]
-        // Closed on the way in, per RFC 7946 — 4 corners become 5 positions.
         expect(ring).toHaveLength(5)
         expect(ring[0]).toEqual(ring[4])
-        // Open on the way out: a duplicate final vertex on a `closed = true`
-        // Two.Path draws a zero-length segment and stacks a grab handle on top
-        // of the first one.
         expect(geometryPositions(geometry)).toHaveLength(4)
 
-        // And closing is idempotent — passing an already-closed ring back in
-        // must not grow it, or every round-trip would add a position.
         const reclosed = polygonGeometry(ring)
         expect(reclosed.coordinates[0]).toHaveLength(5)
     })
@@ -88,10 +62,6 @@ test.describe('geometry envelope', () => {
 
         expect(moved.x).toBe(record.x + 120)
         expect(moved.y).toBe(record.y + 90)
-        // The cache still equals the geometry's own origin. Persisting the new
-        // origin ALONE used to be worse than persisting nothing: the factory
-        // rebuilt the path against an origin its coordinates disagreed with and
-        // the shape landed back where the drag started.
         expect(geometryOrigin(moved)).toEqual({ x: moved.x, y: moved.y })
 
         const before = geometryPositions(readGeometry(record))
@@ -111,9 +81,6 @@ test.describe('geometry envelope', () => {
     })
 
     test('a translate leaves per-point widths alone and length-matched', () => {
-        // Pencil keeps its pressure widths in `properties.widths`, parallel to
-        // the coordinates. Every geometry operation is length-preserving, which
-        // is exactly what stops the two arrays from desyncing.
         const widths = [1, 4, 2]
         const record = geometryFields(lineGeometry(LINE), { widths })
         const moved = translateGeometry(record, -30, 15)
@@ -134,9 +101,6 @@ test.describe('geometry envelope', () => {
     })
 
     test('centre is the bounding box, not the origin', () => {
-        // Paste lands the clone's MIDDLE under the cursor. The origin will not
-        // do: for a route it is wherever the first click happened to fall, so
-        // pasting by it drops the shape a corner's-worth from the pointer.
         const record = geometryFields(lineGeometry(LINE))
         expect(geometryCenter(record)).toEqual({ x: 60, y: 55 })
         expect(geometryOrigin(record)).toEqual({ x: 10, y: 20 })
@@ -154,9 +118,6 @@ test.describe('geometry envelope', () => {
             textFontSize: 32,
         })
 
-        // Undo needs the other one: a revert is as often the removal of a key
-        // as a change to one, so merging the reverted bag over the current one
-        // would leave a newly-added key standing.
         const replaced = replaceProperties(record, { label: 'The Old Peacock' })
         expect(readProperties(replaced)).toEqual({
             label: 'The Old Peacock',
@@ -174,8 +135,6 @@ test.describe('geometry envelope', () => {
     })
 
     test('properties are copied, never aliased', () => {
-        // `setGeometry` feeds the SOURCE record's bag through, so sharing the
-        // reference would tie a pasted clone to the original it came from.
         const record = geometryFields(pointGeometry(0, 0), { label: 'a' })
         const clone = translateGeometry(record, 10, 10)
         clone.metadata.properties.label = 'b'
@@ -190,8 +149,6 @@ test.describe('geometry envelope', () => {
     })
 
     test('a malformed record yields null rather than a guessed position', () => {
-        // There is no legacy shape to fall through to, so callers skip such a
-        // record instead of inventing coordinates for it.
         for (const bad of [
             null,
             {},
@@ -209,9 +166,6 @@ test.describe('geometry envelope', () => {
     })
 
     test('an unrounded translate keeps its fractional part', () => {
-        // The group overlay remaps members unrounded: pencil's Chaikin
-        // smoothing reads the fractional part, and rounding squares the stroke
-        // off visibly.
         const record = geometryFields(lineGeometry([{ x: 0, y: 0 }]))
         expect(
             geometryPositions(

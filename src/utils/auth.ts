@@ -14,7 +14,6 @@ function saveSession({ token, userId }: Session): void {
     localStorage.setItem(USER_KEY, userId)
 }
 
-// status 0 = network error (backend unreachable)
 async function post(
     path: string,
     body: object,
@@ -38,8 +37,6 @@ async function post(
 
 const isTransient = (status: number): boolean => status === 0 || status >= 500
 
-// Only 400/401/403/404 may fall through to registering a new user. A network
-// error or 5xx must not, or a backend outage would replace returning users.
 async function runSession(): Promise<string> {
     const token = getToken()
     const userId = localStorage.getItem(USER_KEY)

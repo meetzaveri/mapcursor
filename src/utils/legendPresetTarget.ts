@@ -5,22 +5,9 @@ import { readArmedPreset } from './armedLegendPreset'
 export interface LegendPresetTarget {
     elementType: LegendPresetType
     boundId: string | null
-    /** True when there is no element yet — a pick arms instead of applying. */
     isArmed: boolean
 }
 
-/**
- * What a legend pick is currently about: a mark already on the canvas, or a
- * tool armed to draw one.
- *
- * A selection outranks an armed tool — if something is selected, the pick is
- * about that. The armed-tool branch falls back to `currentElement` exactly as
- * `resolveSetKey` already does for a pre-armed draw tool, rather than inventing
- * a second idea of what the toolbar is currently about.
- *
- * Shared by the secondary drawer (`presetChips.tsx`) and the legend list
- * (`legendPanel.tsx`), so both agree on what "the selection" can take.
- */
 export function readLegendPresetTarget(
     selectedComponent: unknown,
     currentElement: string | null
@@ -37,7 +24,6 @@ export function readLegendPresetTarget(
     return null
 }
 
-/** The selection branch alone — null unless a preset-able mark is selected. */
 export function readSelectedPresetTarget(
     selectedComponent: unknown
 ): LegendPresetTarget | null {
@@ -52,19 +38,12 @@ export function readSelectedPresetTarget(
     }
 }
 
-// Labels for selectable types that are not legend preset types, so a mismatch
-// message can still name what is selected.
 const OTHER_TYPE_LABELS: Record<string, string> = {
     text: 'Text',
     image: 'Image',
     pencil: 'Pencil',
 }
 
-/**
- * The selected mark's type and its display label, whatever the type. Null when
- * nothing (or a group) is selected. Used to explain why a preset of another
- * type cannot be applied.
- */
 export function readSelectedTypeLabel(
     selectedComponent: unknown
 ): { componentType: string; label: string } | null {

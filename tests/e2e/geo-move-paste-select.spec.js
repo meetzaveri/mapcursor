@@ -1,14 +1,3 @@
-// The multi-point geometries (area / route / pencil) and the three things that
-// kept going wrong with them: a move that did not survive a reload, a paste
-// that landed away from the cursor, and a selection that would not let go.
-//
-// All three came from the same place — `x`/`y` used to be an independently
-// written second source of truth for position, so a move could persist a new
-// origin while leaving the coordinates where they were, and the next load would
-// rebuild the path relative to the wrong point. Now `geometry` is the only
-// truth and the columns are a cache `setGeometry` derives from it, so the two
-// cannot come apart. These tests hold that line.
-
 import { test, expect } from './helpers/test.js'
 import {
     baseRow,
@@ -16,8 +5,6 @@ import {
     lineThrough,
     polygonOver,
 } from './helpers/index.js'
-// The handle body colour, read from the same module the app paints it with, so
-// unifying the selection chrome can never silently un-anchor this assertion.
 import { SELECTION_HANDLE_FILL } from '../../src/utils/selectionTheme.ts'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
@@ -109,7 +96,6 @@ async function openMapBase(page) {
     await page.waitForSelector(`g[data-component-id="${AREA_ID}"]`, {
         timeout: 15_000,
     })
-    // Park the camera at identity so surface coords are screen coords.
     await page.evaluate(() => {
         const two = window.__mcTwo
         two.scene.translation.set(0, 0)
@@ -119,16 +105,6 @@ async function openMapBase(page) {
     await page.waitForTimeout(300)
 }
 
-/**
- * The record as persisted, plus the number that decides where a reload puts it:
- * the geometry's own first position, which is the origin the factory rebuilds
- * the path from. It must always equal the persisted `x`/`y` — those columns are
- * a cache of exactly this value, and any path that lets them disagree draws the
- * element somewhere it has never been.
- *
- * Read inline rather than through `geometryOrigin`: this runs in the page, and
- * a spec cannot import app modules into `page.evaluate` against a bundle.
- */
 const record = (page, id) =>
     page.evaluate((id) => {
         const g = window.__mcTwo.scene.children.find(
@@ -146,7 +122,6 @@ const record = (page, id) =>
         return { x: ed.x, y: ed.y, origin: { x: first[0], y: first[1] } }
     }, id)
 
-/** A screen point that lies on the element's own stroke. */
 const pointOnStroke = (page, id, t = 0.1) =>
     page.evaluate(
         ({ id, t }) => {
@@ -188,14 +163,8 @@ for (const [name, id] of [
         await dragBy(page, id, 120, 90)
         const after = await record(page, id)
 
-        // The origin moved...
         expect(after.x).toBe(before.x + 120)
         expect(after.y).toBe(before.y + 90)
-        // ...and the geometry came with it. Persisting the new origin ALONE was
-        // worse than persisting nothing: on the next load the factory would
-        // rebuild the path against an origin its own coordinates disagreed
-        // with, and the shape landed exactly back where the drag started — so
-        // the move looked lost on every reload.
         expect(
             after.origin,
             'the x/y cache disagrees with the geometry after a move'
@@ -218,7 +187,6 @@ for (const [name, id] of [
                     const g = document.querySelector(
                         `g[data-component-id="${id}"]`
                     )
-                    // Two.js renders a path's opacity as fill/stroke-opacity.
                     return Array.from(g.querySelectorAll('path')).filter(
                         (h) =>
                             h.getAttribute('fill') === fill &&
@@ -229,10 +197,6 @@ for (const [name, id] of [
             )
         expect(await handlesShown()).toBeGreaterThan(0)
 
-        // ONE click on bare canvas. The clear used to hang off a DOM heuristic
-        // ("the target's last child is the two-0 root") that only matched when
-        // the press landed on the wrapper div rather than the SVG or the map
-        // canvas — so it took two clicks, or three, or a lucky spot.
         await page.mouse.click(900, 700)
         await page.waitForTimeout(300)
 
@@ -277,21 +241,14 @@ test('a pasted area lands under the cursor', async ({ page }) => {
             }
         }, AREA_ID)
 
-    // Same reason as the paste test in canvas-interaction-fixes: the clone
-    // mounts lazily, and a loaded machine takes longer than the default poll.
     await expect
         .poll(async () => !!(await clone()), { timeout: 15_000 })
         .toBe(true)
     const pasted = await clone()
 
-    // Under the cursor, not a corner's-worth away from it: the paste offset used
-    // to be measured from `x`/`y`, which for these types is wherever the first
-    // vertex happened to fall.
     expect(Math.abs(pasted.centre.x - cursor.x)).toBeLessThan(12)
     expect(Math.abs(pasted.centre.y - cursor.y)).toBeLessThan(12)
 
-    // And the clone is born consistent — origin and vertices in step, so its
-    // own first drag/reload behaves.
     expect(
         pasted.origin,
         'the clone was born with its origin and geometry disagreeing'

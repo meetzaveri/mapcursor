@@ -37,31 +37,19 @@ import {
 } from './metaDialogs'
 import type { MetaProperty } from '../../types/metaProperty'
 
-// The meta properties panel: a floating card on the right edge, tucked under
-// the legend until it is picked up by the grip in its header and dropped
-// anywhere on screen, like the legend (double-click the grip to dock it back
-// under the legend). Shown while exactly one point / route / area / radius map /
-// geo-text is selected. Lists that object's properties (editable in place) and adds new
-// ones through a two-step wizard. On mobile the same body opens in a sheet
-// from a button in the right-edge column under Share (MobileSideActions).
-// See .claude/context/meta-properties.md.
-
 const PANEL_WIDTH = 260
-// The same 8px the legend keeps under the place search, so the right edge
-// stacks search → legend → meta at one rhythm.
 const GAP = 8
-// Room kept clear at the bottom for the help button and map attribution.
 const BOTTOM_CLEARANCE = 64
-// Where a dragged card is remembered: one spot for every base and every
-// selection, since the card comes and goes with the selection.
 const POSITION_STORAGE_KEY = 'mapcursor:metaPanelPosition'
 
-/**
- * Directly under the legend, one GAP below it, following it as it collapses or
- * grows, and never past the bottom of the screen. With no legend in its corner
- * — none on screen, or one dragged off to float elsewhere — it takes the
- * legend's own top, so it sits where the legend would.
- */
+// Caveat: ChromeReveal slides the legend in with `translate`, which
+// getBoundingClientRect includes. Measuring mid-entrance would dock the card
+// up to SLIDE_PX off, so read where the legend settles instead.
+function settledBottom(el: HTMLElement): number {
+    const [, ty = '0'] = getComputedStyle(el).translate.split(' ')
+    return el.getBoundingClientRect().bottom - (parseFloat(ty) || 0)
+}
+
 function useUnderLegendPlacement(): {
     top: number
     maxHeight: number
@@ -70,10 +58,12 @@ function useUnderLegendPlacement(): {
 
     const measure = useCallback((): void => {
         const legend = document.getElementById(LEGEND_PANEL_ID)
-        const legendRect = legend?.hasAttribute(LEGEND_FLOATING_ATTR)
-            ? null
-            : legend?.getBoundingClientRect()
-        const top = legendRect ? legendRect.bottom + GAP : LEGEND_PANEL_TOP
+        const legendBottom =
+            legend && !legend.hasAttribute(LEGEND_FLOATING_ATTR)
+                ? settledBottom(legend)
+                : null
+        const top =
+            legendBottom !== null ? legendBottom + GAP : LEGEND_PANEL_TOP
         const maxHeight = Math.max(
             window.innerHeight - top - BOTTOM_CLEARANCE,
             160
@@ -89,7 +79,6 @@ function useUnderLegendPlacement(): {
         const legend = document.getElementById(LEGEND_PANEL_ID)
         if (legend) observer.observe(legend)
         window.addEventListener('resize', measure)
-        // Docking or floating the legend moves it without resizing it.
         window.addEventListener(LEGEND_PANEL_MOVED_EVENT, measure)
         return (): void => {
             observer.disconnect()
@@ -101,13 +90,11 @@ function useUnderLegendPlacement(): {
     return placement
 }
 
-/** The panel's content, shared by the desktop card and the mobile sheet. */
 function MetaPanelBody({
     target,
     grip,
 }: {
     target: SelectedMetaObject
-    /** The desktop card's drag handle. The mobile sheet has none. */
     grip?: ReactNode
 }): ReactElement {
     const { meta, isPersisted } = useBaseContext()
@@ -130,7 +117,6 @@ function MetaPanelBody({
     const available = meta.metaProperties.filter((p) => !onObject.has(p.id))
     const noun = META_OBJECT_LABELS[target.objectType].toLowerCase()
 
-    // Every write below is one undo step (Ctrl/Cmd+Z, or the toolbar).
     const saveValue = async (
         property: MetaProperty,
         draft: MetaDraft
@@ -139,8 +125,6 @@ function MetaPanelBody({
         return r.ok ? null : r.error
     }
 
-    // Local mode knows every value, so the delete prompt can say how many
-    // objects lose one. A shared base would need a query for a sentence.
     const usageCount = (property: MetaProperty | null): number | null => {
         if (!property || isPersisted) return null
         return meta
@@ -280,8 +264,6 @@ function DesktopPanel({
         panelRef,
         POSITION_STORAGE_KEY
     )
-    // Floating, it runs from wherever it was dropped to the same bottom
-    // clearance the docked card keeps.
     const maxHeight = position
         ? Math.max(window.innerHeight - position.y - BOTTOM_CLEARANCE, 160)
         : docked.maxHeight
@@ -296,20 +278,14 @@ function DesktopPanel({
                     : { top: `${docked.top}px`, right: `${RIGHT_MARGIN}px` }),
                 width: `${PANEL_WIDTH}px`,
                 maxHeight: `${maxHeight}px`,
-                // Same layer as the legend: under the place-search dropdown
-                // (12) and every modal (1000). Raised while carried, so it
-                // passes over the legend rather than under it.
                 zIndex: isDragging ? 13 : 11,
             }}
         >
-            {/* Chrome mirrors the legend card, so the right edge reads as one
-                surface. `text-left` because `.App` centres text. */}
             <div
                 className="bg-card-bg border border-border-panel rounded-card shadow-panel
                     overflow-y-auto text-left"
                 style={{ maxHeight: `${maxHeight}px` }}
             >
-                {/* Keyed by object: switching selection resets the view. */}
                 <MetaPanelBody
                     key={target.objectId}
                     target={target}
@@ -326,18 +302,12 @@ function DesktopPanel({
     )
 }
 
-/**
- * Mobile: the meta properties button and its sheet. Rendered in the right-edge
- * column under Share by MobileSideActions, which owns the placement, so the
- * button itself is in-flow.
- */
 export function MobileMetaPropertiesButton({
     target,
 }: {
     target: SelectedMetaObject
 }): ReactElement {
     const [open, setOpen] = useState(false)
-    // A new selection starts closed, like the desktop card's fresh view.
     useEffect(() => setOpen(false), [target.objectId])
     return (
         <>
@@ -383,7 +353,6 @@ export default function MetaPropertiesPanel(): ReactElement | null {
     const target = useSelectedMetaObject()
     const { isMobile } = useMediaQueryUtils()
     if (!target) return null
-    // Mobile renders its button in the right-edge column (MobileSideActions).
     if (isMobile) return null
     return <DesktopPanel target={target} />
 }
