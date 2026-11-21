@@ -1,28 +1,20 @@
 import { useEffect, useState } from 'react'
 
 interface ToastProps {
-    /** When true the toast is shown and the auto-dismiss timer starts. */
     open: boolean
     message: string
-    /** Auto-dismiss delay in ms. */
     duration?: number
     onClose: () => void
 }
 
 const FADE_MS = 200
 
-/**
- * Small transient notice pinned to the bottom of the canvas. Non-interactive
- * and self-dismissing — it must never sit in the way of the canvas, so it stays
- * `pointer-events-none` and fades itself out.
- */
 const Toast: React.FC<ToastProps> = ({
     open,
     message,
     duration = 15000,
     onClose,
 }) => {
-    // Drives the fade: flipped on a tick after mount so the transition runs.
     const [visible, setVisible] = useState(false)
 
     useEffect(() => {
@@ -32,7 +24,6 @@ const Toast: React.FC<ToastProps> = ({
         }
 
         const fadeIn = requestAnimationFrame(() => setVisible(true))
-        // Fade out first, then unmount via onClose so the exit is visible.
         const fadeOutTimer = setTimeout(
             () => setVisible(false),
             Math.max(duration - FADE_MS, 0)

@@ -5,22 +5,14 @@ import Button from '../common/button'
 interface ImportBaseModalProps {
     open: boolean
     onClose: () => void
-    /** When set, the modal shows an error state instead of the chooser. */
     error?: string | null
     total?: number
     skipped?: number
-    /** Images left out because shared canvases don't support them yet. */
     excludedImages?: number
     onOpenAsNew?: () => void
     onMerge?: () => void
 }
 
-/**
- * Post-file-pick chooser for importing a canvas. On success it asks how to
- * apply the file — replace the canvas or merge into it. On a hard failure
- * (bad JSON / not a craftbase export / nothing valid) it surfaces the error with a single
- * dismiss.
- */
 export default function ImportBaseModal({
     open,
     onClose,

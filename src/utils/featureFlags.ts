@@ -4,22 +4,8 @@ import {
     VIEWPORT_CULLING_ENABLED_KEY,
 } from '../constants/misc'
 
-// Live, user-toggleable feature flags backed by localStorage.
-//
-// These are edited at runtime and must take effect on the already-running app.
-// The value is cached in a module-level variable so the hot Two.js paths (all
-// living inside `addZUI`'s stale-closure DOM handlers) can read it cheaply and
-// live, without re-binding listeners or hitting localStorage every frame.
-
 type Listener = (enabled: boolean) => void
 
-// ── Drag-scan flag (perf testing) ─────────────────────────────────────────
-// Same runtime/localStorage model. Gates the O(N) scene scans that ride along
-// with dragging (the hover-detect endpoint scan, per rAF). Turn OFF to measure
-// drag/paint cost with the scans removed on dense bases — this is a measurement
-// lever, not a user feature.
-
-// Default ON: normal behavior. Disable only for perf isolation runs.
 const DEFAULT_DRAG_SCANS_ENABLED = true
 
 let dragScansCached: boolean | null = null
@@ -38,14 +24,10 @@ export function setDragScansEnabled(enabled: boolean): void {
     dragScansCached = enabled
     try {
         localStorage.setItem(DRAG_SCANS_ENABLED_KEY, String(enabled))
-    } catch {
-        // Persistence is best-effort; an in-memory toggle still works for the
-        // current session even if storage is full/blocked.
-    }
+    } catch {}
     dragScansListeners.forEach((fn) => fn(enabled))
 }
 
-// Subscribe to live changes. Returns an unsubscribe fn.
 export function subscribeDragScansEnabled(fn: Listener): () => void {
     dragScansListeners.add(fn)
     return (): void => {
@@ -53,12 +35,6 @@ export function subscribeDragScansEnabled(fn: Listener): () => void {
     }
 }
 
-// ── Viewport culling flag ─────────────────────────────────────────────────
-// Same runtime/localStorage model. Gates the paint-cost optimisation that hides
-// off-screen scene elements during pan/zoom (see `src/utils/viewportCulling.ts`).
-// The hot camera handlers read `getViewportCullingEnabled()` cheaply per frame.
-
-// Opt-in feature: default OFF while it's validated on real bases.
 const DEFAULT_VIEWPORT_CULLING_ENABLED = true
 
 let cullingCached: boolean | null = null
@@ -79,14 +55,10 @@ export function setViewportCullingEnabled(enabled: boolean): void {
     cullingCached = enabled
     try {
         localStorage.setItem(VIEWPORT_CULLING_ENABLED_KEY, String(enabled))
-    } catch {
-        // Persistence is best-effort; an in-memory toggle still works for the
-        // current session even if storage is full/blocked.
-    }
+    } catch {}
     cullingListeners.forEach((fn) => fn(enabled))
 }
 
-// Subscribe to live changes. Returns an unsubscribe fn.
 export function subscribeViewportCullingEnabled(fn: Listener): () => void {
     cullingListeners.add(fn)
     return (): void => {
@@ -94,12 +66,6 @@ export function subscribeViewportCullingEnabled(fn: Listener): () => void {
     }
 }
 
-// ── Route road-snapping flag ──────────────────────────────────────────────
-// Same runtime/localStorage model. Gates snap-to-road route drawing
-// (`utils/roadSnap.ts`). Read from inside addZUI's stale-closure handlers on
-// every mousemove of a route draw, so it has to be this cheap.
-
-// Default ON: a route drawn on a map is expected to follow the street.
 const DEFAULT_ROUTE_SNAP_ENABLED = true
 
 let routeSnapCached: boolean | null = null
@@ -118,13 +84,10 @@ export function setRouteSnapEnabled(enabled: boolean): void {
     routeSnapCached = enabled
     try {
         localStorage.setItem(ROUTE_SNAP_ENABLED_KEY, String(enabled))
-    } catch {
-        // Persistence is best-effort; the in-memory toggle still works.
-    }
+    } catch {}
     routeSnapListeners.forEach((fn) => fn(enabled))
 }
 
-// Subscribe to live changes. Returns an unsubscribe fn.
 export function subscribeRouteSnapEnabled(fn: Listener): () => void {
     routeSnapListeners.add(fn)
     return (): void => {

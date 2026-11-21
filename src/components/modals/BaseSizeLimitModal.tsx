@@ -6,8 +6,6 @@ import {
     MAX_DRAFT_UTF8_BYTES,
 } from '../../utils/baseSizeGuard'
 
-// Load-side ceiling is a UTF-16 storage-footprint estimate; the write-side
-// budget is a real UTF-8 size (what the live readout shows).
 const loadBudgetMb = Math.round(MAX_DRAFT_BYTES / (1024 * 1024))
 const writeBudgetMb = Math.round(MAX_DRAFT_UTF8_BYTES / (1024 * 1024))
 
@@ -17,11 +15,6 @@ interface BaseFullModalProps {
     onExport: () => void
 }
 
-/**
- * Write-side notice: a paste/draw was rolled back because it would have pushed
- * the canvas past the size budget. Non-destructive — the revert already ran, so
- * this just explains it and offers an export as the way to keep growing.
- */
 export function BaseFullModal({
     open,
     onClose,
@@ -63,13 +56,6 @@ interface BaseTooLargeModalProps {
     onOpenAnyway: () => void
 }
 
-/**
- * Load-side rescue: the persisted draft is too large to render without
- * freezing. Shown INSTEAD of loading it. "Download backup" reads the raw draft
- * straight from localStorage (no rendering), so it works even though the base
- * can't be opened normally. `locked` so it can't be dismissed into a frozen
- * canvas — the user must pick a recovery path.
- */
 export function BaseTooLargeModal({
     open,
     onDownloadBackup,

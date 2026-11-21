@@ -1,11 +1,3 @@
-// Tooltips are a HOVER affordance, and touch has no hover to leave.
-//
-// A tap fires the compatibility mouse sequence (mouseover/mouseenter →
-// mousedown → mouseup → click) and then leaves the element hovered: there is no
-// `mouseleave` until the finger touches something else that is itself
-// hoverable, which the canvas under the toolbar never is. So a tapped tool
-// button's tooltip stayed on screen for the rest of the session.
-
 import { test, expect } from './helpers/test.js'
 import { setupLocalBase } from './helpers/index.js'
 
@@ -25,9 +17,6 @@ test.describe('touch', () => {
 
     test('tapping a tool never leaves a tooltip behind', async ({ page }) => {
         await setupLocalBase(page)
-        // On mobile, Pencil and Eraser share one "Draw" group button
-        // (sidebar/mobileToolGroups.ts); Pencil itself only appears in the
-        // secondary toolbar once the group is open.
         const draw = page.locator('[aria-label="Draw"]').first()
         await draw.waitFor()
 
@@ -37,7 +26,6 @@ test.describe('touch', () => {
             'a finger opened a hover hint'
         ).toEqual([])
 
-        // ...and taps elsewhere cannot resurrect one either.
         await page.touchscreen.tap(195, 500)
         await page.touchscreen.tap(60, 700)
         expect(await openTooltips(page)).toEqual([])

@@ -25,9 +25,6 @@ interface SelectorVertices {
     y2: number
 }
 
-// Style one grab dot: the shared off-white body + indigo ring every selection
-// handle in the app wears (see utils/selectionTheme). Sizing is left to
-// setScale, which is the only place that knows the camera.
 function styleHandle(circle: ShapeLike): void {
     circle.fill = SELECTION_HANDLE_FILL
     circle.stroke = HANDLE_STROKE
@@ -43,10 +40,6 @@ export default class Selector {
     circle3: ShapeLike = null
     circle4: ShapeLike = null
     circleGroup: ShapeLike = null
-    // Transparent stand-ins that carry the pointer events for circle1..4. The
-    // dots are drawn small enough not to bury what they describe; these keep
-    // the grab area at the touch size. Consumers that wire a drag (groupobject)
-    // must bind to these, not to the dots.
     hitCircle1: ShapeLike = null
     hitCircle2: ShapeLike = null
     hitCircle3: ShapeLike = null
@@ -71,11 +64,8 @@ export default class Selector {
         this.vertices = { x1, x2, y1, y2 }
     }
 
-    /** One invisible stand-in, sized for a finger rather than for the eye. */
     private makeHitCircle(cx: number, cy: number): ShapeLike {
         const circle = this.two.makeCircle(cx, cy, selectionHandleHitRadiusPx())
-        // `transparent` is still a paint, so the default `visiblePainted`
-        // hit-testing applies to it — `none` would not be hittable at all.
         circle.fill = 'transparent'
         circle.noStroke()
         return circle
@@ -132,9 +122,6 @@ export default class Selector {
                         circle4
                     )
                     circleGroup.opacity = 0
-                    // Styled on the group so the ring/body survive Two.js's
-                    // group-level property propagation, and again per circle so
-                    // a later `group.stroke` write can't silently recolor them.
                     circleGroup.linewidth = SELECTION_HANDLE_LINEWIDTH_PX
                     circleGroup.fill = SELECTION_HANDLE_FILL
                     circleGroup.stroke = HANDLE_STROKE
@@ -151,15 +138,6 @@ export default class Selector {
             }
         }
 
-        // A group of their own, NOT circleGroup: that one is styled wholesale
-        // (`circleGroup.stroke = HANDLE_STROKE`, and setScale writes its
-        // linewidth), and Two.js propagates group styling to children — which
-        // would paint a ring around every invisible hit circle.
-        //
-        // Added last so it renders on top. SVG hit-testing takes the topmost
-        // node, and these are siblings of the dots rather than ancestors, so
-        // nothing bubbles from a dot to its stand-in: with the dots on top the
-        // centre of every handle would be dead.
         const hitCircles = [
             this.hitCircle1,
             this.hitCircle2,
@@ -174,13 +152,7 @@ export default class Selector {
 
         this.areaGroup = areaGroup
         this.group.add(areaGroup)
-        // Batched, NOT a direct two.update(): this runs once per element that
-        // has edit chrome (every pencil), so a synchronous full-scene render
-        // here is O(N²) across a base load. markSelectionChrome reads
-        // `_renderer.elem`, so it must wait for the render — hence afterRender.
         scheduleRender(this.two, () => {
-            // Tag the overlay so SVG/PNG exports can strip it — it lives inside
-            // the group's <g>, so a clone of the group would otherwise carry it.
             markSelectionChrome(areaGroup)
         })
 
@@ -206,17 +178,6 @@ export default class Selector {
         const s = scale > 0 ? scale : 1
         this.area.linewidth = SELECTION_BOX_LINEWIDTH_PX / s
         if (this.showCircles && this.circle1) {
-            // `base / s` is the local-unit radius that renders as `base` screen
-            // px, so the dots are the same size on screen at every zoom — the
-            // same contract as canvas/selectionController.ts.
-            //
-            // Not capped. A `min(base / s, base * 3)` cap used to keep dots
-            // from covering a selection that is tiny on screen, but it binds
-            // whenever s < 1/3: map text with zoom resistance off has
-            // s = camera scale (~0.004 at z8), so its handles, their grab
-            // area and their outline all shrank to a fraction of a pixel and
-            // the text could not be resized. A grab dot that can't be seen or
-            // hit is worse than one that overlaps a small selection.
             const base = selectionHandleRadiusPx()
             const radius = base / s
             const hitRadius = selectionHandleHitRadiusPx() / s
@@ -291,8 +252,6 @@ export default class Selector {
 
         if (this.showCircles) {
             this.circleGroup.opacity = 1
-            // Each stand-in rides its dot exactly; they are only ever a
-            // different radius, never a different place.
             const seat = (
                 dot: ShapeLike,
                 hit: ShapeLike,

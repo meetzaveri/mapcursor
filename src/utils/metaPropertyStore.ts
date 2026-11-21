@@ -1,8 +1,3 @@
-// Pure data operations on meta properties, shared by useMetaProperties,
-// persistBase, JSON import/export and paste. No React, no network: the hook
-// owns when to read and write; this module owns what the data looks like.
-// See .claude/context/meta-properties.md.
-
 import { META_PROPERTIES_KEY_PREFIX } from '../constants/misc'
 import { generateUUID } from './misc'
 import { convertMetaValue, validateMetaValue } from './metaValue'
@@ -18,9 +13,6 @@ import type {
 
 export const EMPTY_META_SET: MetaPropertySet = { properties: [], values: [] }
 
-// --- Normalizing rows (server, sidecar, import file) ---------------------
-
-/** A definition row, or null when it isn't one this app can show. */
 export function normalizeMetaProperty(row: unknown): MetaProperty | null {
     if (!row || typeof row !== 'object') return null
     const r = row as Record<string, unknown>
@@ -36,11 +28,6 @@ export function normalizeMetaProperty(row: unknown): MetaProperty | null {
     }
 }
 
-/**
- * A value row, or null. The value is checked against its property's type, so
- * a row that could never render (wrong shape, unknown property) is dropped
- * here rather than shown broken.
- */
 export function normalizeMetaValue(
     row: unknown,
     propertiesById: ReadonlyMap<string, MetaProperty>
@@ -73,7 +60,6 @@ export function normalizeMetaValue(
 const byPosition = (a: MetaProperty, b: MetaProperty): number =>
     a.position - b.position
 
-/** A whole set from untrusted input: definitions first, then their values. */
 export function normalizeMetaSet(raw: unknown): MetaPropertySet {
     if (!raw || typeof raw !== 'object') return { properties: [], values: [] }
     const r = raw as Record<string, unknown>
@@ -88,12 +74,9 @@ export function normalizeMetaSet(raw: unknown): MetaPropertySet {
     return { properties, values }
 }
 
-// --- Local sidecar ---------------------------------------------------------
-
 export const metaSidecarKey = (baseId: string): string =>
     `${META_PROPERTIES_KEY_PREFIX}${baseId}`
 
-/** A local base's meta properties. Missing or unreadable reads as empty. */
 export function readMetaLocal(baseId: string): MetaPropertySet {
     try {
         const raw = localStorage.getItem(metaSidecarKey(baseId))
@@ -104,11 +87,6 @@ export function readMetaLocal(baseId: string): MetaPropertySet {
     }
 }
 
-/**
- * Write a local base's meta properties. An empty set removes the key. A full
- * quota is swallowed: the in-memory state stays authoritative for the tab,
- * as with the legend sidecar.
- */
 export function writeMetaLocal(baseId: string, set: MetaPropertySet): void {
     try {
         if (set.properties.length === 0 && set.values.length === 0) {
@@ -117,18 +95,9 @@ export function writeMetaLocal(baseId: string, set: MetaPropertySet): void {
         }
         localStorage.setItem(metaSidecarKey(baseId), JSON.stringify(set))
     } catch {
-        // See above.
     }
 }
 
-// --- Orphans ---------------------------------------------------------------
-
-/**
- * Drop values whose object no longer exists. Values deliberately outlive a
- * deleted object (undo re-inserts it with the same id), so this only runs
- * where no undo can follow: draft load, and before carrying a set elsewhere.
- * Shared bases do the same server-side in the weekly sweep.
- */
 export function dropOrphanValues(
     set: MetaPropertySet,
     objectIds: ReadonlySet<string>
@@ -139,8 +108,6 @@ export function dropOrphanValues(
         : { properties: set.properties, values }
 }
 
-// --- Moving a set between bases / objects ----------------------------------
-
 function uniqueName(name: string, taken: ReadonlySet<string>): string {
     for (let n = 2; ; n++) {
         const candidate = `${name} (${n})`
@@ -149,35 +116,16 @@ function uniqueName(name: string, taken: ReadonlySet<string>): string {
 }
 
 export interface MergeMetaOptions {
-    /** The base the result belongs to. */
     baseId: string
-    /** Old object id → new object id. Values of unmapped objects are dropped. */
     objectIdMap: ReadonlyMap<string, string>
-    /**
-     * Leave a definition (and so all its values) out, e.g. image properties
-     * on share: a column a shared canvas can't fill yet is just noise.
-     */
     skipProperty?: (property: MetaProperty) => boolean
 }
 
 export interface MergeMetaResult {
-    /** Definitions to ADD to the target (reused ones are not repeated). */
     addedProperties: MetaProperty[]
-    /** Every carried value, with fresh ids, pointing at target properties. */
     values: MetaValue[]
 }
 
-/**
- * Carry `incoming` into a base that already has `targetProperties`. Every
- * carried row gets a fresh id. Used three ways:
- *
- * - share (persistBase): target is empty, so it is a plain re-key;
- * - JSON merge-import: an imported property with the same name AND type as an
- *   existing one is reused, so its values line up under one column; the same
- *   name with a different type is renamed "Name (2)", since one name can't
- *   hold two types;
- * - (paste copies values only; see copyValuesToObjects).
- */
 export function mergeMetaSets(
     targetProperties: readonly MetaProperty[],
     incoming: MetaPropertySet,
@@ -215,8 +163,6 @@ export function mergeMetaSets(
     incoming.values.forEach((value) => {
         const objectId = objectIdMap.get(value.objectId)
         const propertyId = propertyIdMap.get(value.propertyId)
-        // A skipped definition has no entry in propertyIdMap, so its values
-        // fall out here too.
         if (!objectId || !propertyId) return
         values.push({
             ...value,
@@ -231,12 +177,6 @@ export function mergeMetaSets(
     return { addedProperties, values }
 }
 
-/**
- * Copies of the values on `objectIdMap`'s source objects, for their new copies
- * (paste / duplicate, within one base). Definitions are base-wide, so they are
- * shared, not copied. An image value keeps its `assetId`: the bytes are stored
- * once, so a pasted point's photo costs nothing.
- */
 export function copyValuesToObjects(
     values: readonly MetaValue[],
     objectIdMap: ReadonlyMap<string, string>,
@@ -258,13 +198,10 @@ export function copyValuesToObjects(
 }
 
 export interface TypeChangePlan {
-    /** The values that fit the new type, already converted. */
     converted: MetaValue[]
-    /** The values that don't, and will be cleared. */
     cleared: MetaValue[]
 }
 
-/** What happens to a property's values when its type changes. */
 export function planTypeChange(
     values: readonly MetaValue[],
     from: MetaProperty['type'],

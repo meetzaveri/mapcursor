@@ -1,16 +1,3 @@
-// Z-order: Bring Forward / Bring to Front / Send Backward / Send to Back.
-//
-// Three circles are drawn left-to-right so each is clickable on its own centre.
-// New elements stack on top (position = max+1), so the initial z-order,
-// back→front, is the insertion order: [a, b, c].
-//
-// Assertions read the RENDERED SVG, not the store. Each element is a sibling
-// <g data-component-id> under the Two.js scene root, and reconcileZOrder
-// physically reorders those siblings — so document order IS z-order.
-//
-// Shortcuts: bare [ / ] step backward/forward, ⌘[ / ⌘] jump to back/front. The
-// handler accepts metaKey OR ctrlKey, so Meta works on Linux CI too.
-
 import { test, expect } from './helpers/test.js'
 import {
     setupLocalBase,
@@ -46,7 +33,6 @@ async function setupThreeCircles(page) {
     return { handles, ids }
 }
 
-/** Document (z) order of our three circles, back→front. */
 async function zOrder(page, ids) {
     const order = await page.$$eval(
         '#main-two-root svg [data-component-id]',
@@ -56,8 +42,6 @@ async function zOrder(page, ids) {
     return order.filter((id) => byId[id]).map((id) => byId[id])
 }
 
-// Selecting waits for the floating toolbar, which is what proves
-// selectionController.currentGroup is set — the reorder shortcuts read it.
 async function selectCircle(page, handle) {
     await clickPointerTool(page)
     const b = await handle.boundingBox()
@@ -92,7 +76,6 @@ test.describe('z-order', () => {
     test('Send Backward steps a back one', async ({ page }) => {
         const { handles, ids } = await setupThreeCircles(page)
         await selectCircle(page, handles.a)
-        // a starts backmost, so make a backward step meaningful first.
         await page.keyboard.press('Meta+]')
         await expect.poll(() => zOrder(page, ids)).toEqual(['b', 'c', 'a'])
 

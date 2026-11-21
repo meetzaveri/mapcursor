@@ -18,35 +18,12 @@ import {
 } from '../../constants/misc'
 import type { LegendPreset, LegendPresetType } from '../../types/legend'
 
-// What a preset will look like on the map, drawn as plain SVG.
-//
-// Deliberately NOT a second Two.js scene: a preset carries four style keys, and
-// every one of them maps onto an SVG attribute directly. Standing up a renderer
-// in a modal to draw a 44px swatch would cost a canvas, a mount/unmount cycle
-// and a camera, to arrive at the same four attributes.
-//
-// The derivations that are NOT direct — an area's fill being a light shade of
-// its stroke (or a hatch in it), and a dash pattern from a stroke type — go
-// through the same helpers the canvas uses (`strokeToAreaFill`,
-// `areaHatchColor` / `areaFillTilePath`, `strokeTypeToDashes`), so the preview
-// cannot disagree with what gets drawn.
-//
-// Stroke widths are NOT counter-scaled here. On the canvas a geo stroke is
-// scaled against the live camera; in a fixed swatch there is no camera, so the
-// logical width is the honest thing to show — it is the number the user picked.
-
 interface PresetPreviewProps {
     elementType: LegendPresetType
-    /** A whole preset, or the in-progress style from the wizard. */
     preset: LegendPreset
     size?: number
 }
 
-/**
- * Sizes are in the swatch's own viewBox units (0–40), not surface units. A
- * stroke width is clamped so an 8px route still reads as a line rather than
- * filling the box.
- */
 const VIEW = 40
 
 function dashArray(strokeType: string | null | undefined): string | undefined {
@@ -68,13 +45,9 @@ export default function PresetPreview({
         fillType?: string | null
         opacity?: number | null
     }
-    // One preview per legend row and per wizard button, so the hatch pattern's
-    // id has to be unique to this instance.
     const patternId = `preset-fill-${svgSafeId(useId())}`
     const stroke = patch.stroke ?? 'rgb(var(--color-ink-muted))'
     const fill = patch.fill
-    // A 0-width stroke is a real choice ("no outline"); anything above 8 is not
-    // offered by the picker, so the clamp only guards a hand-edited preset.
     const width = Math.min(Math.max(patch.linewidth ?? 2, 0), 8)
     const dash = dashArray(patch.strokeType)
 
@@ -89,9 +62,6 @@ export default function PresetPreview({
     let mark: ReactElement
     switch (elementType) {
         case 'point':
-            // The pin exactly as buildPointVisual draws it, from the same
-            // constants: shadow discs, then the disc with its white ring. At
-            // 1 surface unit per viewBox unit the shadow's 11.5 radius fits.
             mark = (
                 <g>
                     {POINT_SHADOW_LAYERS.map(({ spread, alpha }) => (
@@ -115,10 +85,6 @@ export default function PresetPreview({
             )
             break
         case 'area': {
-            // Closed polygon, filled with the derived wash or hatch — the
-            // single rule that makes an area read as an area and not a route.
-            // At the preset's opacity, which is the FILL's: the outline in
-            // `common` stays at full strength, as on the canvas.
             const fillType = normalizeAreaFillType(patch.fillType)
             const alpha = areaOpacityOf(patch)
             mark = (
@@ -129,8 +95,6 @@ export default function PresetPreview({
                                 id={patternId}
                                 fillType={fillType}
                                 color={areaHatchColor(stroke, alpha)}
-                                // A little denser than the canvas, so even the
-                                // 24px chip shows a hatch, not two stray lines.
                                 scale={0.75}
                             />
                         </defs>
@@ -154,10 +118,6 @@ export default function PresetPreview({
             )
             break
         case 'circle':
-            // A radius map: a BORDERLESS disc at the 50% opacity it is created
-            // with, so the swatch reads the way the mark does over a basemap.
-            // `common` is deliberately not spread here — an outline in the
-            // swatch would promise a ring the canvas never draws.
             mark = (
                 <circle
                     cx={20}

@@ -1,34 +1,14 @@
-// Elements far from a map base's anchor must not shake while zooming.
-//
-// Surface coords are absolute Mercator-pixel offsets from the anchor, so
-// distance becomes magnitude: Leeds is ~7.9M surface units from an Ahmedabad
-// anchor. Those reach the browser as SVG transforms, which compose in float32,
-// and a visible element sits at `T + s·P` where `T ≈ −s·P` — catastrophic
-// cancellation whose error scales with the operands. As the scale changes
-// through a zoom the error changes with it, which is what a user sees as
-// shaking. Content near the anchor never shakes, because its coords are ~0.
-//
-// canvas/renderOrigin.ts fixes it by splitting the camera across a wrapper <g>
-// so the browser only ever composes viewport-sized numbers.
-//
-// This asserts on RENDERING error specifically — rendered position minus the
-// float64 position the camera intends — so it cannot be fooled by the camera
-// itself being imprecise, or by an element's counter-scale resizing its box.
-
 import { test, expect } from './helpers/test.js'
 import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
 const BASE_ID = '11111111-1111-1111-1111-111111111111'
-// Anchored on Ahmedabad, with a pin placed across the continent in Leeds.
 const ANCHOR = { lngLat: [72.5714, 23.0225], zoom: 16 }
-const FAR = { x: -6910684, y: -3762320 } // Leeds, in surface units
-const NEAR = { x: 120, y: 80 } // beside the anchor — the control
+const FAR = { x: -6910684, y: -3762320 }
+const NEAR = { x: 120, y: 80 }
 
 const FAR_ID = 'aaaaaaaa-1111-1111-1111-111111111111'
 const NEAR_ID = 'bbbbbbbb-1111-1111-1111-111111111111'
 
-// Comfortably under a pixel. Measured, the fix lands at ~0.0002px and the old
-// behaviour at 6.5-7.5px, so there is no ambiguity about which side this is on.
 const MAX_RENDER_WANDER_PX = 0.5
 
 const pin = (id, x, y, label) => ({
@@ -74,11 +54,6 @@ async function openBase(page) {
     await page.locator(`[data-component-id="${FAR_ID}"]`).first().waitFor({ timeout: 15_000 })
 }
 
-/**
- * Peak-to-peak rendering error for one pin across a zoom sweep, in screen px.
- * Keeps the pin centred and compares where the browser draws its group origin
- * against where the camera's own float64 arithmetic says it should be.
- */
 const renderWander = (page, target, id, baseScale) =>
     page.evaluate(
         ({ target, id, baseScale }) => {
@@ -99,12 +74,8 @@ const renderWander = (page, target, id, baseScale) =>
 
                 const g = document.querySelector(`g[data-component-id="${id}"]`)
                 if (!g) continue
-                // Read the scale the camera ACTUALLY adopted — zoomSet clamps to
-                // the base type's zoom limits, so the requested value can differ.
                 const s = two.scene.scale
                 const intended = two.scene.translation.x + s * target.x
-                // The group's local origin, immune to the counter-scale resizing
-                // its bounding box.
                 const drawn = new DOMPoint(0, 0).matrixTransform(g.getScreenCTM()).x
                 const dev = drawn - intended
                 if (dev < lo) lo = dev
@@ -131,8 +102,6 @@ test.describe('render origin keeps far-from-anchor content steady', () => {
             ).toBeLessThan(MAX_RENDER_WANDER_PX)
         }
 
-        // The control: content at the anchor was never affected, and must stay
-        // that way — a "fix" that traded one for the other would pass above.
         const near = await renderWander(page, NEAR, NEAR_ID, 1)
         expect(near, 'content at the anchor drifted').toBeLessThan(MAX_RENDER_WANDER_PX)
     })
@@ -147,8 +116,6 @@ test.describe('render origin keeps far-from-anchor content steady', () => {
             return {
                 wrapperExists: !!wrapper,
                 sceneIsInsideWrapper: sceneEl.parentNode === wrapper,
-                // The scene graph must not know the wrapper exists: every
-                // component enumeration in the app reads scene.children.
                 inSceneChildren: Array.from(two.scene.children).some(
                     (c) => c?.id === 'mc-render-origin'
                 ),
@@ -167,9 +134,6 @@ test.describe('render origin keeps far-from-anchor content steady', () => {
     test('element coordinates stay absolute surface coords', async ({ page }) => {
         await openBase(page)
 
-        // The whole point of doing this in the DOM: nothing in JS had to move to
-        // render-space, so a far element's translation still reads as the exact
-        // value stored on its row.
         const coords = await page.evaluate((id) => {
             const two = window.__mcTwo
             const el = Array.from(two.scene.children).find(

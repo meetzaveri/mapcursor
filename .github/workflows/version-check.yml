@@ -37,15 +37,12 @@ jobs:
                   echo "Main VERSION: $MAIN_VERSION"
                   echo "PR VERSION:   $PR_VERSION"
 
-                  # Split versions into major.minor.patch
                   IFS='.' read -r PR_MAJOR PR_MINOR PR_PATCH <<< "$PR_VERSION"
                   IFS='.' read -r MAIN_MAJOR MAIN_MINOR MAIN_PATCH <<< "$MAIN_VERSION"
 
-                  # Default patch to 0 if missing
                   PR_PATCH=${PR_PATCH:-0}
                   MAIN_PATCH=${MAIN_PATCH:-0}
 
-                  # Compare: PR version must be strictly greater than main version
                   if [ "$PR_MAJOR" -gt "$MAIN_MAJOR" ]; then
                     echo "Version bump valid (major): $MAIN_VERSION -> $PR_VERSION"
                     exit 0

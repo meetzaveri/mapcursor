@@ -1,13 +1,3 @@
-// newCanvas: 2600+ lines of Two.js + ZUI canvas logic with multiple internal
-// state machines (pencil velocity tracking, scenario dispatch, drag/draw/
-// arrow/text/group selectors). The stale-closure pattern from CLAUDE.md is
-// pervasive — many handlers close over refs that are reassigned post-mount.
-//
-// Two.js scene shapes carry codebase-specific bookkeeping (.elementData,
-// ._renderer, .lineData, .siblingCircle, .direction, …) that's set ad-hoc
-// across factories, element components, and this file. Per migration
-// convention, those access sites use `any` casts; component props, hook
-// params, and event handler signatures get real types.
 import React, {
     useEffect,
     useState,
@@ -73,8 +63,6 @@ import {
 import { createEraserTrail } from './utils/eraserTrail'
 import Spinner from './components/common/spinner'
 
-// Shared lazy-element glob (single source of truth) so the chunk warmed by
-// prefetchElementModule is the exact one React.lazy mounts here.
 import { elementModules } from './elementModules'
 
 import Loader from './components/utils/loader'
@@ -170,19 +158,6 @@ import type {
     CurrentElement,
 } from './types/base'
 
-/**
- * One lazy component per element *type*, not per element.
- *
- * `React.lazy()` returns a NEW component type on every call, and each one
- * suspends and resolves independently — so calling it per element made a base
- * of N elements resolve N Suspense boundaries in N separate commits, spreading
- * the mount across hundreds of frames. Every one of those frames triggered a
- * full O(scene) Two.js render (the SVG renderer walks every child on each
- * update), which is O(frames × N) work.
- *
- * Keyed by componentType, the ~10 element modules resolve once and React can
- * commit the elements in far fewer passes.
- */
 const lazyElementCache = new Map<string, React.ComponentType<unknown>>()
 
 const getLazyElement = (
@@ -200,12 +175,6 @@ const getLazyElement = (
     return lazy
 }
 
-// A plain `line` shares the arrow's group structure (line + two endpoint
-// circles) and the entire arrow-draw / endpoint-edit machinery, so anywhere we
-// manage endpoint-handle visibility or read vertex coords for selection &
-// copy/paste, both types apply. Port/connector logic stays arrowLine-only
-// (plain lines never dock to shapes), so those guards keep their literal
-// 'arrowLine' check.
 const isLineLikeType = (t?: string | null): boolean =>
     t === 'arrowLine' || t === 'line'
 
@@ -224,25 +193,10 @@ interface CanvasProps {
     defaultTextSize: number
     onCameraChange?: (event: CameraChangeEvent) => void
     renderBackground?: () => ReactNode
-    // Bridge: Canvas owns reorderSelected (needs reconcileZOrder + live zui
-    // selection); it publishes the function here so base.tsx can expose a
-    // stable wrapper through BaseContext for the properties toolbar.
     reorderSelectedRef?: MutableRefObject<
         ((op: 'front' | 'forward' | 'backward' | 'back') => void) | null
     >
-    // Bridge: Canvas owns fitToContent (lives on the live zui handle); it
-    // publishes it here so base.tsx can expose a stable wrapper through
-    // BaseContext for the "Go to content" button. Returns whether a fit ran.
     fitToContentRef?: MutableRefObject<(() => boolean) | null>
-    /**
-     * Where a shared map base should open, for a recipient who has never
-     * opened it. The georeference (`anchor`) plus the view to land on, both
-     * from the base row.
-     *
-     * Non-null only when the row carries all six geo columns — anchor and
-     * landing are written together, so a partial set means a hand-edited row
-     * and is ignored rather than half-applied.
-     */
     initialMapLanding?: {
         anchor: MapAnchor
         lngLat: [number, number]
@@ -250,68 +204,24 @@ interface CanvasProps {
     } | null
 }
 
-// Shape of the handle addZUI returns and Canvas stores in state. The
-// remaining fields are accessed via `as any` at call sites (see resetDragState
-// usage etc.) where Two.js internals leak through.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ZuiHandle = any
 
-// Local callback signatures (defined inside Canvas, consumed by addZUI).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type UpdateToGlobalStateFn = (newShapeData: any, oldShapeData: any) => void
 type UpdateComponentVerticesFn = (id: string, x: number, y: number) => void
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SetOnGroupHandlerFn = (obj: any) => void
 
-/**
- * @typedef {Object} elementData
- * @property {string} baseId
- * @property {string} componentType
- * @property {string} fill
- * @property {Object} handleDeleteComponent //function
- * @property {number} height
- * @property {number} id // component's id
- * @property {boolean} isDummy
- * @property {boolean} isGroupSelector
- * @property {Object} itemData // the data which we recieve from database
- * @property {Object} metadata
- * @property {number} prevY // the value of prev Y coordinate used to diff
- * @property {number} prevX // the value of prev X coordinate used to diff
- * @property {string} textColor
- * @property {Object} twoJSInstance // the main Two.js instance
- * @property {number} width
- * @property {number} x
- * @property {number} y
- */
-
 let isDrawing: boolean = false
-// True only while a pencil stroke is mid-flight (mousedown → mouseup). An
-// in-progress stroke isn't committed to the history log until mouseup, so
-// undo/redo must be blocked during this window — otherwise Ctrl+Z would pop the
-// previously committed element and the redo stack gets clobbered when the
-// current stroke commits, losing that earlier element for good.
 let isPencilStrokeActive: boolean = false
-// Length (surface units) of the segment a click-without-drag becomes, so the
-// pencil's round caps paint it as a dot. See the dot branch in the pencil
-// mouseup handler.
 const PENCIL_DOT_SEGMENT = 0.5
 let defaultLinewidthValue: number = 1
 let defaultStrokeTypeValue: string | null = null
 let defaultFillTypeValue: string | null = null
 let defaultStrokeColorValue: string = PENCIL_DEFAULT_COLOR
-// Live default text size (px) for shape-with-text. Module-level + synced via
-// useEffect so the once-bound addZUI DOM handlers read the latest value
-// (same stale-closure escape hatch as defaultLinewidthValue).
 let defaultTextSizeValue: number = DEFAULT_TEXT_SIZE
 
-// --- z-order reconcile helpers ------------------------------------------
-//
-// The persistable element groups inside `two.scene.children` are the ones we
-// reorder. Everything else (selection-box overlay, preview dots/lines, the
-// transient `groupobject` group) must be left untouched. An element group is
-// identified by carrying `elementData.id` that maps to a live store record and
-// is not the transient GROUP_COMPONENT. The selection overlay is a plain group
-// with no `elementData`, so it's excluded automatically.
 const isReorderableElementChild = (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     child: any,
@@ -323,10 +233,6 @@ const isReorderableElementChild = (
     return Object.prototype.hasOwnProperty.call(store, id)
 }
 
-// Stable ordering key for a record: position asc (back→front), tie-broken by
-// createdAt then id so legacy/duplicate positions still sort deterministically
-// (and neighbour-swap stays meaningful). Used by both the reconcile comparator
-// and the reorder handlers so they agree on "the element above/below".
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const compareByZOrder = (a: any, b: any): number => {
     const pa = Number.isFinite(a?.position) ? a.position : 0
@@ -376,8 +282,6 @@ function addZUI(
     let shape: any = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let lastSelectedShape: any = null
-    // Tracks the GroupedObjectWrapper's Two.js group while it has DOM focus.
-    // Set/cleared by groupFocused/groupBlurred custom events.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const activeGroupRef: { current: any } = { current: null }
     const domElement: HTMLElement = two.renderer.domElement
@@ -396,23 +300,12 @@ function addZUI(
     let lastTapTime = 0
     let lastTapX = 0
     let lastTapY = 0
-    // Wheel has no gesture-end event, so "is the user still zooming/scrolling"
-    // is tracked with a trailing timer. Used to suppress the hover hit-test
-    // mid-gesture, where its result is thrown away anyway.
     let isWheeling = false
     let wheelSettleTimer: number | null = null
-    // rAF gate for hoverDetectMove: pointers fire faster than we paint, and the
-    // hover scan is O(scene). At most one scan per frame.
     let hoverFrame: number | null = null
     let hoverPendingEvent: MouseEvent | null = null
-    // Viewport culling settle timer: cull runs on every camera change; once the
-    // gesture stops, unhide everything so the at-rest canvas is fully painted.
     let cullSettleTimer: number | null = null
 
-    // Called from every camera handler (pan/zoom, mouse + touch) right before
-    // the batched render. Hides off-screen elements so the browser paints only
-    // the visible slice, then arms a timer to reveal them all once motion stops.
-    // A no-op (beyond the flag read) when culling is disabled.
     function cullOnCameraChange(): void {
         if (!getViewportCullingEnabled()) return
         cullToViewport(two)
@@ -423,15 +316,9 @@ function addZUI(
             scheduleRender(two)
         }, 200)
     }
-    // Single-finger pan-mode state: when the toolbar pan button is active,
-    // a one-finger touchstart begins panning the surface (instead of routing
-    // to a synthetic mousedown). Cleared on touchend.
     let isSinglePanning = false
     let panLastX = 0
     let panLastY = 0
-    // Desktop pan-mode: grab-and-drag with the mouse translates the surface
-    // (mirrors the single-finger touch pan above). Set on mousedown while pan
-    // mode is active, cleared on mouseup.
     let isMousePanning = false
     let mousePanLastX = 0
     let mousePanLastY = 0
@@ -444,13 +331,10 @@ function addZUI(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const paths: any[] = []
 
-    // Velocity-based pencil state
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pencilGroup: any = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pencilPath: any = null
-    // Where the preview group sits: the stroke's first point. The preview's
-    // vertices are stored relative to it — see the mousedown pencil branch.
     let pencilPreviewOrigin = { x: 0, y: 0 }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pencilRawPoints: any[] = []
@@ -475,24 +359,12 @@ function addZUI(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let arrowDrawElement: any = null
-    // Source shape of a port-pulled connector, so the radar excludes its own
-    // ports (a connector can't dock back onto the shape it departed). Null for
-    // free arrows drawn from the toolbar.
     let arrowDrawTailShapeId: string | null = null
-    // Stacking state for a port-pulled connector: the source port anchor, its
-    // edge, and this connector's slot among the arrows already leaving that port
-    // (0 = first, no fan). The tail is re-fanned every mousemove so its offset
-    // direction tracks whichever quadrant the head is dragged into.
     let arrowDrawTailPort: {
         anchor: { x: number; y: number }
         edge: string
         index: number
     } | null = null
-    // Phase-2 magnetic snap: while an arrow endpoint is being dragged and the
-    // radar has it magnetically docked on a port, this holds the would-be
-    // binding. It's recomputed every mousemove frame (null when not docked) and
-    // committed on release — so if the user pulls away before letting go, no
-    // connection is made.
     let pendingPortConnection: {
         arrowId: string
         endpoint: 'head' | 'tail'
@@ -505,21 +377,9 @@ function addZUI(
     let drawOrigin: any = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let drawCurrentCoords: any = null
-    // The shape-creation preview is a DOM overlay (see drawPreviewOverlay), not
-    // a Two.js scene child — so growing it never repaints the scene SVG. These
-    // hold the drag's start corner in *client* (screen) coords for the overlay.
     let drawPreviewActive = false
     let drawScreenOriginX = 0
     let drawScreenOriginY = 0
-    // Fast move-drag: while dragging a non-rotated element (including the group
-    // overlay, whose member copies + selector chrome share its node) we write
-    // that element's own SVG `transform` attribute per frame instead of mutating
-    // its Two.js position and calling a full-scene two.update(). The rest of the
-    // scene SVG is never touched, so the drag stays smooth regardless of zoom or
-    // element count. The real position is written once on mouseup, so all the
-    // existing move/persist/history logic still runs. (The name is historical:
-    // this wrote `style.transform` + `will-change` until that combination turned
-    // out to make elements vanish mid-drag on mobile — see cssMoveTransform.)
     let cssMoveActive = false
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let cssMoveEl: any = null
@@ -537,47 +397,11 @@ function addZUI(
     let cssMoveStartClientY = 0
     let cssMoveLastDxWorld = 0
     let cssMoveLastDyWorld = 0
-    // Set once per drag when the shape is ineligible for the CSS fast-path (e.g.
-    // it has bound connectors) so the whole drag stays on the legacy live path.
     let cssMoveRejected = false
 
-    /**
-     * The live transform for one frame of a move-drag.
-     *
-     * Written to the SVG `transform` ATTRIBUTE — the same attribute Two.js
-     * renders — not to `style.transform`. Both work on desktop, and the CSS one
-     * is what this fast path used to write, but a CSS transform on an SVG `<g>`
-     * (with `will-change: transform` promoting it to its own layer) is exactly
-     * the combination mobile browsers are unreliable about: the promoted layer
-     * can come back unpainted, so the element vanishes for the length of the
-     * drag and reappears on release, when Two.js re-renders the real matrix.
-     * The attribute has no compositing story to get wrong.
-     *
-     * The value must carry any scale the element has, because it REPLACES what
-     * Two.js rendered, matrix and all. The zoom-resistant geo elements (point
-     * pins, text) keep their whole counter-scale there, so dropping it would
-     * snap them to world size mid-drag. Rotation never reaches here (rotated
-     * elements are ineligible for this path).
-     *
-     * It must be ONE `matrix(...)`, never `translate(...) scale(...)`. The two
-     * are numerically identical — translate-then-scale composes to exactly this
-     * matrix — but Blink does not treat them identically for paint
-     * invalidation. Far from a map anchor the surface coordinates are huge (San
-     * Francisco is ~18.2M units out on a base anchored in Ahmedabad, past the
-     * 2^24 float32 integer limit), and with the transform-list form the element
-     * was placed correctly and then never repainted: it vanished for the length
-     * of the drag and came back on release, when two.update() rewrote the
-     * matrix. Position was never wrong, which is why it does not look like a
-     * coordinate bug and why `getBoundingClientRect` reads clean throughout.
-     * Emitting the same form Two.js itself renders costs nothing and keeps the
-     * element on the browser's fast, well-trodden path. It reproduces only on a
-     * real GPU; headless rasterization paints it fine, so no headless test can
-     * catch a regression here.
-     */
     const cssMoveTransform = (
         x: number,
         y: number,
-        // Two.js `scale` is a number when uniform, a Two.Vector when not.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         scale?: any
     ): string => {
@@ -586,15 +410,6 @@ function addZUI(
         return `matrix(${sx} 0 0 ${sy} ${x} ${y})`
     }
 
-    /**
-     * Drop the live transforms and the drag state. Called on commit (mouseup)
-     * and defensively when a new gesture starts.
-     *
-     * Our per-frame writes went to the same attribute Two.js renders into, so
-     * clearing means handing it back: flag the matrix dirty and the next
-     * `two.update()` restores the authoritative one. Without the flag Two.js
-     * would consider the node clean and leave our last frame standing.
-     */
     const clearCssMove = (): void => {
         if (cssMoveNode) cssMoveNode.removeAttribute('transform')
         if (cssMoveEl) cssMoveEl._flagMatrix = true
@@ -611,29 +426,15 @@ function addZUI(
     let drawShapeType: string | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let drawShapeProps: any = null
-    // A circle is a proximity radius, not a bounding box. Its drag is
-    // centre-out — the mousedown point is the centre and the cursor distance is
-    // the radius — so width always equals height and it can never come out as
-    // an oval. Rectangle/diamond keep the corner-to-corner drag.
     const isRadialDraw = (type: string | null): boolean => type === 'circle'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let lastPlacedElement: any = null
-    // Empty-canvas mousedown stores its origin here. The dotted group
-    // selector is only materialised on the first mousemove, so a click
-    // without drag never produces a stray rectangle (and dblclick on
-    // empty canvas can spawn a text element cleanly).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let pendingGroupSelectorOrigin: any = null
 
-    // ── Geo multi-click draw state (area / route) ────────────────────────────
-    // Vertices are surface coords; preview dots/lines live in two.scene so ZUI
-    // transforms them like everything else. Built into a component on finish.
     let geoDrawType: 'area' | 'route' | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoDrawProps: any = null
-    // The preset armed on this tool, captured when the draw starts. Held apart
-    // from `geoDrawProps` because it has to outrank the live element defaults
-    // in `geoPreviewStyle`, and those already outrank the staged props.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoArmedStyle: any = null
     let geoVertices: { x: number; y: number }[] = []
@@ -643,56 +444,20 @@ function addZUI(
     let geoLines: any[] = []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoPreviewLine: any = null
-    // For the curved line, a single curved Two.Path preview replaces the straight
-    // segment+rubber-band so the in-transit shape matches the committed curve.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoCurvedPreview: any = null
 
-    // ── Snap-to-road state (route only) ──────────────────────────────────
-    // Non-null only while a route draw is running with snapping available. See
-    // utils/roadSnap.ts; everything here degrades to the plain straight-segment
-    // draw the moment the snapper returns null.
     let routeSnapper: RouteSnapper | null = null
-    // The routed polyline currently under the cursor, recomputed per move.
     let routeSnapPending: RouteSnapPreview | null = null
-    // A Two.Path preview of that polyline, replacing the straight rubber band.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let routeSnapPreview: any = null
-    // How many vertices the most recent click appended. A snapped click commits
-    // a whole run of road vertices, not one — so the double-click that finishes
-    // a draw has to strip the run it added, not a single point, or it eats a
-    // real corner off the route.
     let lastGeoRunLength = 0
-    // Last cursor position a route was searched from. Re-routing is a graph
-    // search and pointers fire far faster than a few pixels of travel can
-    // change its answer, so sub-threshold moves reuse the standing preview.
     let lastRouteProbe: { x: number; y: number } | null = null
 
-    // ── Preview render origin ────────────────────────────────────────────
-    //
-    // Every preview artifact (dots, committed segments, the rubber band, the
-    // curved preview, the snapped route) hangs off ONE group translated near
-    // the draw, and holds coordinates RELATIVE to it — exactly what every
-    // committed element does, via its factory.
-    //
-    // It has to. Surface coordinates are absolute Mercator pixels from the
-    // base's anchor, so distance from the anchor is coordinate magnitude: San
-    // Francisco sits ~18.2M units out on a base anchored in Ahmedabad, where
-    // float32 spacing is 2 whole surface units. Written straight into an SVG
-    // path `d`, numbers that size come back quantised and Skia's stroker
-    // degrades — the preview paints grey instead of black, its width varies
-    // chord to chord, and it detaches from the anchor dot. The finished route
-    // looks perfect immediately afterwards, because by then it IS an element
-    // and its geometry is small numbers inside a translated group.
-    //
-    // This is the same disease `canvas/renderOrigin.ts` was written for, one
-    // level further in: that fixes the scene's transform, this fixes the path
-    // DATA. Never add a preview artifact straight to `two` — put it in here.
     let geoPreviewOrigin: { x: number; y: number } | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let geoPreviewGroup: any = null
 
-    /** The preview group, created on first use, translated near the draw. */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ensureGeoPreviewGroup = (x: number, y: number): any => {
         if (!geoPreviewGroup) {
@@ -700,15 +465,12 @@ function addZUI(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const g = new (Two as any).Group()
             g.translation.set(geoPreviewOrigin.x, geoPreviewOrigin.y)
-            // Deliberately carries no `elementData`, which is what keeps it out
-            // of the z-order reconcile and every other scene-children scan.
             two.add(g)
             geoPreviewGroup = g
         }
         return geoPreviewGroup
     }
 
-    /** Surface point → preview-group space. */
     const rel = (x: number, y: number): { x: number; y: number } => {
         const o = geoPreviewOrigin
         return o ? { x: x - o.x, y: y - o.y } : { x, y }
@@ -716,8 +478,6 @@ function addZUI(
 
     const toSurface = (e: { clientX: number; clientY: number }) =>
         zui.clientToSurface(e.clientX, e.clientY)
-    // Opening range. The active base overrides this through setZoomLimits —
-    // the map needs a far wider one (see BaseTypeProvider.zoomLimits).
     zui.addLimits(0.06, 8)
 
     const setRootCursor = (cursor: string) => {
@@ -725,38 +485,14 @@ function addZUI(
         if (root) root.style.cursor = cursor
     }
 
-    /**
-     * Stroke width the pencil PREVIEW must be painted at so the live stroke
-     * looks exactly like the element it becomes.
-     *
-     * The committed record stores the LOGICAL width (`defaultLinewidthValue`),
-     * and on a geographic base the mounted element counter-scales it — see
-     * `isStrokeScaled` / pencil.tsx — so the painted path ends up carrying
-     * `base / scale^resist`. The preview is a bare scene path with no component
-     * behind it, so it has to apply that factor itself. Without this the stroke
-     * draws thin and visibly thickens the instant the element mounts.
-     *
-     */
     const pencilPreviewLinewidth = (): number => {
         const base = defaultLinewidthValue
         const scale = zui.scale || two.scene.scale || 1
         return base * computeCounterScale(scale, DEFAULT_RESIST)
     }
 
-    // ── Multi-click draw helpers (area / route) ──────────────────────────────
-    // Preview artifacts live in two.scene, so the ZUI scales them along with the
-    // world. Dividing the screen-pixel sizes by the live scale cancels that out
-    // and pins the drawing aid to a constant on-screen size — the committed
-    // route does the same thing via its stroke counter-scale (counterScale.ts),
-    // so what you trace matches what you get.
     const geoPreviewStyle = () => {
         const scale = zui.scale || two.scene.scale || 1
-        // The armed preset comes FIRST, ahead of the live element defaults.
-        // Those defaults are what the stroke controls set, and they legitimately
-        // beat the staged draw props — but a preset is the user naming what
-        // this mark IS, so it outranks both. Without this the preview traced in
-        // the default colour and only snapped to the preset on finish, which is
-        // exactly the jump `finishGeoDraw` folds the same patch in to avoid.
         const lw =
             geoArmedStyle?.linewidth ||
             defaultLinewidthValue ||
@@ -768,20 +504,15 @@ function addZUI(
                 defaultStrokeColorValue ||
                 geoDrawProps?.stroke ||
                 SHAPE_DEFAULT_STROKE,
-            // Surface-space width that renders as `max(lw, floor)` screen px.
             lw: Math.max(lw, PREVIEW_MIN_STROKE_PX) / scale,
             dotRadius: PREVIEW_DOT_PX / scale,
         }
     }
 
-    // Zooming mid-draw changes the scale the preview was sized against, so
-    // re-derive every artifact's width/radius. Cheap: a draw in progress has a
-    // handful of vertices.
     const refreshGeoPreviewScale = () => {
         if (!geoDrawType) return
         const { lw, dotRadius } = geoPreviewStyle()
         geoDots.forEach((dot) => {
-            // Two.Circle exposes `radius`; assigning it reflows the anchors.
             dot.radius = dotRadius
         })
         geoLines.forEach((line) => {
@@ -793,15 +524,8 @@ function addZUI(
         two.update()
     }
     window.addEventListener('zoomChanged', refreshGeoPreviewScale)
-    // The road graph is built from the LOADED TILES, i.e. from the viewport. A
-    // camera change means a different set of tiles, so the cached graph is now
-    // describing somewhere the user has partly left.
     window.addEventListener('zoomChanged', invalidateRoadGraph)
 
-    // Rebuild the curved preview path so the in-transit line is smooth (matching
-    // the committed shape) instead of straight segments. Runs through the placed
-    // vertices plus an optional live cursor point. Recreated each call — the
-    // preview has few points, so this is cheap.
     const rebuildCurvedPreview = (cursor?: { x: number; y: number }) => {
         if (geoCurvedPreview) {
             geoPreviewGroup?.remove(geoCurvedPreview)
@@ -817,7 +541,6 @@ function addZUI(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return new (Two as any).Anchor(r.x, r.y)
         })
-        // closed = false, curved = true — same as the committed curvedLine.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const path = new (Two as any).Path(anchors, false, true)
         path.noFill()
@@ -832,10 +555,6 @@ function addZUI(
 
     const addGeoVertex = (x: number, y: number) => {
         geoVertices.push({ x, y })
-        // Read the live element defaults (kept in sync via useEffect) so a
-        // stroke/width change made in the panel mid-draw is reflected
-        // immediately — same contract as pencil. Falls back to the props
-        // stashed at tool-pick, then the global shape default.
         const { stroke, lw, dotRadius } = geoPreviewStyle()
         const g = ensureGeoPreviewGroup(x, y)
         const r = rel(x, y)
@@ -861,16 +580,6 @@ function addZUI(
         two.update()
     }
 
-    /**
-     * Commit a whole run of vertices as ONE click — the road-following path
-     * from the last anchor to where the user just clicked.
-     *
-     * `pts` starts AT the current anchor (it is `path[0]` from the snapper), so
-     * that first point is skipped; it is already a vertex. Only the last point
-     * gets a dot, because only the last point is somewhere the user actually
-     * pressed. Everything between is road geometry, and marking it would turn a
-     * traced street into a string of beads.
-     */
     const addGeoVertexRun = (pts: { x: number; y: number }[]) => {
         const run = pts.slice(1)
         if (run.length === 0) {
@@ -907,7 +616,6 @@ function addZUI(
         two.update()
     }
 
-    /** Drop the routed preview path, leaving the straight rubber band to run. */
     const clearRouteSnapPreview = () => {
         if (routeSnapPreview) {
             geoPreviewGroup?.remove(routeSnapPreview)
@@ -916,13 +624,6 @@ function addZUI(
         routeSnapPending = null
     }
 
-    /**
-     * Paint the road-following path from the anchor to the cursor.
-     *
-     * Rebuilt from scratch each move rather than mutated: the vertex COUNT
-     * changes as the cursor crosses junctions, and Two.Path has no cheap way to
-     * grow or shrink its anchor list. These paths are a few dozen points.
-     */
     const updateRouteSnapPreview = (preview: RouteSnapPreview) => {
         if (routeSnapPreview) geoPreviewGroup?.remove(routeSnapPreview)
         const { stroke, lw } = geoPreviewStyle()
@@ -946,28 +647,6 @@ function addZUI(
         routeSnapPending = preview
     }
 
-    /**
-     * Land one click of a route/area draw.
-     *
-     * Four outcomes, in the order they are tried:
-     *
-     * 1. No snapper (area, or snapping off) or Alt held → the plain vertex this
-     *    always added. The snapper is still told where the vertex went, so the
-     *    NEXT segment can route from where the user actually is rather than
-     *    from the last place a road was found.
-     * 2. Snapper with an anchor → route from it to the click and commit the
-     *    whole road run.
-     * 3. Snapper with an anchor but no route (cursor off the network, or the
-     *    two ends unreachable within the search budget) → straight vertex, and
-     *    re-anchor there so the draw is never stuck.
-     * 4. First click of the draw → snap it onto the nearest road, falling back
-     *    to the raw point.
-     *
-     * The route is recomputed here from the CLICK position rather than reusing
-     * the standing mousemove preview. The click is the authoritative position,
-     * and a move may never have fired between the two presses of the
-     * double-click that finishes a draw.
-     */
     const commitGeoClick = (
         pt: { x: number; y: number },
         straight: boolean
@@ -1024,18 +703,12 @@ function addZUI(
             geoPreviewLine.opacity = PREVIEW_RUBBER_OPACITY
             g.add(geoPreviewLine)
         }
-        // Re-applied every move, not just on creation: a zoom mid-draw changes
-        // the scale this width was derived from.
         geoPreviewLine.linewidth = lw
         two.update()
     }
 
     const clearGeoPreviewArtifacts = () => {
         clearRouteSnapPreview()
-        // Detach the children BEFORE the group, then drop the (now empty)
-        // group. Removing a populated parent is the documented way into the
-        // `scene.subtractions` crash — Two.js takes the parent's SVG node out
-        // with the children still tracked as living inside it. See CLAUDE.md.
         const g = geoPreviewGroup
         if (g) {
             geoDots.forEach((d) => g.remove(d))
@@ -1053,9 +726,6 @@ function addZUI(
         try {
             two.update()
         } catch (err) {
-            // A failed render leaves scene.subtractions populated, and every
-            // later two.update() retries the same broken removeChild. Clear it
-            // or one bad teardown poisons the canvas for the session.
             console.error('Preview teardown render failed', err)
             two.scene.subtractions.length = 0
             two.scene._flagSubtractions = false
@@ -1077,10 +747,6 @@ function addZUI(
         domElement.removeEventListener('mousemove', mousemove, false)
     }
 
-    // Signals React (base.tsx) to drop the mobile ✓/✗ draw controls. The DOM
-    // nudge this used to hide (#multi-click-draw-hint) is gone — desktop
-    // guidance for these tools is now the persistent #tool-hint, which is keyed
-    // on `currentElement` and clears itself when the draw resets to pointer.
     const hideMultiClickHint = () => {
         window.dispatchEvent(new CustomEvent('multiClickDrawEnd'))
     }
@@ -1092,19 +758,11 @@ function addZUI(
         setRootCursor('auto')
     }
 
-    // Finish a multi-click area/route. `dropLast` strips the duplicate vertex
-    // that the second mousedown of a double-click adds. Below the minimum vertex
-    // count, the draw is discarded.
     const finishGeoDraw = ({
         dropLast = false,
     }: { dropLast?: boolean } = {}) => {
         if (!geoDrawType) return
         let verts = geoVertices.slice()
-        // The second press of the finishing double-click appended exactly one
-        // vertex when drawing straight, but a whole ROAD RUN when snapping —
-        // so strip what was actually added, not a fixed one. Stripping one
-        // there left the rest of that duplicate run welded onto the end of the
-        // route as a spur back to the click point.
         const dropCount = dropLast ? Math.min(lastGeoRunLength, verts.length) : 0
         if (dropCount > 0) verts = verts.slice(0, -dropCount)
 
@@ -1124,23 +782,15 @@ function addZUI(
             ...(geoDrawProps || {}),
             id: finalId,
             componentType: type,
-            // Stroke/width/type come from the live element defaults so geo
-            // draws honor edits made in the panel (just like pencil/shapes),
-            // sharing the one default set across shapes/pencil/geo.
             stroke:
                 defaultStrokeColorValue ||
                 geoDrawProps?.stroke ||
                 SHAPE_DEFAULT_STROKE,
             linewidth: defaultLinewidthValue || geoDrawProps?.linewidth || 2,
             strokeType: defaultStrokeTypeValue,
-            // Only an area has an interior to fill. Solid is stored as null.
             ...(type === 'area' && defaultFillTypeValue
                 ? { fillType: defaultFillTypeValue }
                 : {}),
-            // An area is a closed ring (`polygonGeometry` adds the closing
-            // position); a route is an open polyline. `geometryFields` derives
-            // x/y from the first coordinate, which is the origin the factory
-            // rebuilds the path relative to.
             ...geometryFields(
                 type === 'area'
                     ? polygonGeometry(rounded)
@@ -1155,14 +805,6 @@ function addZUI(
             isDummy: null,
             createdAt: null,
             children: {},
-            // LAST, and the ordering is load-bearing: stroke / linewidth /
-            // strokeType above are re-read from the live element defaults
-            // AFTER the staged draw props are spread, so an armed preset
-            // folded in any earlier would be silently overwritten. A preset
-            // overrides the styling — it cannot be the thing that loses.
-            //
-            // Read from localStorage, not a prop: this runs inside addZUI,
-            // whose handlers close over the props they mounted with.
             ...armedPresetPatch(type as LegendPresetType),
         }
 
@@ -1175,26 +817,14 @@ function addZUI(
             finalShapeData as unknown as ComponentRecord
         )
         setSelectedComponentInBase(null)
-        // After finishing an area/route draw, land in pointer/select mode so the
-        // shape can be tweaked immediately, whatever the base's home tool is.
         setRootCursor('auto')
         setPointerElement('pointer', { select: true })
     }
 
     window.addEventListener('cancelGeoDraw', () => {
-        // Not gated on geoDrawType: the multi-click hint banner is shown as
-        // soon as the tool is ARMED (handleMultiClickDraw writes
-        // DRAW_TYPE_KEY to localStorage), but geoDrawType itself is only
-        // populated lazily on the first canvas mousedown. Switching tools
-        // before ever clicking the canvas left geoDrawType null, so this
-        // guard skipped cancelGeoDraw() entirely and the hint stuck around
-        // forever. cancelGeoDraw()'s steps are all no-ops when nothing was
-        // drawn, so it's safe to always run.
         cancelGeoDraw()
     })
 
-    // Mobile ✓ button (base.tsx) — finish the in-progress multi-click draw,
-    // the touch equivalent of pressing Enter (no keyboard on mobile).
     window.addEventListener('finishGeoDraw', () => {
         if (geoDrawType) finishGeoDraw({})
     })
@@ -1220,10 +850,6 @@ function addZUI(
         commit: (id, patch) => {
             updateComponentBulkPropertiesInLocalStore(id, patch)
             const g = selectionController.currentGroup
-            // Keep elementData (read by copy/paste and other consumers) in step
-            // with the store + rendered shape after a resize — otherwise a clone
-            // reads stale draw-time width/height. Mirrors the font-resize
-            // metadata sync in selectionController's resize-end path.
             if (g?.elementData) Object.assign(g.elementData, patch)
         },
         onDelete: (group) => {
@@ -1234,21 +860,6 @@ function addZUI(
         },
     })
 
-    /**
-     * Select an element by id, from outside the canvas's own pointer handling.
-     *
-     * Paste is the caller: the clone lands under the cursor, but the SOURCE
-     * element kept the selection box and the properties toolbar, so the panel
-     * you reached for was editing the thing you had copied FROM. Selection is
-     * otherwise only ever established by a real gesture, hence this door.
-     *
-     * Two kinds of element, two mechanisms. The controller owns rect/circle/
-     * diamond/newText and `attach` does everything for them. Everything else
-     * (arrow, line, pencil, and the whole geo family) draws its own selection
-     * chrome inside its component, bound to a `click` on its own SVG node — so
-     * for those we click the node, exactly as a user's finger would, and set the
-     * toolbar state ourselves.
-     */
     const selectComponentById = (id: string): void => {
         const group = two.scene.children.find(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1281,16 +892,6 @@ function addZUI(
     }) as EventListener
     window.addEventListener(SELECT_COMPONENT_EVENT, onSelectComponentRequest)
 
-    // Delete/Backspace for element types no other delete path covers.
-    //
-    // The base's delete key is spread across three owners: the selection
-    // controller handles SHAPE_ADAPTERS shapes (rect/circle/diamond/text);
-    // arrow, plain line, divider and text each carry their own focus-based
-    // handler. That left the whole geo family — route, area and point — plus
-    // the curved line cloned from route with no way to delete by keyboard at
-    // all: they select and show a properties panel, but the key does nothing.
-    // This is their handler, scoped to exactly those types so the shapes that
-    // already own the key are never double-deleted.
     const KEY_DELETABLE_HERE: ReadonlySet<string> = new Set([
         'curvedLine',
         'route',
@@ -1304,8 +905,6 @@ function addZUI(
         if ((document.activeElement as HTMLElement | null)?.isContentEditable) {
             return
         }
-        // Don't delete mid multi-click draw, or when the controller owns the
-        // selection (its own handler fires for those).
         if (geoDrawType || selectionController.currentGroup) return
         const grp = lastSelectedShape
         const type = grp?.elementData?.componentType
@@ -1320,13 +919,6 @@ function addZUI(
     }
     window.addEventListener('keydown', onOrphanDeleteKeyDown, false)
 
-    // An element can leave the scene without the selection ever being cleared —
-    // undoing its ADD is the common case (history's applyRemove just drops the
-    // group). The selection overlay lives at scene level, so it survives the
-    // element it was framing and would keep painting (and stay hit-testable) at
-    // the dead shape's last position. Drop any selection state pointing at the
-    // removed id. Idempotent: detach() no-ops when nothing is selected, so the
-    // delete paths that already detach are unaffected.
     window.addEventListener('elementRemoved', ((e: CustomEvent) => {
         const id = e.detail?.id
         if (!id) return
@@ -1344,18 +936,6 @@ function addZUI(
     domElement.addEventListener('mousedown', mousedown, false)
     domElement.addEventListener('mousemove', hoverDetectMove, false)
     domElement.addEventListener('dblclick', dblclick, false)
-    // Wheel listens on window, not the SVG. Safari only delivers wheel events
-    // to the page inside regions it knows have a wheel listener, and for SVG
-    // that region is built from painted content. The ink layer is transparent
-    // over the map, so a listener on the SVG almost never fired there and the
-    // wheel did nothing. A window listener makes the whole page a wheel
-    // region; the target filter keeps wheel over toolbars and panels out of
-    // the camera. (Same fix as craftbase.) Synthetic wheel events skip that
-    // region check, so Playwright's WebKit can't reproduce the bug.
-    //
-    // Non-passive so the handler can preventDefault. The legacy `mousewheel`
-    // alias is deliberately NOT bound: no current browser fires both, but one
-    // that did would now double-apply the zoom.
     const canvasWheel = (e: WheelEvent) => {
         if (e.target instanceof Node && domElement.contains(e.target)) {
             mousewheel(e)
@@ -1376,28 +956,15 @@ function addZUI(
     })
 
     function dblclick(e: MouseEvent) {
-        // In a multi-click geo draw, a double-click finishes it. Drop the
-        // duplicate vertex the second mousedown added.
         if (geoDrawType) {
             finishGeoDraw({ dropLast: true })
             return
         }
-        // Pan mode navigates, it does not author. A double-click is the canvas's
-        // "edit this" gesture — on a shape it opens the text editor, on empty
-        // canvas it spawns a whole text element — and neither belongs to a tool
-        // whose entire job is moving the view. The element-owned editors
-        // (point.tsx, text.tsx) carry the same guard, because their dblclick
-        // listeners are bound to their own SVG nodes and never reach here.
         if (isPanMode()) return
         shape = null
         mouse.x = e.clientX
         mouse.y = e.clientY
         let avoidDragging = false
-        // Hide all arrow/line endpoint circles before processing the new
-        // selection. Covers plain lines too (isLineLikeType): on mobile, blur
-        // never fires (synthetic taps don't move focus), so the line's own
-        // onBlur can't hide them — this next-tap sweep is what clears them,
-        // exactly as it does for arrows.
         two.scene.children.forEach((child: any) => {
             if (isLineLikeType(child?.elementData?.componentType)) {
                 setArrowEndpointsVisible(child, false)
@@ -1413,9 +980,6 @@ function addZUI(
             shape = {}
         }
 
-        // Empty-canvas dblclick → create new text element at click point.
-        // Skipped if a shape was hit (preserve dblclick-to-edit), if the
-        // dblclick landed on avoid-dragging UI, or if a draw mode is active.
         if (!avoidDragging && (!shape || Object.keys(shape).length === 0)) {
             const inDrawMode =
                 isPencilModeRef?.current === true ||
@@ -1444,9 +1008,6 @@ function addZUI(
             if (!groupDomElem) return
 
             const shapeKind = group?.elementData?.componentType
-            // The shape Path child (rectangle/ellipse/diamond). The text layer
-            // is a Group with no numeric width, so this still resolves the
-            // geometry node and lets us auto-grow it while typing.
             const rectChild = group.children.find(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (c: any) =>
@@ -1455,21 +1016,14 @@ function addZUI(
                     typeof c.height === 'number'
             )
 
-            // Anchor the textarea over the shape's screen box — its center is
-            // where the centered text block sits, valid whether or not text
-            // exists yet.
             const anchorElem =
                 rectChild?._renderer?.elem ?? (groupDomElem as Element)
             const screenRect = anchorElem.getBoundingClientRect()
 
-            // Hide the text layer (not the shape) while the textarea overlays.
             const textLayer = findShapeTextLayer(group)
             const layerElem = textLayer?._renderer?.elem as
                 HTMLElement | undefined
             if (layerElem) layerElem.style.display = 'none'
-            // The selection box stays visible while editing (same as the solo
-            // text editor) — it re-syncs on every render, so it tracks the
-            // shape as it auto-grows with the text.
             two.update()
 
             const stored = readProperties(group.elementData)
@@ -1477,37 +1031,20 @@ function addZUI(
                 Object.keys(stored).length > 0
                     ? stored
                     : (currentMetadata ?? {})
-            // A shape that's never had text has no `textFontSize` —
-            // shapeTextStyleFromMeta would fall back to its hardcoded 24px
-            // ("S"). Seed it from the user's current default text size (the
-            // defaults toolbar) so new shape-text honors the last-set size.
             const liveMeta: Record<string, unknown> = {
                 ...rawLiveMeta,
                 textFontSize: rawLiveMeta.textFontSize ?? defaultTextSizeValue,
             }
             const { style: textStyle } = shapeTextStyleFromMeta(liveMeta)
             const fontSize = textStyle.size || DEFAULT_TEXT_SIZE
-            // Two.js renders text at `fontSize * sceneScale` screen pixels.
-            // Match the textarea/measureSpan to that so visuals stay in sync
-            // and the surface-unit math (measuredW / zoom) remains correct.
-            // Camera-dependent geometry — reassigned by recomputeGeometry() on
-            // every two.update (pan/zoom) so the editor stays glued to the shape.
             const sceneScale = two?.scene?.scale || 1
             let cssFontSize = fontSize * sceneScale
-            // Use a generous line-height so ascenders/descenders are
-            // never clipped. A LINE_HEIGHT_MULTIPLIER× covers most font metrics.
             let lineH = Math.ceil(cssFontSize * LINE_HEIGHT_MULTIPLIER)
-            // Vertical padding inside the textarea prevents the top of
-            // tall glyphs (H, d, l …) from being cut off by the element
-            // boundary. Half the difference between lineH and cssFontSize
-            // approximates the ascender headroom the browser needs.
             let vertPad = Math.ceil((lineH - cssFontSize) / 2) + 4
 
             const input = document.createElement('textarea')
             const randomId = Math.floor(Math.random() * 90 + 10)
             input.id = `new-text-input-area-${randomId}`
-            // Edit the RAW text (hard newlines preserved) — the wrapped
-            // layout shown on canvas is derived, never the source of truth.
             input.value =
                 typeof liveMeta.textContent === 'string'
                     ? liveMeta.textContent
@@ -1528,29 +1065,17 @@ function addZUI(
             input.style.outline = 'none'
             input.style.resize = 'none'
             input.style.overflow = 'hidden'
-            // Wrap inside the shape (don't run past it horizontally); long
-            // words break so the box can squeeze to 1 char/line.
             input.style.whiteSpace = 'pre-wrap'
             input.style.overflowWrap = 'anywhere'
             input.style.boxSizing = 'border-box'
             input.className = 'temp-input-area'
 
-            // Where the shape sat and how tall it was before typing began.
-            // Growing a rectangle downward moves its origin (see
-            // growShapeToFit), so the commit below has to persist the new y —
-            // compared against these.
             const startTranslationY = group.translation.y
             const startHeight = rectChild?.height
 
-            // Anchor point: the SVG shape's screen-space center. The shape stays
-            // VISIBLE during edit (only the text layer is hidden), so its rect is
-            // live — recomputeGeometry() re-reads it each frame to follow pan/zoom.
             let centerX = screenRect.left + screenRect.width / 2
             let centerY = screenRect.top + screenRect.height / 2
 
-            // px-per-surface-unit derived from the shape's current screen
-            // size; converts the textarea's pixel measurement back into
-            // Two.js surface units before growing the shape.
             const rectScreen =
                 rectChild?._renderer?.elem?.getBoundingClientRect()
             let zoom =
@@ -1560,18 +1085,10 @@ function addZUI(
 
             document.getElementById('main-two-root')?.append(input)
 
-            // ── Offscreen measurement helper ──
-            // We create a hidden <span> with identical font styles and
-            // read its offsetWidth/offsetHeight. This is more reliable
-            // than textarea.scrollWidth which can be affected by cols,
-            // min intrinsic sizing, and platform differences.
-            // The textarea content width = the shape's usable inner width
-            // (screen px), so wrapping mirrors the committed render and the
-            // box never spills outside the shape horizontally.
             const surfaceW = rectChild?.width || screenRect.width / zoom
             let usableScreenW = Math.max(
                 Math.round(usableTextWidth(shapeKind, surfaceW) * zoom),
-                Math.ceil(cssFontSize) // never below ~1 glyph
+                Math.ceil(cssFontSize)
             )
             const PAD_X = 8
 
@@ -1592,8 +1109,6 @@ function addZUI(
             measureSpan.style.boxSizing = 'content-box'
             document.body.appendChild(measureSpan)
 
-            // Pull anchor + font from the LIVE shape rect + camera. Called on
-            // every two.update so the editor pans/zooms with the shape.
             const recomputeGeometry = () => {
                 const scale = two?.scene?.scale || 1
                 cssFontSize = fontSize * scale
@@ -1626,8 +1141,6 @@ function addZUI(
                 measureSpan.style.width = `${usableScreenW}px`
             }
 
-            // Pure DOM: size + centre the textarea over the shape midpoint.
-            // No shape-grow / two.update — safe to call from the update handler.
             const placeEditor = () => {
                 const val = input.value || 'M'
                 measureSpan.textContent = val
@@ -1645,9 +1158,6 @@ function addZUI(
                 input.style.top = `${centerY - contentHeight / 2}px`
             }
 
-            // Grow ONLY the shape height to fit the wrapped lines (width is
-            // user-driven). Only on typing — NOT from the update handler (it
-            // calls two.update).
             const growShapeToFit = () => {
                 if (!rectChild) return
                 const val = input.value || 'M'
@@ -1664,32 +1174,23 @@ function addZUI(
                 if (rectChild.height < nextH) {
                     const dh = nextH - rectChild.height
                     rectChild.height = nextH
-                    // The shape path sits on the group origin, so growing
-                    // `height` alone expands symmetrically and lifts the TOP
-                    // edge — the box would swell around the text instead of
-                    // below it, walking line 1 upward on every newline. Shift
-                    // the origin down by half the delta so the top edge stays
-                    // put and the box only extends downward (matching the
-                    // standalone text editor).
                     two.update()
                 }
             }
 
-            // Re-glue the editor to the shape after any render (pan/zoom).
             const repositionEditor = () => {
                 recomputeGeometry()
                 placeEditor()
             }
 
             const onTextInput = () => {
-                growShapeToFit() // may two.update → 'update' → repositionEditor
+                growShapeToFit()
                 placeEditor()
             }
 
             repositionEditor()
             two.bind('update', repositionEditor)
 
-            // Re-measure on every keystroke so the box grows with the text
             input.addEventListener('input', onTextInput)
 
             input.focus()
@@ -1697,12 +1198,8 @@ function addZUI(
             input.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter') {
                     if (event.shiftKey) {
-                        // Shift+Enter: let the textarea insert a hard newline
-                        // (whiteSpace:'pre-wrap' preserves it; reflow on
-                        // commit re-wraps to the shape width).
                         return
                     }
-                    // Plain Enter commits and closes the editor.
                     event.preventDefault()
                     input.blur()
                 }
@@ -1713,7 +1210,6 @@ function addZUI(
             })
 
             input.addEventListener('blur', () => {
-                // Clean up the camera tracker, input listener and measure span
                 two.unbind('update', repositionEditor)
                 input.removeEventListener('input', onTextInput)
                 if (measureSpan.parentNode) {
@@ -1721,22 +1217,15 @@ function addZUI(
                 }
 
                 if (layerElem) layerElem.style.display = ''
-                // mousedown fires before blur, so if the user clicked empty
-                // canvas, detach() already ran and currentGroup is null.
-                // Only restore the selection UI if we still have a target.
                 if (selectionController.currentGroup) {
                     selectionController.ui.visible = true
                     selectionController.syncToTarget()
                 }
                 two.update()
 
-                // Raw text — may contain hard newlines from Shift+Enter.
                 const newContent = input.value
 
                 if (componentId) {
-                    // Use the live elementData.metadata (updated by toolbar ops
-                    // like font-size and text-color) rather than the stale
-                    // snapshot captured at dblclick time.
                     const latestMeta = readProperties(group.elementData)
                     const updatedProps = {
                         ...latestMeta,
@@ -1752,8 +1241,6 @@ function addZUI(
                             textStyle.baseline ||
                             'middle',
                     }
-                    // Re-wrap the raw text to the (possibly grown) box width
-                    // and rebuild the multiline layer.
                     applyShapeText(
                         two,
                         group,
@@ -1771,12 +1258,6 @@ function addZUI(
                         persistPayload.width = Math.round(rectChild.width)
                         persistPayload.height = Math.round(rectChild.height)
                     }
-                    // Keeping the top edge fixed moved the origin; without
-                    // persisting it a reload would re-center the grown box on
-                    // the old origin and the shape would jump upward. The move
-                    // goes through the GEOMETRY — writing the `y` column alone
-                    // would leave the two disagreeing, and geometry is what the
-                    // factory reads back.
                     if (group.translation.y !== startTranslationY) {
                         Object.assign(
                             persistPayload,
@@ -1793,9 +1274,6 @@ function addZUI(
                         componentId,
                         persistPayload
                     )
-                    // Keep the live group's elementData in sync so consumers
-                    // that read from it (copy/paste, toolbar) see the latest
-                    // text content without waiting for a re-render.
                     if (group.elementData) {
                         group.elementData.metadata = persistPayload.metadata
                         if (rectChild) {
@@ -1807,10 +1285,6 @@ function addZUI(
                         }
                     }
 
-                    // Typing resized the box (and, for a rectangle, moved it),
-                    // so every edge port shifted — re-glue anything docked to
-                    // them. Restacking an edge with nothing docked is a no-op,
-                    // so fire all four rather than scanning for bindings.
                     if (
                         persistPayload.y !== undefined ||
                         (rectChild && rectChild.height !== startHeight)
@@ -1822,16 +1296,8 @@ function addZUI(
                 input.remove()
             })
         }
-
-        // Map objects carry no inner text — the text tool is how a map is
-        // labelled — so a double-click on a shape has nothing to open.
     }
 
-    // eraseElementAtPoint deletes whole elements via a point hit test, not
-    // pixel painting — so "eraser size" widens the hit-test tolerance radius
-    // around the cursor rather than a stroke width. Read live (not via a ref)
-    // because, like RUBBER_MODE_KEY elsewhere in this file, the value is only
-    // ever needed synchronously inside a DOM event handler.
     function getEraserSize(): EraserSize {
         const stored = localStorage.getItem(
             ERASER_SIZE_KEY
@@ -1845,17 +1311,12 @@ function addZUI(
         return ERASER_SIZE_RADIUS[getEraserSize()]
     }
 
-    // The trail is the eraser's cursor made visible, so it's drawn at the same
-    // diameter as the dot in the size selector — pick the big dot, get a big
-    // circle on the canvas. (The hit-test radius above reaches further; the
-    // trail shows the tool, not the blast radius.)
     const eraserTrail = createEraserTrail(
         two,
         () => ERASER_DOT_PX[getEraserSize()],
         () => zui.scale || 1
     )
 
-    // Nearest component group at or above `el`.
     function componentElementFor(el: Element): Element | null {
         let target: Element | null = el
         while (target && target !== document.body) {
@@ -1865,11 +1326,6 @@ function addZUI(
         return null
     }
 
-    // Topmost component under the point. With `skipImages` (Shift held while
-    // erasing) it looks through the whole stack and returns the topmost
-    // non-image component, so a stroke is erasable whether it sits above or
-    // below an image, and the image itself is never hit. Ported from
-    // craftbase; image groups carry data-component-type (image.tsx).
     function componentIdAtPoint(
         x: number,
         y: number,
@@ -1894,12 +1350,8 @@ function addZUI(
         return null
     }
 
-    // Eraser hit-test samples points around a circle of the configured radius
-    // (plus the center) rather than just the raw cursor point, so a larger
-    // size gives a more forgiving catch area for thin strokes / small shapes.
     const ERASER_SAMPLE_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315]
 
-    // `keepImages`: Shift held — erase drawings but leave image elements.
     function eraseElementAtPoint(x: number, y: number, keepImages: boolean) {
         const radius = getEraserRadius()
         const points: Array<[number, number]> =
@@ -1950,16 +1402,11 @@ function addZUI(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let lastHoveredCircleGroup: any = null
 
-    // Singleton hover indicator — separate from the selection circles
     const hoverCircle = two.makeCircle(0, 0, 6)
     hoverCircle.fill = HOVER_COLOR
     hoverCircle.noStroke()
     hoverCircle.opacity = 0
 
-    // Throttle the (O(scene)) hover scan to at most once per frame, and drop it
-    // entirely while a wheel gesture is in flight — the camera is moving under
-    // the cursor, so any hover result is stale before it paints. Only the most
-    // recent event of the frame is scanned; the earlier ones are superseded.
     function hoverDetectMove(e: MouseEvent) {
         if (isWheeling) return
 
@@ -1975,7 +1422,6 @@ function addZUI(
     }
 
     function runHoverDetect(e: MouseEvent) {
-        // No arrow-endpoint hover while panning or drawing/placing a geo object.
         if (
             isMousePanning ||
             geoDrawType ||
@@ -1991,8 +1437,6 @@ function addZUI(
             }
             return
         }
-        // Perf-testing lever: skip the O(N) endpoint scan (arrow-endpoint hover
-        // indicator won't appear while off).
         if (!getDragScansEnabled()) {
             if (lastHoveredCircleGroup) {
                 hoverCircle.opacity = 0
@@ -2009,8 +1453,6 @@ function addZUI(
         let foundWy = 0
 
         for (const child of two.scene.children) {
-            // Both arrowLine and plain line share the [line, circle1, circle2]
-            // group shape, so the endpoint-hover indicator applies to both.
             if (!isLineLikeType(child?.elementData?.componentType)) continue
             const gx = child.translation.x
             const gy = child.translation.y
@@ -2032,9 +1474,6 @@ function addZUI(
         }
 
         if (found) {
-            // The indicator snaps to the endpoint, not the cursor, so while the
-            // pointer wanders within the hover threshold of the same endpoint
-            // nothing actually moves. Only render when something changed.
             const moved =
                 hoverCircle.translation.x !== foundWx ||
                 hoverCircle.translation.y !== foundWy
@@ -2049,18 +1488,6 @@ function addZUI(
         lastHoveredCircleGroup = found ?? null
     }
 
-    /**
-     * Start a desktop grab-drag of the camera.
-     *
-     * Two callers, and they mean different things: the pan tool, where every
-     * drag pans whatever it lands on, and the map base's empty-canvas drag,
-     * where only a drag that hit nothing pans. `mousemove` and `mouseup` own
-     * the rest of the gesture through the `isMousePanning` flag.
-     *
-     * The listeners go on `window`, not `domElement` as the other drag paths
-     * do, so that a release outside the canvas still ends the pan and a drag
-     * keeps tracking past the canvas edge.
-     */
     function beginMousePan(e: MouseEvent) {
         isMousePanning = true
         mousePanLastX = e.clientX
@@ -2072,25 +1499,15 @@ function addZUI(
     }
 
     function mousedown(e: MouseEvent) {
-        // Pan-mode (desktop): grab-and-drag translates the surface instead of
-        // selecting/drawing. Runs before everything else so a click on a shape
-        // pans rather than selecting it. Mirrors the single-finger touch pan.
         if (isPanMode()) {
             beginMousePan(e)
             return
         }
 
-        // initialize shape definition
         const lastAddedElementId = localStorage.getItem(
             LAST_ADDED_ELEMENT_ID_KEY
         )
 
-        // While a draw/placement tool is armed, a mousedown starts a NEW element —
-        // it must never be reinterpreted as a resize of the current selection.
-        // This matters now that finishing a draw auto-selects the element: drawing
-        // a second shape next to the first would otherwise grab the first shape's
-        // resize handle. Detach the lingering selection so its box doesn't hang
-        // over the new draw (the new element auto-selects again on mouseup).
         const inCreateMode =
             isDrawing === true ||
             localStorage.getItem(ARROW_DRAW_MODE_KEY) === 'true' ||
@@ -2100,10 +1517,6 @@ function addZUI(
             localStorage.getItem(PENDING_SHAPE_TYPE_KEY) !== null
 
         if (inCreateMode) {
-            // Starting a new element clears any prior selection indicators so
-            // only the just-drawn element ends up looking selected: the
-            // controller box (shapes) and the endpoint circles of every arrow
-            // (arrows aren't controller-managed, so detach() can't clear them).
             if (selectionController.currentGroup) selectionController.detach()
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             two.scene.children.forEach((child: any) => {
@@ -2112,10 +1525,6 @@ function addZUI(
                 }
             })
         } else if (selectionController.currentGroup) {
-            // Controller handle check — runs before the bare-canvas clearSelector
-            // dispatch and the DOM path walk. Corner handles can extend slightly
-            // beyond the element's SVG bounds, so relying on path-walking would
-            // miss clicks that land in the handle's radius but outside the shape.
             const hit = selectionController.hitTest(e.clientX, e.clientY)
             if (hit) {
                 selectionController.beginInteraction(e, hit)
@@ -2129,28 +1538,16 @@ function addZUI(
         ) {
             let evt = new CustomEvent('clearSelector', {})
             window.dispatchEvent(evt)
-            // clearSelector only detaches the visual selector; the React
-            // selectedComponent stays set, which keeps the point tooltip
-            // pinned. Clear it too so the tooltip dismisses immediately when
-            // the user clicks bare canvas.
             setSelectedComponentInBase(null)
         }
 
-        // Reset scenario to prevent stale state from a previous interaction
-        // (e.g. mouse released outside the canvas during a draw)
         scenario = SCENARIO_DEFAULT
 
-        // Clean up orphaned draw state from an interrupted drag
-        // (e.g. user moved cursor outside canvas and released mouse there)
         if (drawPreviewActive) {
             removeDrawPreview()
             drawPreviewActive = false
         }
-        // Defensive: a prior move-drag whose mouseup was missed (released off
-        // canvas) would leave a stale CSS transform — clear it before a new one.
         if (cssMoveActive) clearCssMove()
-        // Reset the fast-path decision for the new gesture (a rejected drag never
-        // runs clearCssMove, so its flag would otherwise leak into the next one).
         cssMoveRejected = false
         if (drawOrigin) {
             drawOrigin = null
@@ -2178,8 +1575,6 @@ function addZUI(
         } else if (textDrawMode === 'true') {
             scenario = SCENARIO_TEXT_DRAW
         } else if (geoPointPlaceMode === 'true') {
-            // checked before JUST_ADDED_ELEMENT: point place also sets
-            // LAST_ADDED_ELEMENT_ID_KEY (the pre-created point).
             scenario = SCENARIO_GEO_POINT
         } else if (geoDrawMode === 'true') {
             scenario = SCENARIO_GEO_DRAW
@@ -2202,10 +1597,6 @@ function addZUI(
 
                 setRootCursor('crosshair')
 
-                // On first use the arrowLine module loads lazily — poll until the
-                // React element appears in the scene before positioning it.
-                // mousemove/mouseup already guard on arrowDrawElement being non-null,
-                // so they are safe no-ops until this resolves.
                 pollUntilElement(
                     two,
                     arrowId ?? '',
@@ -2252,12 +1643,10 @@ function addZUI(
                 )
 
                 if (textDrawElement && textId) {
-                    // Position the text at the clicked point
                     textDrawElement.position.x = surfaceCoords.x
                     textDrawElement.position.y = surfaceCoords.y
                     two.update()
 
-                    // Update the component position in the store
                     updateComponentVertices(
                         textId,
                         surfaceCoords.x,
@@ -2279,8 +1668,6 @@ function addZUI(
                 localStorage.removeItem(LAST_ADDED_ELEMENT_ID_KEY)
                 localStorage.removeItem(POINT_PLACE_MODE_KEY)
 
-                // The point module loads lazily on first use — poll until the
-                // pre-created element appears, then drop it at the click point.
                 if (pointId) {
                     pollUntilElement(
                         two,
@@ -2295,16 +1682,6 @@ function addZUI(
                                 surfaceCoords.x,
                                 surfaceCoords.y
                             )
-                            // Same late read as the radius map above, for the
-                            // same reason: the toolbar builds this point when
-                            // the TOOL is picked, but the preset chips only
-                            // appear once that tool is current — so a preset
-                            // chosen for a point was always armed after the
-                            // record already existed, and never reached it.
-                            //
-                            // skipHistory: this is part of placing the point,
-                            // not an edit of it. Without it a single undo
-                            // would strip the colour and leave the pin.
                             const armed = readArmedPreset('point')
                             if (armed) {
                                 applyPresetToElement(
@@ -2317,9 +1694,6 @@ function addZUI(
                                     true
                                 )
                             }
-                            // A point is a circle plus a name, so placing one
-                            // opens its label editor straight away — the same
-                            // event the text tools use, answered by point.tsx.
                             window.dispatchEvent(
                                 new CustomEvent('triggerTextInput', {
                                     detail: { elementId: pointId },
@@ -2337,25 +1711,16 @@ function addZUI(
             }
             case SCENARIO_GEO_DRAW: {
                 const surfaceCoords = toSurface(e)
-                // First click of this draw — capture type/props from storage.
                 if (!geoDrawType) {
                     geoDrawType = localStorage.getItem(DRAW_TYPE_KEY) as
                         'area' | 'route' | null
                     geoDrawProps = JSON.parse(
                         localStorage.getItem(DRAW_PROPS_KEY) ?? 'null'
                     )
-                    // Read at the FIRST CLICK, not when the tool was picked:
-                    // the preset chips for a tool only appear once that tool is
-                    // current, so arming always happens after staging and the
-                    // staged copy is a pick behind. `finishGeoDraw` re-reads it
-                    // the same way for the committed mark.
                     geoArmedStyle = isLegendPresetType(geoDrawType)
                         ? armedPresetPatch(geoDrawType)
                         : null
                     geoVertices = []
-                    // Route only. An area is a region, not a way — snapping its
-                    // boundary to road centrelines would trace the middle of the
-                    // street rather than the edge of the thing being outlined.
                     routeSnapper =
                         geoDrawType === 'route' && getRouteSnapEnabled()
                             ? createRouteSnapper({
@@ -2380,21 +1745,6 @@ function addZUI(
                     localStorage.getItem(PENDING_SHAPE_PROPS_KEY) ?? 'null'
                 )
 
-                // The armed preset is folded in HERE — the first moment in the
-                // gesture that is late enough to see it, and early enough for
-                // the drag preview to wear it.
-                //
-                // The toolbar stages these props when the TOOL is picked and
-                // folds the preset in there too, but the preset chips for a
-                // tool only appear once that tool is current: arming always
-                // happens after staging, so the staged copy is always one pick
-                // behind. Reading it again on mousedown is what makes the mark
-                // the right colour from the first frame of the drag rather
-                // than only once it is finished.
-                //
-                // One read, not two: everything downstream — the preview below
-                // and `finalShapeData` on mouseup — spreads this object, so
-                // there is a single source of truth for what is being drawn.
                 drawShapeProps = {
                     ...(drawShapeProps ?? {}),
                     ...(isLegendPresetType(drawShapeType)
@@ -2405,8 +1755,6 @@ function addZUI(
                 localStorage.removeItem(PENDING_SHAPE_TYPE_KEY)
                 localStorage.removeItem(PENDING_SHAPE_PROPS_KEY)
 
-                // Preview lives on a DOM overlay, positioned in client coords —
-                // it never enters the scene, so the drag never repaints the SVG.
                 if (
                     drawShapeType === 'circle' ||
                     drawShapeType === 'rectangle' ||
@@ -2419,10 +1767,6 @@ function addZUI(
                         fill: drawShapeProps?.fill || '#fff',
                         stroke: drawShapeProps?.stroke || SHAPE_DEFAULT_STROKE,
                         linewidth: drawShapeProps?.linewidth || 1,
-                        // A map circle is created at 50%; previewing it at the
-                        // generic preview opacity made it visibly jump on
-                        // release. When the pending record carries its own
-                        // opacity, preview at that instead.
                         opacity:
                             typeof drawShapeProps?.opacity === 'number'
                                 ? drawShapeProps.opacity
@@ -2444,8 +1788,6 @@ function addZUI(
             case SCENARIO_JUST_ADDED_ELEMENT:
                 domElement.addEventListener('mousemove', mousemove, false)
 
-                // This block falls for the case when there is newly added element and we let user click
-                // anywhere to set last added element's position
                 const surfaceCoords = toSurface(e)
 
                 let twoJSElement = two.scene.children.find(
@@ -2471,9 +1813,6 @@ function addZUI(
 
                 localStorage.removeItem(LAST_ADDED_ELEMENT_ID_KEY)
 
-                // remove event listeners for mousemove
-                // domElement.removeEventListener('mousemove', mousemove, false)
-
                 domElement.addEventListener('mousemove', mousemove, false)
                 domElement.addEventListener('mouseup', mouseup, false)
 
@@ -2483,12 +1822,8 @@ function addZUI(
                 domElement.addEventListener('mousemove', mousemove, false)
                 domElement.addEventListener('mouseup', mouseup, false)
 
-                // Stroke is now mid-flight — block undo/redo until mouseup
-                // commits it (see isPencilStrokeActive declaration).
                 isPencilStrokeActive = true
 
-                // Single growing curved path for live preview — matches the
-                // final factory render so there's no visual jump on mouseup.
                 pencilGroup = two.makeGroup()
                 pencilRawPoints = []
                 lastPencilLinewidth = defaultLinewidthValue
@@ -2502,22 +1837,9 @@ function addZUI(
                     lw: lastPencilLinewidth,
                 })
 
-                // The preview's vertices are relative to the stroke's first
-                // point, which goes on the group's translation instead — the
-                // same shape the committed element has. Path data is rasterised
-                // in float32, and far from the anchor absolute surface
-                // coordinates run to ~1e7, where float32 resolves only whole
-                // units: the smoothed preview points collapsed onto each other
-                // and the live stroke drew broken, then turned solid on mouseup
-                // when the element re-rendered with local vertices. The render
-                // origin (canvas/renderOrigin.ts) can't help here: it rebases
-                // transforms, not path data.
                 pencilPreviewOrigin = { x: startCoords.x, y: startCoords.y }
                 pencilGroup.translation.set(startCoords.x, startCoords.y)
 
-                // Note: two.makePath only treats numeric (x, y) pair args as
-                // vertices. Passing a Two.Anchor here would be silently dropped,
-                // leaving the path empty and missing the mousedown start point.
                 pencilPath = two.makePath()
                 pencilPath.translation.set(0, 0)
                 pencilPath.vertices.push(new Two.Anchor(0, 0))
@@ -2527,9 +1849,6 @@ function addZUI(
                 pencilPath.cap = 'round'
                 pencilPath.join = 'round'
                 pencilPath.closed = false
-                // The live stroke wears the chosen stroke type too, sized the
-                // way the committed pencil will be (utils/strokeDashes) — it
-                // used to draw solid until mouseup.
                 applyStrokeDashes(
                     pencilPath,
                     defaultStrokeTypeValue,
@@ -2555,13 +1874,8 @@ function addZUI(
                 let avoidDragging = false
                 let isGroupSelector = false
 
-                // Snapshot before clearing — used below to select arrow by endpoint click
                 const hoveredEndpointGroup = lastHoveredCircleGroup
 
-                // Hide all arrow/line endpoint circles and hover indicator before
-                // processing the new selection. Includes plain lines (mobile has
-                // no blur to hide them, so this next-tap sweep does it) — the
-                // clicked line re-reveals its own via setArrowEndpointsVisible.
                 lastHoveredCircleGroup = null
                 hoverCircle.opacity = 0
                 two.scene.children.forEach((child: any) => {
@@ -2575,9 +1889,6 @@ function addZUI(
                     (e.composedPath && e.composedPath())
                 ;({ shape, avoidDragging } = resolveShapeFromPath(path, two))
 
-                // Endpoint circles are opacity:0 so pointer-events don't fire on them.
-                // If the cursor was hovering over an endpoint (hoverCircle was visible),
-                // use that to select the parent arrow — only in select/pan mode.
                 if (shape === null && hoveredEndpointGroup) {
                     const parentArrow = two.scene.children.find(
                         (child: any) =>
@@ -2591,8 +1902,6 @@ function addZUI(
                     }
                 }
 
-                // Track for copy BEFORE drag-prevention clears shape (pencil uses
-                // avoid-dragging so shape would become {} immediately after).
                 if (shape?.elementData?.id) {
                     lastSelectedShape = shape
                 }
@@ -2602,28 +1911,10 @@ function addZUI(
                 }
 
                 if (shape === null) {
-                    // Clicking empty canvas clears any active selection.
-                    //
-                    // All three of these, because "selected" is drawn by three
-                    // different owners: the controller's box (shapes), the
-                    // element-owned chrome that answers `clearSelector`
-                    // (text, point), and the React `selectedComponent` that
-                    // drives the properties toolbar AND area/route's vertex
-                    // handles. Only the first was cleared here; the other two
-                    // relied on the `lastChild?.id === 'two-0'` test further up,
-                    // which only matches when the press lands on the wrapper div
-                    // rather than the SVG or the map canvas underneath — so a
-                    // click on empty canvas deselected an area or a route only
-                    // sometimes, and the user had to click again (and again) to
-                    // find a spot that did. This branch is the reliable one: it
-                    // runs precisely when the hit test found no element.
                     lastSelectedShape = null
                     selectionController.detach()
                     window.dispatchEvent(new CustomEvent('clearSelector', {}))
                     setSelectedComponentInBase(null)
-                    // When a text input overlay is active (about to blur),
-                    // the click is just dismissing the input — skip the
-                    // pending-selector setup so no rect is ever materialised.
                     const activeTextInput =
                         document.querySelector('.temp-input-area')
 
@@ -2631,22 +1922,9 @@ function addZUI(
                         shape = {}
                         avoidDragging = true
                     } else if (!e.shiftKey) {
-                        // A drag over empty canvas moves the geography, the
-                        // way it does on every mapping product. Shift+drag
-                        // keeps the marquee, which is the only way to
-                        // box-select.
-                        //
-                        // Reached only when the hit test came back empty, so
-                        // a drag that starts ON a point/area/route still
-                        // moves that element. The selection clearing above
-                        // has already run, so a click that never moves still
-                        // deselects.
                         beginMousePan(e)
                         return
                     } else {
-                        // Defer rect creation to the first mousemove. We
-                        // still need mousemove/mouseup wired up below so
-                        // the next mousemove can materialise the selector.
                         pendingGroupSelectorOrigin = toSurface(e)
                         mouse.copy(pendingGroupSelectorOrigin)
                         domElement.addEventListener(
@@ -2659,12 +1937,6 @@ function addZUI(
                     }
                 }
 
-                // Central selection controller: for shapes registered in its
-                // adapter registry, the controller owns selection lifecycle
-                // (toolbar open/close) and replaces per-element interactjs
-                // resize. If the pointer landed on a resize/rotate handle,
-                // the controller claims this gesture and we skip the legacy
-                // drag + toolbar wiring below.
                 let controllerClaimedGesture = false
                 let controllerHandledSelection = false
                 if (
@@ -2690,9 +1962,6 @@ function addZUI(
                     return
                 }
 
-                // inserting prevX and prevY to diff at updateToGlobalState function
-                // checking if new x,y are not equal to prev x,y
-                // then only perform the mutation
                 if (!avoidDragging) {
                     shape.elementData = {
                         ...shape?.elementData,
@@ -2719,9 +1988,6 @@ function addZUI(
                     }
                 }
 
-                // When an arrow or its endpoint circle is selected, disable pointer
-                // events on all other components so interactjs resize handlers on
-                // shapes like rectangle don't capture events during arrow drag
                 if (
                     !avoidDragging &&
                     (shape?.elementData?.isLineCircle ||
@@ -2743,12 +2009,7 @@ function addZUI(
                     !controllerHandledSelection
                 ) {
                     selectionController.detach()
-                    // this internal state is required for floating toolbar component since floating
-                    // toolbar relies on the exact structure/schema for component's internal state
-                    // so that any changes made from toolbar can be applied directly on component's two.js properties
 
-                    // For arrow endpoint circle clicks, resolve to the parent arrow group and
-                    // the actual line shape so the toolbar has the correct id and target element
                     const isLineCircle =
                         shape?.elementData?.isLineCircle === true
                     const groupForToolbar = isLineCircle
@@ -2758,16 +2019,6 @@ function addZUI(
                         ? shape.elementData.lineData
                         : shape.children[0]
 
-                    // Keep a selected arrow's endpoint handles visible. The
-                    // mousedown above hides ALL endpoints (line ~1632); the
-                    // pull-out auto-select and the hover fallback re-show them,
-                    // but a plain body-click never did — leaving the handles
-                    // at opacity 0. Since opacity-0 circles don't fire pointer
-                    // events, a follow-up grab of an endpoint would miss the
-                    // circle, fall through to the null→parent-arrow fallback,
-                    // and become a whole-arrow BODY drag — which detaches the
-                    // arrow's port bindings. Re-showing them here keeps the next
-                    // endpoint grab an endpoint drag, so bindings survive.
                     if (
                         isLineLikeType(
                             groupForToolbar?.elementData?.componentType
@@ -2776,9 +2027,6 @@ function addZUI(
                         setArrowEndpointsVisible(groupForToolbar, true)
                     }
 
-                    // First line node of the text layer (or a legacy direct
-                    // text child) — gives the toolbar a representative text
-                    // node for shape-with-text enablement.
                     const textChild = getShapeTextNodes(groupForToolbar)[0]
 
                     let componentInternalState = {
@@ -2810,11 +2058,7 @@ function addZUI(
     }
 
     function mousemove(e: MouseEvent) {
-        // Set when this frame moved a selected element via CSS transform (no
-        // scene render) — used to skip the full-scene two.update() at the end.
         let didCssMove = false
-        // Pan-mode (desktop): translate the surface by the per-frame mouse
-        // delta. Mirrors the single-finger touch pan in touchmove.
         if (isMousePanning) {
             const dx = e.clientX - mousePanLastX
             const dy = e.clientY - mousePanLastY
@@ -2823,10 +2067,6 @@ function addZUI(
             if (dx !== 0 || dy !== 0) {
                 zui.translateSurface(dx, dy)
                 cullOnCameraChange()
-                // Batched, NOT a direct two.update(): pointers fire well above
-                // the paint rate (120Hz+ trackpads), so a synchronous render
-                // here means 2x the full O(scene) renders the display can even
-                // show. scheduleRender coalesces the burst into one per frame.
                 scheduleRender(two)
                 onCameraChangeRef?.current?.({
                     scale: two.scene.scale,
@@ -2837,14 +2077,8 @@ function addZUI(
             return
         }
 
-        // Multi-click geo draw: rubber-band the preview line to the cursor.
         if (geoDrawType) {
             const s = toSurface(e)
-            // Snapped route: the preview IS the road path, so the straight
-            // rubber band alongside it would only draw a chord across the
-            // corner the route is turning. Alt suspends snapping for the
-            // segment in flight — a shortcut across a car park, or a link the
-            // tiles simply do not carry.
             if (routeSnapper?.hasAnchor() && !e.altKey) {
                 const scale = zui.scale || two.scene.scale || 1
                 const moved = lastRouteProbe
@@ -2860,12 +2094,6 @@ function addZUI(
                 const preview = routeSnapper.preview(s)
                 if (preview) {
                     updateRouteSnapPreview(preview)
-                    // The two previews are mutually exclusive: whichever one is
-                    // not describing this segment has to go, or the user sees
-                    // the route and the chord at once. The chord lives in the
-                    // preview group, so it must leave through the group —
-                    // `two.remove` on the scene is a silent no-op here, and
-                    // nulling the ref then orphans a frozen chord on screen.
                     if (geoPreviewLine) {
                         geoPreviewGroup?.remove(geoPreviewLine)
                         geoPreviewLine = null
@@ -2926,14 +2154,8 @@ function addZUI(
                     y: surfaceCoordsMove.y,
                 }
 
-                // Grow the DOM overlay from client coords — O(1), no two.update(),
-                // so the scene SVG is never touched during the drag.
                 if (drawPreviewActive) {
                     if (isRadialDraw(drawShapeType)) {
-                        // Feed the overlay the square that circumscribes the
-                        // circle. The camera scale is uniform, so a radius
-                        // measured in client px and one measured in surface
-                        // units describe the same circle — no conversion.
                         const radius = Math.hypot(
                             e.clientX - drawScreenOriginX,
                             e.clientY - drawScreenOriginY
@@ -2956,8 +2178,6 @@ function addZUI(
                 break
             }
             case SCENARIO_JUST_ADDED_ELEMENT: {
-                // This block falls for the case when there is newly added element and we let user click
-                // anywhere to set last added element's position
                 const sc = toSurface(e)
 
                 let twoJSElement = two.scene.children.find(
@@ -2977,13 +2197,11 @@ function addZUI(
             case SCENARIO_PENCIL_MODE: {
                 const pencilCoords = toSurface(e)
 
-                // Distance throttle: skip if too close to last point
                 const pdx = pencilCoords.x - lastPencilPoint.x
                 const pdy = pencilCoords.y - lastPencilPoint.y
                 const pDist = Math.sqrt(pdx * pdx + pdy * pdy)
                 if (pDist < PENCIL_DISTANCE_THROTTLE) break
 
-                // Compute velocity and map to linewidth
                 const now = performance.now()
                 const timeDelta = now - lastPencilTime
                 const velocity = timeDelta > 0 ? pDist / timeDelta : 0
@@ -2997,15 +2215,12 @@ function addZUI(
                     0.3
                 )
 
-                // Record point with linewidth (kept for future variable-width work)
                 pencilRawPoints.push({
                     x: pencilCoords.x,
                     y: pencilCoords.y,
                     lw: smoothedLw,
                 })
 
-                // Rebuild the preview path from the smoothed raw points so the
-                // live stroke matches the final factory render exactly.
                 if (pencilPath) {
                     const smoothedPreview =
                         pencilRawPoints.length > 2
@@ -3034,15 +2249,7 @@ function addZUI(
                 break
             }
             default:
-                /**
-                    Currently "resize" event handling is at component level.
-                    Once I shift that handling to this one main component,
-                    I'll remove this first if condition block
-                */
 
-                // Empty-canvas mousedown deferred selector creation here.
-                // First mousemove materialises the dotted rect at the
-                // original mousedown position so it grows with the cursor.
                 if (pendingGroupSelectorOrigin && !shape?.elementData) {
                     const area = two.makePath(0, 0, 10, 0, 10, 10, 0, 10)
                     area.fill = getGroupFill()
@@ -3077,7 +2284,6 @@ function addZUI(
                         .getElementById(shape.id)
                         ?.hasAttribute('data-resize')
                 ) {
-                    // element resize is being performed
                     isResizeEvent = true
                     domElement.removeEventListener(
                         'mousemove',
@@ -3089,14 +2295,11 @@ function addZUI(
                     let dx = e.clientX - mouse.x
                     let dy = e.clientY - mouse.y
 
-                    // check if while dragging, the shape does not point to root element (two-0)
                     if (
                         dragging &&
                         shape.id !== 'two-0' &&
                         !shape.elementData.isGroupSelector
                     ) {
-                        // code block condition to handle arrow line circle component's dragging
-                        // it roughly translates -> does shape === line/arrow line ?
                         if (shape?.lineData) {
                             let line = shape?.lineData
 
@@ -3115,7 +2318,6 @@ function addZUI(
                                         two
                                     )
 
-                                    /* update x2,y2 vertices acc. to shift key press event */
                                     let x2 = line.vertices[1].x
                                     let y2 = y1
                                     updateX2Y2Vertices(
@@ -3155,7 +2357,6 @@ function addZUI(
                                         two
                                     )
 
-                                    /* update x1,y1 vertices acc. to shift key press event */
                                     let x1 = line.vertices[0].x
                                     let y1 = y2
                                     updateX1Y1Vertices(
@@ -3182,26 +2383,11 @@ function addZUI(
                                 }
                             }
                         }
-                        // code block condition to handle normal component's dragging
                         else {
                             // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             const node = (shape as any)._renderer?.elem as
                                 SVGGraphicsElement | undefined
-                            // CSS-transform move: eligible for non-rotated
-                            // elements, including the group overlay — its member
-                            // copies and selector chrome live inside its own SVG
-                            // node, so one transform moves them all; the mouseup
-                            // commit below writes the real translation before
-                            // groupobject's window-mouseup commitGroupMove reads
-                            // it (domElement listeners fire first in the bubble).
-                            // Rotated shapes keep the legacy path.
                             const cheapEligible = !!node && !shape.rotation
-                            // Decide CSS-vs-legacy ONCE per drag. A shape with
-                            // bound connectors must reshape its arrows every
-                            // frame (needs its real position), so it takes the
-                            // legacy live-render path. The bound-arrow scan is
-                            // O(N) but runs only on this first-frame decision,
-                            // and only when connectors are on.
                             if (
                                 cheapEligible &&
                                 !cssMoveActive &&
@@ -3218,14 +2404,6 @@ function addZUI(
                                     cssMoveBaseY = shape.position.y
                                     cssMoveLastDxWorld = 0
                                     cssMoveLastDyWorld = 0
-                                    // Deliberately no `will-change`: promoting
-                                    // an SVG node to its own layer is half of
-                                    // the mobile disappearing-while-dragged bug
-                                    // (see cssMoveTransform), and the win here
-                                    // was never the layer — it is skipping the
-                                    // full-scene two.update() each frame.
-                                    // Move the selection box in lockstep so it
-                                    // stays glued to the element during the drag.
                                     cssMoveChrome =
                                         selectionController.getChromeDragHandle(
                                             shape
@@ -3233,10 +2411,6 @@ function addZUI(
                                 }
                                 cssMoveLastDxWorld += dx / zui.scale
                                 cssMoveLastDyWorld += dy / zui.scale
-                                // Read `scale` fresh each frame rather than
-                                // caching it at drag start, so a zoom landing
-                                // mid-drag (which re-counter-scales the element)
-                                // is picked up on the next move.
                                 cssMoveNode!.setAttribute(
                                     'transform',
                                     cssMoveTransform(
@@ -3246,9 +2420,6 @@ function addZUI(
                                     )
                                 )
                                 if (cssMoveChrome) {
-                                    // The selection chrome is never scaled (it
-                                    // sizes itself in screen px), so this stays
-                                    // a pure translate.
                                     cssMoveChrome.node.setAttribute(
                                         'transform',
                                         cssMoveTransform(
@@ -3266,8 +2437,6 @@ function addZUI(
                             }
                         }
                     } else if (shape.elementData.isGroupSelector) {
-                        // this blocks falls for the case when user has clicked and
-                        // is dragging to create a group selector
                         let area = shape.children[0]
                         const m = toSurface(e)
                         mouse.copy(m)
@@ -3283,18 +2452,12 @@ function addZUI(
                         two.update()
                     }
                     mouse.set(e.clientX, e.clientY)
-                    // A CSS-transform move-drag repaints nothing in the scene, so
-                    // skip the full-scene render this frame — that's the whole win.
                     if (!didCssMove) two.update()
                 }
         }
     }
 
     function mouseup(e: MouseEvent) {
-        // Commit a CSS-transform move-drag: write the accumulated delta into the
-        // element's real Two.js position, clear the live CSS transforms, then let
-        // the normal move/persist/history path below run (it reads the committed
-        // translation, sees the move, and persists + records it as usual).
         if (cssMoveActive) {
             const el = cssMoveEl
             const finalX = cssMoveBaseX + cssMoveLastDxWorld
@@ -3307,8 +2470,6 @@ function addZUI(
                 two.update()
             }
         }
-        // Pan-mode (desktop): end the grab-drag, restore the grab cursor and
-        // detach the on-demand listeners. Persist the viewport like the wheel.
         if (isMousePanning) {
             isMousePanning = false
             const root = document.getElementById('main-two-root')
@@ -3328,7 +2489,6 @@ function addZUI(
                     const finalX2 = parseInt(line.vertices[1].x)
                     const finalY2 = parseInt(line.vertices[1].y)
 
-                    // Update elementData so subsequent drag operations use correct position
                     arrowDrawElement.elementData.x = parseInt(
                         arrowDrawElement.position.x
                     )
@@ -3354,21 +2514,9 @@ function addZUI(
 
                     updateToGlobalState(newShapeData, {})
 
-                    // Auto-select the freshly drawn arrow so its endpoint
-                    // handles and the edit toolbar appear immediately — a
-                    // visual cue that the arrow is editable. Arrows aren't in
-                    // SHAPE_ADAPTERS (no resize box), so build the toolbar
-                    // state directly, mirroring the click-select path.
                     const arrowGroup = arrowDrawElement
                     const arrowLineShape = arrowGroup.children[0]
                     setArrowEndpointsVisible(arrowGroup, true)
-                    // getSelectedGroup() (used by copy/paste) falls back to
-                    // lastSelectedShape when selectionController has nothing
-                    // attached — which is always the case here, since arrows
-                    // and plain lines have no SHAPE_ADAPTERS entry. Without
-                    // this, Cmd+C right after finishing a draw silently no-ops
-                    // (getSelectedGroup() returns null) even though the
-                    // endpoint handles are visibly "selected".
                     lastSelectedShape = arrowGroup
                     setSelectedComponentInBase({
                         element: {
@@ -3384,7 +2532,6 @@ function addZUI(
                         text: { data: {} },
                         icon: { data: {} },
                     })
-                    // Paint the now-visible endpoint handles.
                     two.update()
                 } else {
                     setSelectedComponentInBase(null)
@@ -3403,7 +2550,6 @@ function addZUI(
             }
             case SCENARIO_TEXT_DRAW: {
                 if (textDrawElement && textDrawElement.children?.[0]) {
-                    // Trigger text input by dispatching a custom event
                     const textInputEvent = new CustomEvent('triggerTextInput', {
                         detail: { elementId: textDrawElement.elementData.id },
                     })
@@ -3425,15 +2571,11 @@ function addZUI(
                         text: { data: {} },
                         icon: { data: {} },
                     }
-                    // Don't use the canvas's generic toolbar for text elements —
-                    // the text component manages its own correctly-configured toolbar.
                     setSelectedComponentInBase(null)
                 }
 
                 textDrawElement = null
                 setTextDrawModeOff()
-                // In geo mode the only text tool is text; land in pointer so
-                // the placed text can be selected (no effect when geo is off).
                 setPointerElement('pointer', { select: true })
                 setRootCursor('auto')
                 domElement.removeEventListener('mouseup', mouseup, false)
@@ -3447,10 +2589,6 @@ function addZUI(
                 let finalCenterX: number
                 let finalCenterY: number
                 if (isRadialDraw(drawShapeType)) {
-                    // Centre-out: the mousedown point IS the centre and the
-                    // drag is the radius. Height is assigned FROM width rather
-                    // than recomputed, so the two can never disagree by a
-                    // rounding step and the mark is round to the pixel.
                     finalWidth = Math.round(
                         Math.max(
                             2 *
@@ -3481,11 +2619,6 @@ function addZUI(
                 const finalShapeData = {
                     ...drawShapeProps,
                     id: finalId,
-                    // `drawShapeProps` was seeded by the toolbar with a
-                    // placeholder position, so the centre has to be written
-                    // into the GEOMETRY — setting the x/y columns alone left
-                    // the circle's own coordinates back at that placeholder and
-                    // it jumped there on the next load.
                     ...(moveGeometryTo(
                         drawShapeProps,
                         finalCenterX,
@@ -3498,10 +2631,6 @@ function addZUI(
                     width: finalWidth,
                     height: finalHeight,
                 }
-                // A radius map's label is not zoom-resistant: it holds the
-                // scale of the zoom it was drawn at, then follows the map. Stamp
-                // that zoom now — at mouseup, not when the tool was picked, as
-                // the user may have zoomed in between (see circleLabelScale).
                 if (drawShapeType === 'circle') {
                     Object.assign(
                         finalShapeData,
@@ -3517,14 +2646,8 @@ function addZUI(
                     finalShapeData as unknown as ComponentRecord
                 )
 
-                // React renders the element asynchronously; poll until it appears in two.scene.children,
-                // then remove the preview so there is no blank gap between preview removal and final render.
-                // Once the real group exists, auto-select it so the resize box and the edit toolbar appear
-                // immediately — a visual cue to new users that the freshly drawn shape is editable.
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const finishPlacement = (el?: any) => {
-                    // Keep the overlay up until the real element has rendered so
-                    // there's no blank flash, then drop it.
                     removeDrawPreview()
                     if (el) selectionController.attach(el)
                 }
@@ -3556,22 +2679,11 @@ function addZUI(
                 domElement.removeEventListener('mouseup', mouseup, false)
                 break
             case SCENARIO_PENCIL_MODE: {
-                // Gesture is over — re-enable undo/redo before the stroke is
-                // committed to the store/history just below.
                 isPencilStrokeActive = false
                 const capturedPencilGroup = pencilGroup
                 pencilGroup = null
                 pencilPath = null
 
-                // A click with no drag is a deliberate dot, not a failed
-                // stroke. Emit a hair-length horizontal segment centred on the
-                // click: the pencil's round caps then paint it as a single dot
-                // the width of the stroke. The length has to be non-zero —
-                // Two.js collapses two identical anchors into one `M` command,
-                // which draws nothing. DOT_SEGMENT is far below one screen
-                // pixel at normal zoom, so the mark reads as round, and
-                // everything downstream (persistence, undo, group move,
-                // export) just sees an ordinary 2-point stroke.
                 if (pencilRawPoints.length === 1) {
                     const dot = pencilRawPoints[0]
                     const half = PENCIL_DOT_SEGMENT / 2
@@ -3582,7 +2694,6 @@ function addZUI(
                 }
 
                 if (pencilRawPoints.length < 2) {
-                    // No points at all — remove preview immediately
                     if (capturedPencilGroup) {
                         two.remove(capturedPencilGroup)
                         two.update()
@@ -3593,21 +2704,9 @@ function addZUI(
                     break
                 }
 
-                // Commit exactly the points the preview was built from. The
-                // element re-smooths them the same way the preview did
-                // (chaikinSmooth ×2), so the stroke stays put on release. An
-                // RDP simplification used to run here; it changed the input to
-                // that smoothing, and the stroke visibly wobbled on mouseup by
-                // up to a few pixels when zoomed in.
                 const committedPoints = pencilRawPoints
 
                 let pencilId = generateUUID()
-                // A pencil stroke is a LineString whose per-point pressure
-                // widths ride alongside as `properties.widths`, a parallel
-                // array. They deliberately do NOT go in the coordinates: a
-                // GeoJSON position's third element means altitude, and keeping
-                // them out is also what makes every geometry operation here
-                // length-preserving, so the two arrays cannot desync.
                 let pencilComponentData = {
                     id: pencilId,
                     baseId: props.baseId,
@@ -3627,8 +2726,6 @@ function addZUI(
                     pencilComponentData as unknown as ComponentRecord
                 )
 
-                // React renders the element asynchronously; keep preview visible until
-                // the final element appears in two.scene.children to avoid a blank gap
                 const removePencilPreview = () => {
                     if (capturedPencilGroup) {
                         two.remove(capturedPencilGroup)
@@ -3639,7 +2736,6 @@ function addZUI(
                     onTimeout: removePencilPreview,
                 })
 
-                // Reset pencil state
                 pencilRawPoints = []
                 lastPencilPoint = null
                 lastPencilLinewidth = null
@@ -3648,33 +2744,19 @@ function addZUI(
             case SCENARIO_RUBBER_MODE:
                 domElement.removeEventListener('mousemove', mousemove, false)
                 domElement.removeEventListener('mouseup', mouseup, false)
-                // Drop the anchor so the next sweep starts a fresh beam
-                // instead of drawing a line from where this one ended. Live
-                // segments carry on fading.
                 eraserTrail.end()
                 break
             default:
-                // diff to check new x,y and prev x,y
                 let oldShapeData = {}
                 let newShapeData = {}
-                // No mousemove happened between empty-canvas mousedown and
-                // this mouseup → no selector was ever materialised. Just
-                // clear the pending origin and let the cleanup below run.
                 if (pendingGroupSelectorOrigin) {
                     pendingGroupSelectorOrigin = null
                 }
                 if (shape?.elementData?.isGroupSelector) {
-                    // check on mouse up if shape's a group selector or not
-                    // if yes, then call setOnGroup for adding a group in two.js space
                     let area = shape.children[0]
                     const groupWidth = area.vertices[2].x - area.vertices[0].x
                     const groupHeight = area.vertices[3].y - area.vertices[0].y
                     two.remove(shape)
-                    // The selector starts as a 10x10 rect (see mousedown). If
-                    // it never grew, the user just clicked without dragging —
-                    // don't materialise an empty groupobject skeleton (and
-                    // crucially, don't leave one behind that would intercept
-                    // the second click of a dblclick on empty canvas).
                     if (groupWidth > 10 || groupHeight > 10) {
                         setOnGroupHandler({
                             x: area.vertices[0].x + shape.translation.x,
@@ -3689,18 +2771,6 @@ function addZUI(
                     }
                     setSelectedComponentInBase(null)
                 } else if (shape?.elementData) {
-                    // Did the element actually move since mousedown? Compare the
-                    // rounded translation against `prevX`/`prevY` captured at
-                    // mousedown (line ~1721, also `parseInt(translation)`).
-                    //
-                    // The old guard compared `elementData.x` against
-                    // `translation.x` directly, but `elementData.x` is stored as
-                    // a parseInt'd integer while `translation.x` keeps the float.
-                    // For a port-pulled connector the position is a fractional
-                    // port anchor, so the two always differed — making a plain
-                    // CLICK on the arrow body read as a "move" and fall into the
-                    // body branch below, which detaches both port bindings.
-                    // Gating on real movement makes a click a no-op.
                     const prevX = shape.elementData.prevX
                     const prevY = shape.elementData.prevY
                     const movedX =
@@ -3723,20 +2793,10 @@ function addZUI(
                                 y2: parseInt(shape.lineData.vertices[1].y),
                             }
 
-                            // Releasing this endpoint either CONNECTS it (still
-                            // magnetically docked on a port at release) or
-                            // DETACHES it (manual move ending off every port).
-                            // Either way fold the binding write into the SAME
-                            // bulk update as the vertices so one undo reverts
-                            // both position and binding.
                             const arrowGroup = shape.lineData?.parent
                             const ed = arrowGroup?.elementData
                             const draggedEndpoint =
                                 shape.direction === 'left' ? 'tail' : 'head'
-                            // Ports this release touches — the one the dragged
-                            // endpoint was on (it may detach or hop off) plus the
-                            // one it docks onto — re-sorted once the binding is
-                            // settled so the remaining fans stay ordered.
                             const portsToRestack: {
                                 shapeId: string
                                 edge: string
@@ -3807,9 +2867,6 @@ function addZUI(
                             }
 
                             if (ed?.id && Object.keys(bindObj).length > 0) {
-                                // One UPDATE_BULK carries vertices + binding so
-                                // undo reverts the whole connect/detach in a
-                                // single step.
                                 updateComponentBulkPropertiesInLocalStore(
                                     ed.id,
                                     { ...vertexObj, ...bindObj }
@@ -3823,16 +2880,7 @@ function addZUI(
                                 )
                                 updateToGlobalState(newShapeData, oldShapeData)
                             }
-
-                            // Re-sort the fans on every port this release touched
-                            // (the port just docked onto + any port the endpoint
-                            // left), now the endpoint is firmly placed.
                         } else {
-                            // Where the element sat before this drag. Captured
-                            // BEFORE the overwrite below, because the
-                            // absolute-vertex branch needs the delta and
-                            // `prevX`/`prevY` are only set by the mousedown that
-                            // started a drag (a programmatic move has neither).
                             const originX =
                                 prevX ?? parseInt(shape.elementData.x)
                             const originY =
@@ -3840,16 +2888,9 @@ function addZUI(
                             shape.elementData.x = shape.translation.x
                             shape.elementData.y = shape.translation.y
 
-                            // Dragging a connector's BODY moves both endpoints
-                            // off their ports, so it detaches any bindings —
-                            // otherwise a later shape move would snap the tail
-                            // back. Clear them live and fold into the same
-                            // position update so one undo reverts the whole move.
                             const ed = shape.elementData
                             // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             const arrowDetach: Record<string, any> = {}
-                            // Ports the body-drag pulled this connector off of,
-                            // re-sorted afterwards so the remaining fans close up.
                             const bodyDetachPorts: {
                                 shapeId: string
                                 edge: string
@@ -3884,10 +2925,6 @@ function addZUI(
                             }
 
                             if (Object.keys(arrowDetach).length > 0) {
-                                // One UPDATE_BULK: position + binding clear.
-                                // The position goes through the geometry like
-                                // every other move — the x/y columns are a
-                                // cache of it.
                                 const nextX = parseInt(shape.translation.x)
                                 const nextY = parseInt(shape.translation.y)
                                 updateComponentBulkPropertiesInLocalStore(
@@ -3901,28 +2938,6 @@ function addZUI(
                                     }
                                 )
                             } else if (readGeometry(ed)) {
-                                // A body drag moves the Two.js group but leaves
-                                // the stored geometry where it was, so the move
-                                // has to be written into the coordinates — in
-                                // the SAME update as the x/y cache, so one undo
-                                // reverts both. `translateGeometry` emits them
-                                // together, which is what makes the old failure
-                                // (persist the new origin, leave the vertices,
-                                // watch the shape snap back on reload)
-                                // unreachable.
-                                //
-                                // Rebasing by the drag DELTA rather than reading
-                                // the path's vertices back: pencil's rendered
-                                // vertices are Chaikin-smoothed, so a read-back
-                                // would persist the smoothed curve and then
-                                // smooth THAT again on the next load, rounding
-                                // the stroke off a little more with every move.
-                                //
-                                // Undo stays correct: applyBulkProps reverts the
-                                // group translation from the snapshotted
-                                // prevProps, and the relative vertices never
-                                // moved, so restoring the translation restores
-                                // the whole shape.
                                 const dx =
                                     parseInt(shape.translation.x) - originX
                                 const dy =
@@ -3966,25 +2981,6 @@ function addZUI(
                 }
         }
 
-        // Restore pointer events on all components (may have been disabled during arrow drag)
-        //
-        // Vertex handles are excluded from BOTH this sweep and the disable that
-        // pairs with it. Their pointer-events is not a transient drag state — it
-        // is the gate that decides whether a route is selectable at all, and it
-        // belongs solely to `setVertexHandlesVisible`.
-        //
-        // A handle is an opacity-0 circle sitting exactly on the route's own
-        // stroke, and an invisible SVG node still hit-tests. Resetting it to ''
-        // (i.e. auto) re-arms click capture on every hidden handle on the
-        // canvas, and its mousedown calls stopPropagation — so a later click
-        // that lands on one hits nothing and the route does not select. Nothing
-        // repairs it either: the owning component only re-runs the effect when
-        // its OWN selection changes, and it just stayed unselected.
-        //
-        // Snapped routes are where this shows up, because a two-click route
-        // down a curving street carries two dozen handles instead of two, so
-        // most of its length is covered by them. That is what `is-vertex-handle`
-        // (vertexHandles.ts) was tagged for.
         document
             .querySelectorAll<HTMLElement>(
                 '.dragger-picker:not(.is-vertex-handle)'
@@ -4002,8 +2998,6 @@ function addZUI(
         domElement.removeEventListener('mouseup', mouseup, false)
     }
 
-    // Debounced persist of the current camera (pan + zoom) so a reload restores
-    // the viewport. Shared by the wheel and the desktop pan-drag.
     function scheduleViewportSave() {
         if (!props.baseId) return
         if (viewportSaveTimer) clearTimeout(viewportSaveTimer)
@@ -4017,18 +3011,8 @@ function addZUI(
     }
 
     function mousewheel(e: WheelEvent) {
-        // Nothing behind this SVG scrolls — it is a fixed, full-viewport
-        // surface — so the browser's default is never wanted. Suppressing it
-        // is what stops ctrl+wheel from page-zooming the browser and stops
-        // Safari reading a horizontal two-finger swipe as back-navigation.
         e.preventDefault()
 
-        // Which input model applies is a property of the substrate.
-        //
-        // The map base speaks the map idiom: the wheel only ever zooms, as it
-        // does on every mapping product anyone arrives from. Panning there is
-        // the drag (see the empty-canvas branch in mousedown).
-        //
         const zooms = true
 
         if (zooms) {
@@ -4040,9 +3024,6 @@ function addZUI(
             zui.translateSurface(-e.deltaX, -e.deltaY)
         }
 
-        // A wheel gesture is in flight — suppress the hover hit-test until it
-        // settles (see hoverDetectMove). Wheel has no gesture-end event, so the
-        // flag is cleared on a short trailing timer.
         isWheeling = true
         if (wheelSettleTimer !== null) window.clearTimeout(wheelSettleTimer)
         wheelSettleTimer = window.setTimeout(() => {
@@ -4051,8 +3032,6 @@ function addZUI(
         }, 120)
 
         cullOnCameraChange()
-        // Batched — same reason as the pan handler: wheel/trackpad events fire
-        // faster than the display paints.
         scheduleRender(two)
 
         onCameraChangeRef?.current?.({
@@ -4064,11 +3043,6 @@ function addZUI(
         scheduleViewportSave()
     }
 
-    // --- Touch handlers ---
-    // Routing:
-    //   1 finger  → synthetic MouseEvent → existing mouse pipeline (select, drag, pencil, draw)
-    //   2 fingers → pan canvas (midpoint delta) + pinch zoom (distance delta) simultaneously
-
     function touchstart(e: TouchEvent) {
         e.preventDefault()
 
@@ -4077,9 +3051,6 @@ function addZUI(
             touchStartX = lastTouch.clientX
             touchStartY = lastTouch.clientY
 
-            // Pan-mode short-circuit: single-finger drag should translate the
-            // surface, not select/draw. Skip the synthetic mousedown pipeline
-            // entirely while pan mode is active.
             if (isPanMode()) {
                 isSinglePanning = true
                 panLastX = lastTouch.clientX
@@ -4089,12 +3060,6 @@ function addZUI(
                 return
             }
 
-            // If the tap lands on an active selection handle, keep the selection
-            // attached so mousedown's hitTest can begin a resize/rotate. Without
-            // this, the unconditional clearSelector below detaches the controller
-            // before mousedown runs — visible on shapes whose bbox corners sit in
-            // empty space (e.g. diamond NE handle), where elementFromPoint returns
-            // bare canvas and re-selection never fires.
             const handleHit =
                 selectionController.currentGroup &&
                 selectionController.hitTest(
@@ -4107,48 +3072,19 @@ function addZUI(
                 lastTouch.clientY
             ) as Element | null
 
-            // A multi-element group uses the older objectSelector path (not
-            // selectionController), so handleHit is false for it. Without this,
-            // the clearSelector below hides the group's dashed box the instant
-            // the drag begins on mobile. Skip the clear when the finger lands on
-            // the group object so its selector stays visible through the drag.
             const groupHit = underFinger?.closest(
                 '[data-label="groupobject_coord"]'
             )
 
-            // Same idea, for the *other* legacy selector: elements that draw
-            // their own edit chrome inside their group (objectSelector) rather
-            // than through selectionController — text being the one with
-            // resize handles on it.
-            //
-            // Those handles gate themselves on the selector being visible
-            // (`areaGroup.opacity === 0 → return`), so clearing the selection
-            // here disarmed them a moment before the synthetic mousedown
-            // reached them: the handler bailed out without stopping
-            // propagation, the event fell through to the drag path, and the
-            // text moved instead of resizing. Desktop never saw it because
-            // nothing dispatches clearSelector on a plain mousedown.
-            //
-            // Visibility is checked because opacity:0 SVG still hit-tests — an
-            // unselected element's dormant chrome must not swallow the clear.
             const chromeEl = underFinger?.closest(`[${SELECTION_CHROME_ATTR}]`)
             const chromeHit =
                 !!chromeEl &&
                 parseFloat(window.getComputedStyle(chromeEl).opacity || '1') > 0
 
             if (!handleHit && !groupHit && !chromeHit) {
-                // Clear any previous selection before processing the new tap.
-                // On desktop this happens via focus/blur, but synthetic mouse events
-                // don't transfer browser focus on mobile, so we do it explicitly here
-                // — before mousedown so the new selection set inside mousedown survives.
                 window.dispatchEvent(new CustomEvent('clearSelector', {}))
             }
 
-            // Dispatch mousedown on the actual element under the finger so
-            // element-level listeners (interactjs resize handles, click handlers) fire correctly.
-            // For handle hits, target domElement directly — elementFromPoint may
-            // resolve to bare canvas (which would re-trigger clearSelector inside
-            // mousedown at the `two-0` branch).
             const target = handleHit ? domElement : underFinger || domElement
             target.dispatchEvent(
                 new MouseEvent('mousedown', {
@@ -4162,11 +3098,7 @@ function addZUI(
                 })
             )
         } else if (e.touches.length === 2) {
-            // Second finger added — cancel any in-progress 1-finger interaction
             if (isSinglePanning) {
-                // Single-finger pan never dispatched a mousedown, so there's
-                // nothing to mouseup; just clear pan state and let
-                // twoFingerStart take over for pinch+pan.
                 isSinglePanning = false
                 lastTouch = null
             } else if (lastTouch) {
@@ -4191,7 +3123,6 @@ function addZUI(
         if (e.touches.length === 1) {
             lastTouch = e.touches[0]
 
-            // Pan-mode: translate the surface by per-frame finger delta.
             if (isSinglePanning) {
                 const dx = lastTouch.clientX - panLastX
                 const dy = lastTouch.clientY - panLastY
@@ -4200,7 +3131,6 @@ function addZUI(
                 if (dx !== 0 || dy !== 0) {
                     zui.translateSurface(dx, dy)
                     cullOnCameraChange()
-                    // Batched — touchmove also outruns the paint rate.
                     scheduleRender(two)
                     onCameraChangeRef?.current?.({
                         scale: two.scene.scale,
@@ -4232,9 +3162,6 @@ function addZUI(
             const endX = lastTouch.clientX
             const endY = lastTouch.clientY
 
-            // Pan-mode end: persist viewport (matches two-finger persistence
-            // path below) and reset cursor. Skip the synthetic mouseup/click
-            // pipeline so taps in pan mode never trigger selection.
             if (isSinglePanning) {
                 isSinglePanning = false
                 if (props.baseId) {
@@ -4260,18 +3187,10 @@ function addZUI(
                 })
             )
 
-            // If finger barely moved, treat as a tap and fire a click on the
-            // actual element so interactjs `.on('click')` handlers (which draw
-            // the selection outline) are triggered.
             const dx = endX - touchStartX
             const dy = endY - touchStartY
             const moved = Math.sqrt(dx * dx + dy * dy)
             if (moved < 10) {
-                // Blur any focused element (e.g. an active text-editing
-                // textarea) so it commits + removes itself before we
-                // re-query elementFromPoint and dispatch the tap click.
-                // On mobile, synthetic mouse events don't transfer focus,
-                // so blur never fires naturally when tapping elsewhere.
                 if (
                     document.activeElement &&
                     document.activeElement !== document.body
@@ -4289,7 +3208,6 @@ function addZUI(
                     document.elementFromPoint(endX, endY) || domElement
 
                 if (isDoubleTap) {
-                    // Reset so a third tap doesn't re-trigger
                     lastTapTime = 0
                     lastTapX = 0
                     lastTapY = 0
@@ -4320,8 +3238,6 @@ function addZUI(
 
             lastTouch = null
         }
-        // Drop below 2 fingers — save viewport then reset 2-finger tracking state.
-        // distance > 0 means twoFingerStart ran (a real 2-finger gesture was active).
         if (e.touches.length < 2) {
             if (distance > 0 && props.baseId) {
                 writeViewport(props.baseId, true, {
@@ -4368,9 +3284,6 @@ function addZUI(
         const newMidX = (a.clientX + b.clientX) / 2
         const newMidY = (a.clientY + b.clientY) / 2
 
-        // Safety: if twoFingerStart was never called (e.g. second finger
-        // landed outside the canvas element), initialise from current state
-        // and skip this frame to avoid a large jump.
         if (distance === 0) {
             distance = newDist
             twoFingerMidX = newMidX
@@ -4378,10 +3291,8 @@ function addZUI(
             return
         }
 
-        // Pan: translate by midpoint delta
         zui.translateSurface(newMidX - twoFingerMidX, newMidY - twoFingerMidY)
 
-        // Zoom: scale by distance delta (pinch)
         const distDelta = newDist - distance
         if (Math.abs(distDelta) > 0.5) {
             zui.zoomBy(distDelta / 250, newMidX, newMidY)
@@ -4395,7 +3306,6 @@ function addZUI(
         distance = newDist
 
         cullOnCameraChange()
-        // Batched — pinchmove fires per touch sample, not per frame.
         scheduleRender(two)
 
         onCameraChangeRef?.current?.({
@@ -4405,11 +3315,6 @@ function addZUI(
         })
     }
 
-    // Union of every persistable element's *surface* (scene-coord) bounds —
-    // position-based (shallow getBoundingClientRect), so it reflects where the
-    // elements actually are regardless of the live camera. Returns null when
-    // there's nothing measurable yet. Shared by fitToContent and the load poll's
-    // settle check (bounds stabilise once the element components apply x/y).
     const computeContentSurfaceBounds = (): {
         left: number
         top: number
@@ -4426,14 +3331,6 @@ function addZUI(
             const id = child?.elementData?.id
             if (!id) continue
             if (child.elementData.componentType === GROUP_COMPONENT) continue
-            // Skip non-content children that would bloat the bbox and force an
-            // over-zoomed-out fit (the 6%-floor symptom): hidden groups, and
-            // transient dummy/preview elements (the drag preview, the
-            // lastAddedElement stand-in) that can sit at the origin or cursor,
-            // far from the real content.
-            // A viewport-culled element is hidden for paint only — it's still
-            // real content, so measure it (its world bbox is valid regardless
-            // of visibility). Only skip genuinely-hidden groups.
             if (child.visible === false && child[CULLED_FLAG] !== true) continue
             if (child.elementData.isDummy === true) continue
             let rect
@@ -4457,15 +3354,6 @@ function addZUI(
 
     return {
         zui,
-        /**
-         * Announce the current camera to `onCameraChange` subscribers (the
-         * active base's backdrop, plus any consumer callback).
-         *
-         * Camera changes driven from *outside* addZUI's own event handlers —
-         * ZoomControls' buttons being the one case today — have to call this,
-         * or the backdrop silently stops tracking. Previously only the dot grid
-         * needed syncing, so it was easy to miss; a map base makes it obvious.
-         */
         notifyCameraChange: (): void => {
             onCameraChangeRef?.current?.({
                 scale: two.scene.scale as number,
@@ -4474,8 +3362,6 @@ function addZUI(
             })
         },
         mousemove,
-        // Stops the trail's rAF loop so it can't keep ticking against a
-        // torn-down Two.js instance after unmount.
         disposeEraserTrail: () => eraserTrail.dispose(),
         resetDragState: () => {
             dragging = false
@@ -4488,16 +3374,11 @@ function addZUI(
             lastSelectedShape,
         bringSelectionToFront: () =>
             selectionController.bringSelectionToFront(),
-        // True when at least one persistable element overlaps the current
-        // viewport. Uses each element group's *deep* getBoundingClientRect
-        // (worldMatrix → element-local pixel space, i.e. reflects the live
-        // camera), tested against the SVG rect. Drives the auto-fit-on-load
-        // decision: fit only when the restored/default camera shows no content.
         hasVisibleContent: (): boolean => {
             const scene = two.scene
             const vw = domElement.clientWidth || two.width
             const vh = domElement.clientHeight || two.height
-            if (!vw || !vh) return true // can't measure → don't force a fit
+            if (!vw || !vh) return true
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const children = scene.children as any[]
             for (const child of children) {
@@ -4517,17 +3398,11 @@ function addZUI(
                     ![left, top, right, bottom].every((n) => Number.isFinite(n))
                 )
                     continue
-                // Any overlap between the element rect and the viewport.
                 if (right > 0 && bottom > 0 && left < vw && top < vh)
                     return true
             }
             return false
         },
-        // Rounded signature of the content's surface bounds, or '' when nothing
-        // is measurable. The load poll watches this: once it's non-empty and
-        // stable across frames, the element components have applied their x/y
-        // (the count alone stabilises too early — groups are in the scene before
-        // their position is set), so the visibility decision can be trusted.
         contentBoundsSignature: (): string => {
             const b = computeContentSurfaceBounds()
             if (!b) return ''
@@ -4535,13 +3410,6 @@ function addZUI(
                 .map((n) => Math.round(n))
                 .join(',')
         },
-        // Frame all persistable elements in the viewport (zoom-to-fit). Bounds
-        // are read via each element group's *shallow* getBoundingClientRect, so
-        // they're in surface (scene) coords — independent of the current camera
-        // — and cover every shape type via its real rendered geometry. Returns
-        // false when there's nothing measurable to fit (empty base / not yet
-        // mounted) so the caller can keep polling. Used by the auto-fit-on-load
-        // fallback and the "Go to content" button.
         fitToContent: (opts?: { padding?: number }): boolean => {
             const bounds = computeContentSurfaceBounds()
             if (!bounds) return false
@@ -4551,9 +3419,6 @@ function addZUI(
             const vh = domElement.clientHeight || two.height
             if (!vw || !vh) return false
 
-            // Leave a margin; clamp to the ACTIVE base's zoom limits so a huge
-            // or tiny base doesn't overshoot the range (the map's is far wider
-            // than the board base's — see BaseTypeProvider.zoomLimits).
             const bboxW = right - left
             const bboxH = bottom - top
             const padding = opts?.padding ?? 0.8
@@ -4565,13 +3430,6 @@ function addZUI(
                 )
             )
 
-            // reset → zoomSet establishes the scale from a known identity camera;
-            // then translate so the content's center lands at the viewport center.
-            // Work in element-local pixels (surfaceMatrix output space, 0,0 at the
-            // SVG top-left) — NOT surfaceToClient, which adds the element's page
-            // offset. The delta translateSurface needs lives in this same space,
-            // so an embedded base (host not at page origin) still centers
-            // correctly. viewport center = (vw/2, vh/2) is element-local too.
             zui.reset()
             zui.zoomSet(scale, 0, 0)
             const cx = (left + right) / 2
@@ -4580,10 +3438,6 @@ function addZUI(
             zui.translateSurface(vw / 2 - curX, vh / 2 - curY)
             two.update()
 
-            // Notify the rest of the app the camera moved — same trio every other
-            // zoom/pan path fires. Without this the ZoomControls readout keeps its
-            // stale value (e.g. shows 100% while the fit set 6%), the dot-grid
-            // background drifts, and consumers' onCameraChange never hears the fit.
             window.dispatchEvent(
                 new CustomEvent('zoomChanged', { detail: { scale: zui.scale } })
             )
@@ -4594,14 +3448,6 @@ function addZUI(
             })
             return true
         },
-        /**
-         * Replace the camera's zoom range, and pull the current zoom inside it
-         * if the new range excludes where we are.
-         *
-         * Not `zui.addLimits` — that one only ever *tightens* (it Math.max's a
-         * new min against the existing one), so it can raise a floor but never
-         * lower it, and a base switch has to be able to do both.
-         */
         setZoomLimits: (min: number, max: number): void => {
             zui.limits.scale.min = min
             zui.limits.scale.max = max
@@ -4623,16 +3469,6 @@ function addZUI(
                 })
             }
         },
-        /**
-         * Put a surface point in the middle of the viewport, keeping the
-         * current zoom unless `scale` is given.
-         *
-         * This is how you travel on a georeferenced base: the map base ties
-         * surface (0,0) to the base's anchor lng/lat, so "go to this place"
-         * means "move the CAMERA to that place's surface coordinate" — never
-         * "move the anchor", which would slide the whole world under ink that
-         * stays where it is.
-         */
         centerOnSurface: (x: number, y: number, scale?: number): void => {
             const vw = domElement.clientWidth || two.width
             const vh = domElement.clientHeight || two.height
@@ -4648,9 +3484,6 @@ function addZUI(
             zui.translateSurface(vw / 2 - curX, vh / 2 - curY)
             two.update()
 
-            // Same notification trio every other camera driver fires — without
-            // it the zoom readout, the dot grid and the map backdrop all keep
-            // the pre-jump camera.
             window.dispatchEvent(
                 new CustomEvent('zoomChanged', { detail: { scale: zui.scale } })
             )
@@ -4688,21 +3521,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         meta,
     } = useBaseContext()
 
-    // addZUI's post-draw resets funnel a 'pointer' through setPointerElement.
-    // On a base whose home tool is pan, a generic reset re-activates pan instead
-    // of stranding the user in select mode. The exception is finishing a geo
-    // draw (point/area/route): we want the user dropped straight into
-    // pointer/select so the just-placed object can be tweaked — callers signal
-    // that with { select: true }.
-    //
-    // No shipped base sets pan as its home tool any more (the map moved to
-    // select), so this redirect is currently inert — kept because homeTool is
-    // per-base by design and the deprecated `geoObjectsEnabled` overlay still
-    // forces 'pan'.
-    // resetToHomeTool is handed to addZUI, which runs once on mount — so it
-    // must not close over `baseTypeProvider` directly. The base is switchable at
-    // runtime now, and a captured provider would keep reporting the base the
-    // base loaded with. See the stale-closure section in CLAUDE.md.
     const homeToolRef = useRef<string>('pointer')
 
     const resetToHomeTool = (
@@ -4728,7 +3546,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
     const [zuiInstance, setZuiInstance] = useState<any>(null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [onGroup, setOnGroup] = useState<any>(null)
-    // Right-click / two-finger context menu position (null = closed).
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(
         null
     )
@@ -4747,8 +3564,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
     >(null)
     const prevElementsRef = useRef<string[]>([])
     const componentsToRenderRef = useRef<React.ComponentType[]>([])
-    // Holds the latest createTextAtSurface from BaseContext so the dblclick
-    // handler (registered once inside addZUI) sees fresh closure state.
     const createTextAtSurfaceRef = useRef<
         ((x: number, y: number) => void) | null
     >(null)
@@ -4756,8 +3571,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         createTextAtSurfaceRef.current = createTextAtSurface
     }, [createTextAtSurface])
 
-    // Latest onCameraChange callback. Read from inside addZUI's DOM event
-    // handlers via the ref to avoid the stale-closure trap (see CLAUDE.md).
     const onCameraChangeRef = useRef<
         ((event: CameraChangeEvent) => void) | undefined
     >(props.onCameraChange)
@@ -4773,7 +3586,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         recordBatchToHistoryLog,
         renderGroupRef,
         stateRefForComponentStore,
-        // Meta property values follow pasted objects onto their copies.
         onPasted: (objectIdMap) => {
             meta.copyValuesForPaste(objectIdMap).catch((e) =>
                 console.error('[paste] copying meta values failed', e)
@@ -4815,18 +3627,8 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             onCameraChangeRef
         )
 
-        // Floating render origin: keeps far-from-anchor elements from shaking
-        // on zoom by splitting the camera across a wrapper <g> so the browser
-        // never composes million-unit surface coordinates in float32. Purely a
-        // DOM concern — it adds nothing to two.scene.children and leaves every
-        // element's translation in absolute surface coords.
         const renderOrigin = installRenderOrigin(two)
 
-        // Debug handles for profiling the camera from the console or a
-        // headless harness (drive the zoom/pan without synthesising input), and
-        // the channel the canvas e2e specs read the camera through. Gated on
-        // E2E_HOOKS, not on DEV: a deploy preview is a production build, and
-        // the specs run against one. See src/utils/e2eHooks.ts.
         if (E2E_HOOKS) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ;(window as any).__mcZui = zui_instance.zui
@@ -4841,19 +3643,10 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         setTwoJSInstanceInBase(two)
         setZuiInstanceInBase(zui_instance)
 
-        // Restore last mobile viewport (zoom + pan) from localStorage.
-        // Use ZUI's own API so its internal zScale stays in sync with the
-        // scene — setting two.scene.scale directly desynchronises ZUI and
-        // causes the first pan gesture to jump back to the origin.
         const applyViewport = (vp: StoredViewport): boolean => {
             try {
                 const { tx, ty, scale } = vp
-                // zoomSet updates zui.zScale + surface.scale atomically.
-                // Centering at (0,0) with initial translation (0,0) means no
-                // translation side-effect from the zoom.
                 zui_instance.zui.zoomSet(scale, 0, 0)
-                // translateSurface increments from the post-zoom translation
-                // (still 0,0) to the saved position.
                 zui_instance.zui.translateSurface(tx, ty)
                 two.update()
                 return true
@@ -4869,54 +3662,26 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             return applyViewport(parsed)
         }
 
-        // First-land seed: a base opened from Share carries the originating
-        // '/' viewport (pan + zoom) in the URL (vx/vy/vs). Clone it into this
-        // base's viewport localStorage key(s) so restoreViewport below lands
-        // on the same view instead of the origin. Seed both desktop+mobile keys
-        // (sharer and opener may be on different devices), then strip the params
-        // so a later reload uses the save-as-you-go value rather than the frozen
-        // param — i.e. subsequent reloads honour the last pan/zoom for this base.
         if (props.baseId) {
             const params = new URLSearchParams(window.location.search)
             if (params.has('vx') && params.has('vy') && params.has('vs')) {
                 const tx = Number(params.get('vx'))
                 const ty = Number(params.get('vy'))
                 const scale = Number(params.get('vs'))
-                // Guard against malformed/tampered params — a NaN here would
-                // feed zoomSet/translateSurface and corrupt the scene.
                 if (
                     Number.isFinite(tx) &&
                     Number.isFinite(ty) &&
                     Number.isFinite(scale) &&
                     scale > 0
                 ) {
-                    // Seed both desktop+mobile keys for the base the link
-                    // opens on (sharer and opener may be on different devices).
                     const seeded = { tx, ty, scale }
                     writeViewport(props.baseId, false, seeded)
                     writeViewport(props.baseId, true, seeded)
                 }
-                // Strip the params regardless so a reload never re-seeds.
                 window.history.replaceState({}, '', window.location.pathname)
             }
         }
 
-        // First-open landing: put a shared map on the spot its author shared.
-        //
-        // The base row carries the view as lng/lat/zoom rather than the
-        // camera's own tx/ty/scale, because those are pixel translations —
-        // replaying a desktop pan on a phone lands somewhere else entirely. So
-        // the geography is converted to a camera HERE, against this device's
-        // viewport. Pure mercator arithmetic, no maplibre, which matters: at
-        // this point the resolved provider is still the board base.
-        //
-        // "First open" is defined as "this base+type+device has no saved
-        // camera". That needs no extra flag and is self-cleaning: once the
-        // recipient pans, the save-as-you-go writer owns the camera and this
-        // never fires again. After the 30-day viewport TTL it lands them on the
-        // shared spot once more, which is the right answer for a link revisited
-        // months later. It sits after the vx/vy/vs block so an explicit param
-        // link still wins.
         let landedViewport: StoredViewport | null = null
         const landing = props.initialMapLanding
         if (props.baseId && landing) {
@@ -4932,60 +3697,18 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                     tx: vw / 2 - x * scale,
                     ty: vh / 2 - y * scale,
                 }
-                // Current device's key only — unlike the vx/vy/vs path above,
-                // which copies opaque pixels and so seeds both. These tx/ty were
-                // computed from THIS viewport, so writing them under the other
-                // form factor's key would be a wrong pan. A recipient who later
-                // crosses the breakpoint gets the landing re-derived from the
-                // geography instead, which is strictly better.
                 writeViewport(props.baseId, isMobile, landedViewport)
             }
         }
 
         if (props.baseId) {
-            // Widen the camera to the ACTIVE base's range FIRST. addZUI opens
-            // on the board base's 6%–800% (it has no idea which type this is), and
-            // the map reaches far below that floor — so restoring a saved map
-            // camera against the board base's floor silently clamps it. That is what
-            // made a base saved at map z8 reopen at ~z11: scale 0.0039 was
-            // pinned to 0.06, and nothing re-applied the saved value once
-            // base.tsx installed the real limits a beat later.
-            //
-            // Read from the static table, not `baseTypeProvider`: providers load
-            // through a dynamic import, so at this point the resolved provider
-            // is still the board base no matter which type the base opens on.
             const limits = MAP_ZOOM_LIMITS
             zui_instance.setZoomLimits(limits.min, limits.max)
-            // Fall back to the landing we just computed if the read comes back
-            // empty. `writeViewport` swallows quota/private-mode failures by
-            // design, and trusting the localStorage round-trip would drop a
-            // recipient in private browsing at the origin with no clue why.
             if (!restoreViewport(isMobile) && landedViewport) {
                 applyViewport(landedViewport)
             }
         }
 
-        // Auto-fit-on-load: a base can land showing empty space — either the
-        // camera is at the origin (no seeded/saved viewport) while content sits
-        // far away, OR a stale/bad saved viewport (30-day TTL, save-as-you-go) or
-        // a shared link's seeded viewport points at emptiness. In every one of
-        // those cases the user has to hunt for the content by zooming out.
-        //
-        // So the trigger is content *visibility*, not "nothing restored": the
-        // componentStore effect settles the (async-loaded) elements, then fits
-        // ONLY IF no element is on-screen. A good restored view (or a deliberate
-        // zoom into one region) shows content → left untouched. Runs once.
-        //
-        // Scope to URL-loaded bases (/base/:id, /map/:id) only. Local drafts
-        // (`/`) also carry a baseId (localBaseId) but seed the
-        // deliberately-placed welcome sketch — reframing that would disturb the
-        // intended landing.
-        //
-        // A shared landing stands auto-fit down. The two are mutually exclusive
-        // by definition: auto-fit is the rescue for a camera nobody chose, and
-        // a landing is a camera someone chose deliberately. Someone can quite
-        // reasonably share a view with the pins just off-frame, and fitting
-        // would throw that away and reframe on content they aimed away from.
         pendingInitialFitRef.current =
             Boolean(props.baseId && isUrlBasePath()) && !landedViewport
 
@@ -5016,14 +3739,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             }
         }
 
-        // Two.js `fullscreen: true` mutates document.body inline styles
-        // (overflow:hidden, position:fixed, margin/padding/inset:0) and binds
-        // a window 'resize' listener — none of which it auto-reverts. Without
-        // this cleanup, leaving the Board (e.g. navigating to /privacy or
-        // /support) leaves <body> scroll-locked so those pages can't scroll.
-        // Resetting to '' drops the inline declarations so the stylesheet /
-        // browser defaults take over again; remounting the Board re-applies
-        // them, so the whiteboard's no-scroll behavior is unchanged.
         return () => {
             renderOrigin.uninstall()
             zui_instance?.disconnectThemeObserver?.()
@@ -5043,20 +3758,10 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         }
     }, [])
 
-    // Handle for an in-flight z-order reconcile poll so a new store change can
-    // cancel a stale one instead of stacking rAF loops.
     const zOrderPollRef = useRef<number | null>(null)
-    // Set true on mount when a base opened with no seeded/saved viewport should
-    // be zoom-to-fit once its (async-loaded) content settles. Consumed + cleared
-    // by the one-time fit poll in the componentStore effect so it fires once.
     const pendingInitialFitRef = useRef<boolean>(false)
     const initialFitPollRef = useRef<number | null>(null)
 
-    // Deterministically re-sort the element groups inside two.scene.children by
-    // their store `position` (back→front). Element mounting is async (React.lazy
-    // + Suspense), so groups land in the scene in unpredictable order — this is
-    // the single source of truth that fixes the post-refresh z-order. Reads live
-    // state from refs (stale-closure rule); idempotent and safe to re-run.
     const reconcileZOrder = useCallback(() => {
         const two = twoJSInstance
         const store = stateRefForComponentStore.current
@@ -5065,16 +3770,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const children = scene.children as any[]
 
-        // Skip while a transient group selection (marquee selector or the
-        // mounted groupobject) is active. Such a group is NOT reorderable
-        // (isReorderableElementChild excludes GROUP_COMPONENT) and its grouped
-        // originals are hidden (opacity 0) beneath it, so there is nothing
-        // useful to reorder. More importantly, the groupobject mounts its child
-        // elements asynchronously: sorting + two.update() mid-mount can detach
-        // the just-built group node (the scene.subtractions pitfall in
-        // CLAUDE.md), silently destroying the selection. The componentStore
-        // effect re-runs this poll once the group is dismissed and the
-        // originals re-render, so deterministic z-order is still restored then.
         const hasActiveGroupSelection = children.some(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (c: any) =>
@@ -5083,12 +3778,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         )
         if (hasActiveGroupSelection) return
 
-        // Build the desired final order: element groups sorted by their store
-        // position (back→front) dropped back into the index slots they already
-        // occupy, while non-element children (selection box, previews) keep
-        // their slots. A rank map gives a *total* order — returning 0 for
-        // mixed pairs would break sort's transitivity contract and could
-        // mis-order elements separated by an overlay.
         const sortedEls = children
             .filter((c) => isReorderableElementChild(c, store))
             .sort((a, b) =>
@@ -5104,28 +3793,13 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         const rank = new Map<unknown, number>()
         desired.forEach((c, i) => rank.set(c, i))
 
-        // Already in the desired order? Then there is nothing to restack, and
-        // re-rendering would be pure waste. This matters because the reconcile
-        // POLL re-runs this every frame while a base mounts: each render is
-        // O(scene) in the SVG renderer, so unconditionally rendering here cost
-        // ~90 full-scene renders per store change on a large base.
         const alreadyOrdered = children.every((c, i) => desired[i] === c)
         if (alreadyOrdered) return
 
-        // Collection.sort fires the 'order' event that flags the SVG renderer
-        // to physically reorder the <g> nodes — a bare splice would NOT.
         children.sort((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0))
 
-        // The just-sorted elements may have buried the selection overlay — lift
-        // it back on top so the active selection box stays visible.
         zuiInstanceRef.current?.bringSelectionToFront?.()
 
-        // An arrow's "selected" look is its two endpoint circles, shown while
-        // the arrow group's <g> holds DOM focus. The restack below detaches and
-        // re-appends that <g> to reorder it, which blurs the focused node and
-        // fires arrowLine's blur handler — hiding the circles even though the
-        // arrow is still the active selection. Capture the selected arrow now so
-        // we can re-assert its endpoints after the restack settles.
         const selectedGroup = zuiInstanceRef.current?.getSelectedGroup?.()
         const selectedArrow =
             selectedGroup?.elementData?.componentType === 'arrowLine'
@@ -5135,18 +3809,11 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         try {
             two.update()
         } catch (err) {
-            // A concurrent mount/cleanup could leave a stale subtraction queued;
-            // clear it so future updates don't keep retrying the broken op (see
-            // the scene.subtractions pitfall in CLAUDE.md).
             console.warn('reconcileZOrder two.update failed', err)
             scene.subtractions.length = 0
             scene._flagSubtractions = false
         }
 
-        // Re-show the endpoints AFTER the restack: the blur (and its own nested
-        // two.update) has already run during the update above, so setting them
-        // visible now and re-rendering sticks. The node is no longer focused, so
-        // this second update doesn't reorder and can't re-trigger the blur.
         if (selectedArrow) {
             setArrowEndpointsVisible(selectedArrow, true)
             try {
@@ -5158,9 +3825,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         }
     }, [twoJSInstance])
 
-    // Element groups appear in the scene over several frames as their lazy
-    // chunks resolve. Poll a few frames, reconciling each tick, until every
-    // expected element group is present (or a frame cap as a safety stop).
     const startZOrderReconcilePoll = useCallback(() => {
         if (zOrderPollRef.current !== null) {
             cancelAnimationFrame(zOrderPollRef.current)
@@ -5170,8 +3834,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         const store = stateRefForComponentStore.current
         if (!two?.scene || !store) return
 
-        // Expected = store records that are reorderable AND map to a known
-        // element module (others are skipped by handleSetComponentsToRender).
         const expected = Object.values(store).filter(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (r: any) =>
@@ -5213,8 +3875,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         stateRefForComponentStore.current = props.componentStore
         if (twoJSInstance !== null && zuiInstance !== null) {
             let domElement = twoJSInstance?.renderer?.domElement
-            // Reset stale drag state so a resize followed by a store update
-            // (e.g. undo) doesn't leave the element dragging on next mousemove
             zuiInstance.resetDragState()
             domElement.addEventListener(
                 'mousemove',
@@ -5225,21 +3885,8 @@ const Canvas: React.FC<CanvasProps> = (props) => {
 
         if (Object.values(props.componentStore).length > 0 && twoJSInstance) {
             handleSetComponentsToRender(Object.values(props.componentStore))
-            // Re-assert deterministic z-order once the (async) element mounts
-            // settle — this is what fixes the post-refresh ordering bug.
             startZOrderReconcilePoll()
 
-            // One-time auto-fit-on-load (see the mount effect). The base's
-            // content arrives async: element groups enter the scene a frame or
-            // two BEFORE their component applies x/y, so settling on the child
-            // *count* is too early — the visibility test would run while the
-            // groups are still at the origin and wrongly conclude "visible".
-            // Instead settle on the content *geometry*: poll the surface-bounds
-            // signature until it's non-empty and unchanged for a few frames
-            // (positions applied). Then force a render so worldMatrix is current,
-            // and fit only if nothing is on-screen. One-shot: clear the flag so
-            // later edits never re-fit. A cap bails out on a genuinely empty or
-            // never-settling base (chunks that never load).
             if (pendingInitialFitRef.current && zuiInstance) {
                 if (initialFitPollRef.current !== null) {
                     cancelAnimationFrame(initialFitPollRef.current)
@@ -5260,13 +3907,9 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                         frame >= MAX_FRAMES
                     ) {
                         if (sig !== '') {
-                            // Ensure the SVG (and each group's worldMatrix) is
-                            // rendered at the settled positions before the
-                            // camera-relative visibility test.
                             try {
                                 twoJSInstance.update()
                             } catch (_) {
-                                /* tear-down races are non-fatal here */
                             }
                             if (!zuiInstance.hasVisibleContent?.()) {
                                 zuiInstance.fitToContent?.()
@@ -5292,8 +3935,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
 
     useEffect(() => {
         isPencilModeRef.current = props.isPencilMode
-        // Toggling the pencil tool means no stroke is in flight — clear the
-        // guard so a missed mouseup can't leave undo blocked indefinitely.
         isPencilStrokeActive = false
         const root = document.getElementById('main-two-root')
         if (props.isPencilMode === true) {
@@ -5326,15 +3967,8 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         defaultTextSizeValue = props.defaultTextSize || DEFAULT_TEXT_SIZE
     }, [props.defaultTextSize])
 
-    // on group select use effect hook
     useEffect(() => {
         if (onGroup) {
-            // Cancel any in-flight z-order reconcile poll started by an earlier
-            // store change. The groupobject mounts its children asynchronously;
-            // a reconcile tick that fires in the gap *before* the group node is
-            // in the scene (so reconcileZOrder's group guard can't see it yet)
-            // would sort + two.update() mid-mount and detach the just-built
-            // group (scene.subtractions pitfall), dropping the selection.
             if (zOrderPollRef.current !== null) {
                 cancelAnimationFrame(zOrderPollRef.current)
                 zOrderPollRef.current = null
@@ -5354,26 +3988,12 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             const newChildren: any[] = []
             const selectedComponentArr: string[] = []
 
-            // Iterate in global z-order (position asc = back→front) so the
-            // group's internal child order mirrors the canvas stacking. The
-            // group adds children in array order (groupobject.tsx) where
-            // index 0 is the backmost, so feeding them sorted keeps grouped
-            // elements visually consistent with their ungrouped positions.
-            //
-            // Only elements that belong to the ACTIVE base are candidates. The
-            // hit-test is geometric over stored coordinates, and every element
-            // keeps its coordinates on every base — so without this filter a
-            // marquee on the map silently swallows the whiteboard shapes lying
-            // under it (hidden, but still in the store), and vice versa. The
-            // rule is the same one `applyBaseTypeVisibility` paints with; sharing it
-            // is what keeps "what I can see" and "what I can select" in step.
             const allComponentCoords = stateRefForComponentStore.current
                 ? Object.values(stateRefForComponentStore.current).sort(
                       compareByZOrder
                   )
                 : []
 
-            // Geometric marquee hit-test on an element's stored origin.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const isInsideMarquee = (item: any): boolean =>
                 item.x > x1Coord &&
@@ -5381,15 +4001,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                 item.y > y1Coord &&
                 item.y < y2Coord
 
-            // A connector's origin (item.x/y) is a single point near its tail —
-            // NOT its span or its attachment — so the bare geometric test flips
-            // it in/out of the group depending on exactly where the marquee
-            // lands (see the "whole vs head-only" inconsistency). Decide shape
-            // membership geometrically first, then pull in every connector docked
-            // to a member shape regardless of its origin, so a bound connector
-            // ALWAYS travels with its group. commitGroupMove already re-glues any
-            // endpoint docked to a shape OUTSIDE the group (restackPorts), so a
-            // connector straddling the boundary stays correct after the move.
             const memberShapeIds = new Set(
                 allComponentCoords
                     .filter(
@@ -5402,7 +4013,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const isMember = (item: any): boolean => {
                 if (isInsideMarquee(item)) return true
-                // Bound connector: member iff docked to a member shape.
                 if (item.componentType === 'arrowLine') {
                     return (
                         memberShapeIds.has(item.tailShapeId) ||
@@ -5419,14 +4029,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                     let relativeX = item.x - xMid
                     let relativeY = item.y - yMid
 
-                    // Remap the member's geometry into the group's child
-                    // coordinate space, or the factory builds it at the wrong
-                    // offset and the member renders off-screen. Every type
-                    // takes the same path now: a point's Point and a route's
-                    // LineString both translate by the group midpoint, and
-                    // because `x` is the geometry's own origin the result
-                    // equals `relativeX` by construction. Unrounded — pencil's
-                    // Chaikin smoothing reads the fractional part.
                     const remapped = translateGeometry(item, -xMid, -yMid, {
                         round: false,
                     })
@@ -5443,23 +4045,13 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                         relativeY: relativeY,
                     }
 
-                    // For arrowLine / line: read actual vertex coordinates from
-                    // Two.js scene to preserve direction (componentStore may have
-                    // stale/missing values)
                     if (isLineLikeType(item.componentType)) {
                         const arrowShape = twoJSInstance.scene.children.find(
                             // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             (child: any) => child?.elementData?.id === item.id
                         )
-                        // Arrow factory adds line as first child (line, pointCircle1Group, pointCircle2Group)
                         const line = arrowShape?.children?.[0]
                         if (line?.vertices?.length >= 2) {
-                            // Keep endpoints as floats — do NOT Math.trunc. These
-                            // are local vertex coords; truncating them dropped the
-                            // arrow sub-pixel off its original. The member origin
-                            // is truncated once in groupobject (matching the arrow
-                            // factory's parseInt translation), so float endpoints
-                            // reconstruct the line exactly over the original.
                             obj.x1 = line.vertices[0].x
                             obj.y1 = line.vertices[0].y
                             obj.x2 = line.vertices[1].x
@@ -5475,25 +4067,11 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             newGroup.componentType = 'groupobject'
             newGroup.width = e.width
             newGroup.height = e.height
-            // Use the SAME integer midpoint that the children's relative coords
-            // (relativeX/Y above) were computed against. groupobject truncates
-            // this into group.translation; if it diverged from xMid/yMid by even
-            // a fraction (float surface coords, odd width, panned origin) every
-            // member copy would render group.translation + relativeX ≠ item.x —
-            // the slight displacement seen on select-before-blur. Reusing xMid/
-            // yMid makes the reconstruction cancel to exactly item.x.
             newGroup.x = xMid
             newGroup.y = yMid
 
             newGroup.children = newChildren
 
-            // Defer hiding the originals to the group's own assembly so the
-            // swap is atomic — the group hides exactly these ids in the SAME
-            // two.update() that paints its member copies, so there is never a
-            // blank frame between "originals hidden" and "group copies drawn"
-            // (the residual group-select flicker). Only the group-SELECT path
-            // sets this; paste leaves it unset (its clones have no on-canvas
-            // originals to hide).
             newGroup.membersToHide = [...selectedComponentArr]
 
             handleSetComponentsToRender([newGroup])
@@ -5507,17 +4085,9 @@ const Canvas: React.FC<CanvasProps> = (props) => {
     useEffect(() => {
         const onUndoRedoKeyDown = (evt: KeyboardEvent) => {
             if (evt.key.toLowerCase() === 'z' && (evt.ctrlKey || evt.metaKey)) {
-                // Live text editing (solo text component, shape inline text —
-                // both are .temp-input-area textareas — or any other text
-                // field): let the browser's native text undo handle the key
-                // instead of popping a canvas action out from under the editor.
                 const tag = document.activeElement?.tagName
                 if (tag === 'INPUT' || tag === 'TEXTAREA') return
                 evt.preventDefault()
-                // Don't undo/redo mid-stroke — the in-progress pencil stroke
-                // isn't in history yet, so undoing here would pop the wrong
-                // (previously committed) element. User must finish the stroke
-                // first. See isPencilStrokeActive.
                 if (isPencilStrokeActive) return
                 if (evt.shiftKey) {
                     redoLastAction()
@@ -5554,8 +4124,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         }
     }, [undoLastAction, redoLastAction, enableTextDrawMode])
 
-    // Export the active selection (marquee group or single element) as a
-    // standalone .svg. getSelectedGroup() unifies both selection mechanisms.
     const exportActiveSelection = useCallback(async () => {
         const group = zuiInstanceRef.current?.getSelectedGroup?.()
         if (!group) return
@@ -5566,15 +4134,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         }
     }, [])
 
-    // Change the z-order of the currently-selected element. We move by *index*
-    // in the deterministic sorted order, then renumber every row to a dense,
-    // distinct position (0..n-1). The old approach swapped position *values*,
-    // which silently no-ops whenever neighbours tie — and most legacy rows share
-    // position 0 (position is only assigned to newly-created elements), so once a
-    // shape stepped into the 0-block it could never come back. Renumbering
-    // self-heals that degeneracy; only rows whose position actually changes are
-    // written, so steady-state single-step moves touch just the couple that
-    // shifted. The whole renumber is recorded as one BATCH = one undo step.
     const reorderSelected = useCallback(
         (op: 'front' | 'forward' | 'backward' | 'back') => {
             const store = stateRefForComponentStore.current
@@ -5591,7 +4150,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             const idx = sorted.findIndex((r) => r.id === id)
             if (idx === -1) return
 
-            // Target slot for the selected element in the final back→front order.
             const target =
                 op === 'front'
                     ? n - 1
@@ -5599,16 +4157,14 @@ const Canvas: React.FC<CanvasProps> = (props) => {
                       ? 0
                       : op === 'forward'
                         ? idx + 1
-                        : idx - 1 // backward
-            if (target < 0 || target > n - 1 || target === idx) return // at edge
+                        : idx - 1
+            if (target < 0 || target > n - 1 || target === idx) return
 
-            // Rebuild the order with the selected element moved to `target`.
             const newOrder = sorted.slice()
             const [moved] = newOrder.splice(idx, 1)
             if (!moved) return
             newOrder.splice(target, 0, moved)
 
-            // Assign dense distinct positions; write + record only what changed.
             const batch: HistoryEntry[] = []
             newOrder.forEach((r, i) => {
                 const prev = Number.isFinite(r.position)
@@ -5638,8 +4194,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         ]
     )
 
-    // Publish reorderSelected up to base.tsx so the properties toolbar can
-    // trigger it through BaseContext (see the reorderSelectedRef bridge).
     useEffect(() => {
         const ref = props.reorderSelectedRef
         if (ref) ref.current = reorderSelected
@@ -5648,9 +4202,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         }
     }, [props.reorderSelectedRef, reorderSelected])
 
-    // Publish fitToContent up to base.tsx (see the fitToContentRef bridge) so
-    // the "Go to content" button can frame all elements on demand. Reads the
-    // live zui handle via its ref so it never captures a stale instance.
     useEffect(() => {
         const ref = props.fitToContentRef
         if (ref)
@@ -5661,9 +4212,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         }
     }, [props.fitToContentRef])
 
-    // Right-click (mouse) and two-finger trackpad tap both fire the native
-    // 'contextmenu' event. Suppress the OS menu; if something is selected, open
-    // our menu at the cursor. Cmd/Ctrl+Shift+D triggers the same export.
     useEffect(() => {
         const root = document.getElementById('main-two-root')
         if (!root) return
@@ -5691,15 +4239,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
             void exportActiveSelection()
         }
 
-        // Reorder shortcuts:
-        //   [ / ]    → backward / forward (one step)
-        //   ⌘[ / ⌘]  → to back / to front
-        // We deliberately avoid ⌘⇧[/⌘⇧] here: on macOS Chrome those are the
-        // reserved "switch tab" accelerators (native app-menu key equivalents)
-        // and preventDefault() can't cancel them — the page never wins. Detect
-        // brackets via code OR key so non-US layouts resolve too. Only hijack
-        // the key when a shape is actually selected, so bare [ /] stay inert and
-        // ⌘[ /⌘] keep their browser history-nav behaviour on an empty selection.
         const onReorderKeyDown = (evt: KeyboardEvent) => {
             if (evt.shiftKey || evt.altKey) return
             const isRight =
@@ -5745,37 +4284,19 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         currentComponents: ComponentRecord[]
     ) => {
         let arr = [...prevElementsRef.current]
-        // Membership set over `arr`: this runs for every record on every store
-        // change, so a linear Array.includes() per item made it O(n²).
         const seen = new Set(arr)
         let components = [...componentsToRenderRef.current]
         if (currentComponents && twoJSInstance) {
-            // console.log(
-            //     'newCanvas ... Canvas ... handleSetComponentsToRender ... condition(currentComponents && twoJSInstance) === true ',
-            //     prevElementsRef.current,
-            //     currentComponents
-            // )
             currentComponents.forEach((item) => {
-                // prevElementsRef is the sole authority on whether a wrapper already exists.
-                // We must NOT check existsInScene here: on slow networks the React lazy
-                // module may still be loading (no Two.js group yet) when a second shape is
-                // drawn, causing existsInScene=false even though a wrapper was already
-                // created — which would produce a second wrapper and a duplicate shape.
-                // Deletion removes the id from the ref via the 'elementRemoved' event,
-                // so undo-of-delete still gets a fresh wrapper.
                 const moduleLoader =
                     elementModules[
                         `./components/elements/${item.componentType}.tsx`
                     ]
                 if (!moduleLoader) {
-                    // componentType doesn't map to a known element file — skip to avoid a crash.
-                    // This can happen if shapeData was null when stored (e.g. componentTypes
-                    // query hadn't resolved yet).
                     return
                 }
 
                 if (seen.has(item.id)) {
-                    // do nothing — wrapper already exists
                 } else {
                     arr.push(item.id)
                     seen.add(item.id)
@@ -5817,24 +4338,13 @@ const Canvas: React.FC<CanvasProps> = (props) => {
     }
     renderGroupRef.current = handleSetComponentsToRender
 
-    // When an element is deleted or its ADD is undone, remove it from prevElementsRef
-    // so handleSetComponentsToRender can create a fresh wrapper if the element is
-    // ever restored (e.g. undo of a delete).
     useEffect(() => {
         const handleElementRemoved = ((e: CustomEvent<{ id: string }>) => {
-            // console.log(
-            //     'newCanvas ... Canvas ... elementRemoved Event Listener',
-            //     prevElementsRef.current
-            // )
             const { id } = e.detail
             let updatedPrevElementsArr = prevElementsRef.current
             updatedPrevElementsArr = updatedPrevElementsArr.filter(
                 (eid) => eid !== id
             )
-            // console.log(
-            //     'newCanvas ... Canvas ... elementRemoved Event Listener ... updatedPrevElementsArr',
-            //     updatedPrevElementsArr
-            // )
             prevElementsRef.current = updatedPrevElementsArr
         }) as EventListener
         window.addEventListener('elementRemoved', handleElementRemoved)
@@ -5848,7 +4358,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         oldShapeData
     ) => {
         const userId = localStorage.getItem('userId')
-        // prevX === -9999 means initial arrow placement — skip extra undo steps
         const isInitialArrowPlacement = newShapeData.prevX === -9999
 
         if (
@@ -5858,12 +4367,6 @@ const Canvas: React.FC<CanvasProps> = (props) => {
         ) {
             const nextX = parseInt(newShapeData.data.x)
             const nextY = parseInt(newShapeData.data.y)
-            // Move the GEOMETRY, not just the x/y columns. Those columns are a
-            // cache derived from the geometry, so writing them alone would
-            // leave the record claiming an origin its own coordinates disagree
-            // with — and the factory reads the geometry back. Translating by
-            // the delta works for every geometry type uniformly, so this one
-            // path serves a point, a text label and a route alike.
             const record = stateRefForComponentStore.current?.[newShapeData.id]
             const moved = moveGeometryTo(record, nextX, nextY)
             let updateObj = {
@@ -5901,11 +4404,7 @@ const Canvas: React.FC<CanvasProps> = (props) => {
 
     return (
         <>
-            {/* {import.meta.env.DEV && <PerfOverlay />} */}
             <div id="selector-rect"></div>
-            {/* Backdrop slot for the active base provider (see src/bases).
-                The consumer's renderBackground override renders inside it so
-                apps predating the base system keep their background layer. */}
             <div id={BASE_ROOT_ID}>{props.renderBackground?.()}</div>
             <div id="main-two-root"></div>
             {componentsToRender.map((Component, index) => (

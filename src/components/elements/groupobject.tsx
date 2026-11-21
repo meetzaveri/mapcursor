@@ -48,12 +48,8 @@ import {
     translateGeometry,
 } from '../../utils/geometry'
 
-// PROTOTYPE FLAG — group resize. Flip to false to fully disable the corner
-// resize handles + baking and fall back to the old move-only group overlay.
 const GROUP_RESIZE_ENABLED = true
-// Uniform scale never goes below this factor (avoids collapsing a group to 0).
 const GROUP_RESIZE_MIN_SCALE = 0.1
-// Floor for any scaled stroke width so lines never vanish.
 const GROUP_RESIZE_MIN_STROKE = 0.5
 import {
     applyShapeText,
@@ -69,12 +65,6 @@ type ElementProps = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
-// Child element factories load asynchronously, so group.add() can fire out of
-// array order on first grouping. Re-sort the group's children by their stored
-// z-order `position` (back→front) after every add so the within-group stacking
-// always matches the canvas — independent of load timing. The transparent
-// selector rectangle (no elementData) is pinned to the back. group.children
-// .sort fires Two.js's 'order' event so the SVG <g> nodes physically reorder.
 const orderGroupChildrenByZ = (group: ShapeLike): void => {
     group.children.sort((a: ShapeLike, b: ShapeLike) => {
         const aHas = !!a?.elementData
@@ -118,18 +108,11 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         useState<ShapeLike>(null)
     const [groupId, setGroupId] = useState<string | null>(null)
     const isDeletingRef = useRef(false)
-    // Active corner-resize gesture state (null when not resizing). Set on a
-    // corner-handle mousedown, read/advanced on mousemove, consumed on mouseup.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resizeStateRef = useRef<any>(null)
-    // Set by the mount effect; re-sizes the corner handles to a constant screen
-    // size for a given effective scale. Called from the zoomChanged listener.
     const sizeHandlesRef = useRef<((effectiveScale: number) => void) | null>(
         null
     )
-    // Last group position already written to history. commitGroupMove() compares
-    // the live translation against this so a move is recorded exactly once,
-    // whether the commit is triggered by drag-end (mouseup) or blur.
     const lastCommitPosRef = useRef<{ x: number; y: number } | null>(null)
     let groupInstance: ShapeLike = null
     let selectorInstance: ShapeLike = null
@@ -138,11 +121,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         return element && two.scene.children.includes(element)
     }
 
-    // Tear down just the transient overlay (resize box + member copies) and drop
-    // the selection state — without touching the store. two.remove defers the
-    // SVG detach to the next update; if that throws (scene.subtractions pitfall,
-    // see CLAUDE.md) clear the stuck subtraction so future updates don't keep
-    // retrying the broken removal.
     function dismissOverlayNode(): void {
         selectorInstance?.hide?.()
         window.dispatchEvent(new CustomEvent('groupBlurred'))
@@ -158,9 +136,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         }
     }
 
-    // Restore the (group-level) opacity of our member elements — they were
-    // hidden at 0 under the overlay. metadata may be a pencil vertex array, so
-    // guard the `.opacity` read.
     function revealMembers(): void {
         const childrenIds = props.children.map((i: ShapeLike) => i.id)
         two.scene.children.forEach((element: ShapeLike) => {
@@ -170,13 +145,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         })
     }
 
-    // Sync the (hidden) member elements to the overlay's current position and
-    // record the move to history as ONE batch. Idempotent: if the group hasn't
-    // moved since the last commit (lastCommitPosRef) it's a no-op, so calling it
-    // on BOTH drag-end (mouseup) and blur never double-records. Committing on
-    // drag-end is what makes a group move the last history entry — so undo
-    // reverts the move even while the group is still selected, instead of
-    // popping the previous action (e.g. a paste).
     function commitGroupMove(): void {
         if (isDeletingRef.current) return
         if (!groupInstance || !isInScene(groupInstance)) return
@@ -212,14 +180,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             element.translation.x = newX
             element.translation.y = newY
 
-            // A group move is a uniform translation: shift the geometry by the
-            // same delta as the element origin. Unrounded — truncating each
-            // vertex fed rounded points into the factory's Chaikin smoothing on
-            // the next rebuild and bent the stroke ("uneven" pasted/reloaded
-            // copies). Don't rebuild the live anchors from the geometry here
-            // either: the factory already smoothed them and the translation
-            // above moves them, so re-deriving from the raw simplified
-            // coordinates would drop the smoothing and render it jagged.
             const moved = translateGeometry(
                 element.elementData,
                 newX - prevTx,
@@ -262,8 +222,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         if (batchEntries.length > 0) {
             recordBatchToHistoryLog(batchEntries)
         }
-        // Advance the baseline even if nothing recorded, so we don't re-scan on
-        // every subsequent mouseup at the same position.
         lastCommitPosRef.current = { x: gx, y: gy }
         two.update()
     }
@@ -272,9 +230,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         elementOnBlurHandler(e, selectorInstance, two)
         window.dispatchEvent(new CustomEvent('groupBlurred'))
         if (!isDeletingRef.current) {
-            // Commit any pending move FIRST so the (hidden) originals are synced
-            // to the overlay's final position before we reveal them below.
-            // Idempotent with the drag-end commit, so this won't double-record.
             commitGroupMove()
 
             const childrenIdsOfTheGroup = props.children.map(
@@ -285,8 +240,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 if (!element.elementData) return
                 if (childrenIdsOfTheGroup.includes(element.elementData.id)) {
                     foundOriginalCount++
-                    // Reveal the (now position-synced) original: restore its own
-                    // group-level opacity — it was hidden at 0 under the overlay.
                     element.opacity = groupOpacityOf(element.elementData)
                 }
             })
@@ -307,12 +260,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     const absX = gx + localX
                     const absY = gy + localY
 
-                    // Rebase the member's geometry from the group's child
-                    // space back to absolute on materialize, or the dissolved
-                    // member renders off-screen. Every type takes this path
-                    // now, and each vertex is anchored to its own relative
-                    // coordinate rather than to the stored member origin —
-                    // which used to drift and jump vertex 0 on ungroup.
                     const rebased = translateGeometry(child, gx, gy, {
                         round: false,
                     })
@@ -371,16 +318,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 (item: ShapeLike) => item.id
             )
 
-            // Synchronously remove children from the scene before React unmounts
-            // them. See CLAUDE.md "Two.js scene.subtractions Pitfall" — the
-            // try/catch + subtractions reset here is the canonical recovery
-            // pattern.
-            // Array.from FIRST: two.scene.children is a Two.js Collection
-            // (Array subclass), so `.filter()` goes through ArraySpeciesCreate
-            // → `new Collection(0)`, and that constructor treats a numeric
-            // argument as an element to push. A filter matching nothing
-            // therefore returns `[0]` with length 1 — which slipped past the
-            // `length > 0` guard below and handed a bogus `0` to two.remove().
             const toRemove = Array.from(two.scene.children).filter(
                 (el: ShapeLike) =>
                     el?.elementData && idsArr.includes(el.elementData.id)
@@ -416,12 +353,7 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             const detail = (e as CustomEvent<{ scale: number }>).detail
             if (!selectorInstance || !detail) return
             selectorInstance.setScale(detail.scale)
-            // setScale re-sizes ALL selector circles to a small radius; re-apply
-            // our larger constant-screen-size handles on top so they stay easy
-            // to grab at the new zoom.
             sizeHandlesRef.current?.(detail.scale)
-            // Member copies have no element component to counter-scale them on
-            // zoom, so the overlay keeps the geo ones zoom-resistant itself.
             applyCounterScaleToCopies(groupInstance, detail.scale)
             two.update()
         }
@@ -454,14 +386,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         group.translation.y = parseInt(String(prevY)) || 200
         two.update()
 
-        // Load every member's FACTORY chunk IN PARALLEL, then add them all +
-        // hide the on-canvas originals in a SINGLE two.update() so the
-        // group-select swap is atomic. Loading factories one-by-one and adding
-        // members as each resolved (a per-child two.update each), while newCanvas
-        // hid the originals up-front, left a blank frame (the flicker) between
-        // "originals hidden" and "members painted". Factories are prefetched
-        // (base.tsx warm list), so Promise.all resolves on the next microtask
-        // on a warm cache.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const loaders = props.children.map((item: any) => {
             const factoryKey = `../../factory/${item.componentType}.ts`
@@ -481,25 +405,11 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 })
                 const factoryObject = componentFactory.createElement()
                 const coreObject = factoryObject.group
-                // Truncate the member origin the SAME way every original element
-                // component does (`group.translation = parseInt(store.x)` in
-                // rectangle/newText/pencil/arrow factories). Using the raw float
-                // `item.x` here placed the copy at `store.x` while the original
-                // renders at `trunc(store.x)` — a sub-pixel offset visible on any
-                // element with fractional store coords (notably standalone text).
-                // xMid (the group translation) is an integer, so this resolves to
-                // exactly `parseInt(store.x)` in world space.
                 coreObject.translation.x = parseInt(String(item.x))
                 coreObject.translation.y = parseInt(String(item.y))
-                // An area's opacity is already in the fill the factory painted
-                // (areaFillFor); on the group it would dim the border too.
                 coreObject.opacity =
                     item.componentType === 'area' ? 1 : readOpacity(item)
 
-                // Standalone text: the factory makes ONE Two.Text from the raw
-                // content, but SVG collapses `\n` to a single line. Re-lay it out
-                // as the stacked multiline block (same as the newText component)
-                // so a grouped/duplicated text keeps its line breaks.
                 if (isStandaloneTextType(item.componentType)) {
                     const textProps = readProperties(item)
                     layoutStandaloneText(
@@ -510,14 +420,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     )
                 }
 
-                // Shape-with-text (rectangle/diamond/circle): re-materialise the
-                // embedded text the SAME way the shape components do on mount —
-                // via `applyShapeText`, which reflows the raw content to the box
-                // width and renders it as a stacked multiline text layer. The old
-                // single `two.makeText(textContent)` collapsed `\n` into one line
-                // (SVG <text> ignores newlines), so a grouped shape with multiline
-                // text spilled out of its container. Mirrors the standalone-text
-                // (`newText`) handling above.
                 const meta = readProperties(item)
                 if (meta.hasText && meta.textContent) {
                     applyShapeText(
@@ -529,12 +431,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     )
                 }
 
-                // A map circle's label is NOT embedded shape text — it is a
-                // sub-group the circleLabel factory owns, invisible to
-                // applyShapeText by design. A copy is raw factory output, so
-                // without this a grouped circle loses its name for the life of
-                // the selection. applyCounterScaleToCopy below then scales the
-                // sub-group at the label's own resist.
                 if (item.componentType === componentTypes.circle) {
                     buildCircleLabel(two, coreObject, {
                         text: circleLabelOf(item),
@@ -546,10 +442,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 }
 
                 coreObject.elementData = item
-                // Seed zoom-resistance on the copy from the current camera. The
-                // originals get this from their own component; a copy is raw
-                // factory output, so without it a grouped pin/text collapses
-                // to world size for the life of the selection.
                 applyCounterScaleToCopy(
                     coreObject,
                     item,
@@ -559,9 +451,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             })
             orderGroupChildrenByZ(group)
 
-            // Atomic swap: hide the on-canvas originals (group-SELECT only —
-            // `membersToHide` is unset for paste) in the SAME update that
-            // reveals the member copies, so there is never a blank frame.
             const hideIds: string[] = Array.isArray(props.membersToHide)
                 ? props.membersToHide
                 : []
@@ -594,7 +483,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             focusSvgElement(groupEl)
         }
 
-        // simulating click behavior
         selector.update(
             rectangle.getBoundingClientRect(true).left,
             rectangle.getBoundingClientRect(true).right,
@@ -604,25 +492,13 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         )
         two.update()
 
-        // Baseline for commitGroupMove — the group's initial position. A move
-        // is only recorded once it diverges from this (then it advances).
         lastCommitPosRef.current = {
             x: parseInt(String(group.translation.x)),
             y: parseInt(String(group.translation.y)),
         }
 
-        // ---- PROTOTYPE: group corner-resize ------------------------------
-        // The group overlay's origin sits at the group CENTER with every member
-        // positioned relative to it, so a single `group.scale` transform scales
-        // member spacing, shape sizes AND stroke widths together — the exact
-        // behavior we want. During the drag we apply that transform live; on
-        // release we BAKE it into each real (hidden) member's Two.js object +
-        // store (mirroring how history's applyBatch re-materialises a frozen
-        // element), then dissolve the overlay to reveal the resized originals.
         const resizeCleanups: (() => void)[] = []
 
-        // Map every absolute point through the uniform scale about the pinned
-        // opposite corner O: P' = O + s·(P − O).
         const scaleAbout = (
             px: number,
             py: number,
@@ -633,10 +509,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             y: O.y + s * (py - O.y),
         })
 
-        // Bake a finished uniform scale `s` (anchored at surface point `O`) into
-        // every real member: update the store, mutate the live Two.js object,
-        // and record one BATCH of UPDATE_BULK entries so a single undo reverts
-        // the whole resize.
         const bakeGroupResize = (
             s: number,
             O: { x: number; y: number }
@@ -682,7 +554,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                         current.linewidth * s
                     )
                 }
-                // arrow/line endpoints are local offsets → scale by s only.
                 const isLineLike =
                     ct === 'arrowLine' || ct === 'line' || ct === 'divider'
                 if (isLineLike) {
@@ -692,12 +563,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     if (current.y2 != null) updateObj.y2 = current.y2 * s
                 }
 
-                // Scale the geometry about O, and with it the per-point
-                // stroke widths a pencil keeps in `properties.widths`. Those
-                // are a property rather than a coordinate, so they are scaled
-                // here explicitly — `scaleGeometry` deliberately leaves them
-                // alone, which is what keeps every geometry operation
-                // length-preserving and the two arrays in step.
                 const scaled = scaleGeometry(current, s, O)
                 let newMetadata = scaled ? scaled.metadata : current.metadata
                 if (scaled) {
@@ -723,10 +588,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     updateObj.y = scaled.y
                 }
 
-                // Shape-with-text + standalone text store their font size in an
-                // OBJECT metadata bag. The group.scale transform grew the text
-                // in transit, so scale the font too (and re-render below) —
-                // otherwise the text snaps back to its original size on release.
                 const objMeta = readProperties(current)
                 const isStandaloneText = isStandaloneTextType(ct)
                 const hasShapeText =
@@ -750,8 +611,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     }
                 }
 
-                // ---- mutate the live (frozen) element, same contract as
-                // history's applyBatch UPDATE_BULK branch ----
                 element.translation.x = newX
                 element.translation.y = newY
                 const shape = element.children?.[0]
@@ -764,10 +623,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                         shape.linewidth = updateObj.linewidth
                     }
                 }
-                // Re-render text at the scaled font size. Shape-with-text reflows
-                // to the new box width; standalone text re-stacks in place. Both
-                // reuse the existing line nodes (same content ⇒ no add/remove),
-                // so this stays in lockstep with the owning component.
                 if (hasShapeText && newMetadata) {
                     applyShapeText(
                         two,
@@ -851,11 +706,8 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             const s = Math.max(GROUP_RESIZE_MIN_SCALE, curDist / st.startDist)
             st.lastScale = s
             group.scale = s
-            // Keep the opposite corner pinned: translation = C0 + (1−s)·d0.
             group.translation.x = st.C0.x + (1 - s) * st.d0.x
             group.translation.y = st.C0.y + (1 - s) * st.d0.y
-            // The group scale would balloon the handles; counter-scale them by
-            // camera zoom × live scale so they stay a constant screen size.
             sizeResizeHandles(two.scene.scale * s)
             two.update()
         }
@@ -868,7 +720,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             if (!st) return
 
             const s = st.lastScale ?? 1
-            // Negligible drag — just undo the live transform, keep the overlay.
             if (Math.abs(s - 1) < 0.01) {
                 group.scale = 1
                 group.translation.x = st.C0.x
@@ -879,8 +730,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 return
             }
 
-            // Clear the live transform BEFORE baking so member mutations write
-            // clean (untransformed) coordinates, then commit + dissolve.
             group.scale = 1
             bakeGroupResize(s, st.O)
             revealMembers()
@@ -898,9 +747,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             }
         }
 
-        // Start a resize from corner `corner` (nw/ne/se/sw). We stopPropagation
-        // so the group-MOVE drag (newCanvas delegation) never begins, and
-        // preventDefault so the group keeps DOM focus (no blur → no dissolve).
         const beginGroupResize = (corner: string, e: MouseEvent): void => {
             if (!isInScene(group)) return
             e.preventDefault()
@@ -915,8 +761,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 sw: [-1, 1],
             }
             const [sx, sy] = sign[corner] ?? [1, 1]
-            // Opposite corner, in the group's local (== surface at scale 1)
-            // frame: it is the pinned anchor for the whole gesture.
             const d0 = { x: -sx * halfW0, y: -sy * halfH0 }
             const C0 = {
                 x: group.translation.x,
@@ -924,9 +768,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             }
             const O = { x: C0.x + d0.x, y: C0.y + d0.y }
 
-            // Screen-space anchor = the opposite corner circle's DOM center, so
-            // the scale ratio is computed purely in client pixels (no surface
-            // conversion needed here).
             const opposite: Record<string, ShapeLike> = {
                 nw: selector.circle3,
                 ne: selector.circle4,
@@ -948,7 +789,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     e.clientY - anchorScreen.y
                 ) || 1
 
-            // Block the move-commit machinery for the duration of the resize.
             isDeletingRef.current = true
             resizeStateRef.current = {
                 C0,
@@ -962,13 +802,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             window.addEventListener('mouseup', onResizeUp, false)
         }
 
-        // Counter-scale the 4 corner handles so they hold a constant screen
-        // size — grabbable at low zoom without precise aim, like the single-
-        // element handles. `effectiveScale` folds in the live resize scale so
-        // they don't balloon while the group is being dragged. The size itself
-        // is the shared one: a group's corner dot is the same affordance as a
-        // route vertex or a shape's resize dot, so it is the same dot (see
-        // utils/selectionTheme).
         const cornerHandles = [
             selector.circle1,
             selector.circle2,
@@ -989,8 +822,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                 c.radius = r
                 c.linewidth = SELECTION_HANDLE_LINEWIDTH_PX / s
             })
-            // The invisible grab circles counter-scale on their own radius, so
-            // the target stays finger-sized however small the dot is drawn.
             const hitR = selectionHandleHitRadiusPx() / s
             cornerHitHandles.forEach((c: ShapeLike) => {
                 if (c) c.radius = hitR
@@ -998,13 +829,7 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         }
         sizeHandlesRef.current = sizeResizeHandles
 
-        // Wire the 4 corner circles as grab handles. They're children of the
-        // group, so they track the corners automatically while it scales.
         if (GROUP_RESIZE_ENABLED) {
-            // `circle` is what gets styled, `hit` is what gets pressed — the
-            // dot is drawn small and its transparent stand-in keeps the touch
-            // target (see utils/selectionTheme). Falls back to the dot so a
-            // selector built without stand-ins still resizes.
             const cornerCircles: {
                 name: string
                 circle: ShapeLike
@@ -1023,8 +848,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
             }
             cornerCircles.forEach(({ name, circle, hit }) => {
                 if (!circle) return
-                // Clear, filled handle (cream fill, indigo ring) so it reads as
-                // the same grab dot every other selection shows.
                 circle.fill = SELECTION_HANDLE_FILL
                 circle.stroke = HANDLE_STROKE
                 const target = hit ?? circle
@@ -1038,7 +861,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
                     elem.removeEventListener('mousedown', onDown, false)
                 )
             })
-            // Initial sizing to the current camera zoom (group not yet scaled).
             sizeResizeHandles(two.scene.scale)
             two.update()
         }
@@ -1056,10 +878,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Commit the move on drag-end so it lands in history immediately (like a
-    // single shape's mouseup), making it the entry an undo reverts even while
-    // the group stays selected. commitGroupMove is a no-op unless the group
-    // actually moved, so this safely fires on every mouseup.
     useEffect(() => {
         const onMouseUp = (): void => commitGroupMove()
         window.addEventListener('mouseup', onMouseUp, false)
@@ -1068,13 +886,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Self-teardown when our members are removed out from under us — e.g. undo
-    // of a paste, which fires 'elementRemoved' per member via the history
-    // applyBatch. Without this the transient overlay (its member copies + the
-    // resize box) would linger over now-deleted shapes as a stale selection.
-    // We only dismiss the overlay here; the members are already being removed
-    // by whoever fired the event, so we never touch the store. The group's own
-    // Delete-key path sets isDeletingRef and owns its teardown, so we skip then.
     useEffect(() => {
         const memberIds = new Set(
             (props.children ?? []).map((c: ShapeLike) => c?.id).filter(Boolean)
@@ -1082,12 +893,9 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         const onMemberRemoved = ((e: CustomEvent<{ id: string }>): void => {
             if (isDeletingRef.current) return
             if (!memberIds.has(e.detail?.id)) return
-            // Already torn down (a sibling member fired first) — nothing to do.
             if (!groupInstance || !isInScene(groupInstance)) return
 
             dismissOverlayNode()
-            // The overlay has done its job; drop the listener so dead overlays
-            // don't accumulate across repeated paste/undo cycles.
             window.removeEventListener('elementRemoved', onMemberRemoved)
         }) as EventListener
         window.addEventListener('elementRemoved', onMemberRemoved)
@@ -1096,11 +904,6 @@ function GroupedObjectWrapper(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // After an undo/redo, the overlay shows STATIC copies that can't reflect
-    // members the history just moved/re-added underneath it (applyBatch touches
-    // the real members, not the overlay's copies). Dismiss the overlay so the
-    // user sees the real, now-updated members: reveal their opacity, then drop
-    // the overlay. We don't commit here — the move was already reverted.
     useEffect(() => {
         const onHistoryApplied = (): void => {
             if (isDeletingRef.current) return

@@ -97,19 +97,11 @@ export default function Modal(props: ModalProps): ReactElement {
 
         if (current) {
             current.addEventListener('transitionend', transitionEnd)
-            // A transition interrupted before it got going (closed during the
-            // opening fade) fires transitioncancel, not transitionend.
             current.addEventListener('transitioncancel', transitionEnd)
             current.addEventListener('click', clickHandler)
             window.addEventListener('keyup', keyHandler)
         }
 
-        // Closing normally unmounts on the backdrop's transitionend. If the
-        // modal is closed while its opening fade has barely started, the
-        // browser may run no closing transition at all, so no event arrives
-        // and the backdrop stays mounted: invisible, covering the page and
-        // swallowing every click. Longer than any transition here (≤ 350ms
-        // + 150ms delay), so it only ever finishes a close that stalled.
         let unmountFallback: number | null = null
         if (!open && active) {
             unmountFallback = window.setTimeout(() => setActive(false), 700)
@@ -131,20 +123,6 @@ export default function Modal(props: ModalProps): ReactElement {
             if (unmountFallback) window.clearTimeout(unmountFallback)
             window.removeEventListener('keyup', keyHandler)
         }
-        // `active` MUST be a dependency even though the body only reads `open`.
-        //
-        // The backdrop is rendered while `open || active`, so closing goes
-        // open:false (still rendered, listeners re-attached) → transitionend →
-        // active:false (unmounted). That last step changes no dependency, so
-        // without `active` here the effect never re-runs, its cleanup never
-        // runs, and the window-level Escape handler survives the modal it
-        // belonged to — for the whole session, holding the old `onClose`.
-        //
-        // Harmless while every onClose merely set some state to false. It
-        // stopped being harmless once one of them had a side effect: the map's
-        // first-run location prompt writes an anchor on dismiss, so a stray
-        // Escape long after it closed (finishing an area/route draw, say)
-        // silently moved the user's map.
     }, [open, active, locked, onClose])
 
     return (

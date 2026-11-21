@@ -7,15 +7,12 @@ const STORAGE_KEY = 'mapcursor:elementDefaults'
 export type TextSizeLabel = 'S' | 'M' | 'L' | 'XL'
 
 export interface ElementDefaultsState {
-    // Shape defaults — also used by pencil and arrow (single unified set).
     defaultFill: string
     defaultStrokeColor: string
     defaultLinewidth: number
     defaultStrokeType: string | null
-    // Area interior: null (solid) | 'hachure' | 'cross-hatch'. Areas only.
     defaultFillType: string | null
     defaultOpacity: number
-    // Text defaults
     defaultTextColor: string
     defaultTextSize: TextSizeLabel
     defaultTextFontFamily: string
@@ -23,8 +20,6 @@ export interface ElementDefaultsState {
 
 const INITIAL_DEFAULTS: ElementDefaultsState = {
     defaultFill: '#FFFFFF',
-    // Pure-black ink baselines so they flip cleanly to #fff in dark mode (the
-    // defaults flip on theme toggle — see base.tsx).
     defaultStrokeColor: '#000',
     defaultLinewidth: 2,
     defaultStrokeType: null,
@@ -47,7 +42,6 @@ function loadFromStorage(): ElementDefaultsState {
 }
 
 export interface ElementDefaultsApi extends ElementDefaultsState {
-    // raw setters (used by undo/history to restore prior defaults silently)
     setDefaultFill: Dispatch<SetStateAction<string>>
     setDefaultStrokeColor: Dispatch<SetStateAction<string>>
     setDefaultLinewidth: Dispatch<SetStateAction<number>>
@@ -57,7 +51,6 @@ export interface ElementDefaultsApi extends ElementDefaultsState {
     setDefaultTextColor: Dispatch<SetStateAction<string>>
     setDefaultTextSize: Dispatch<SetStateAction<TextSizeLabel>>
     setDefaultTextFontFamily: Dispatch<SetStateAction<string>>
-    // base-facing setters (currently identical to raw; kept for API symmetry)
     setDefaultFillInBase: (val: string) => void
     setDefaultStrokeColorInBase: (val: string) => void
     setDefaultLinewidthInBase: (val: number) => void
@@ -66,8 +59,6 @@ export interface ElementDefaultsApi extends ElementDefaultsState {
     setDefaultTextColorInBase: (val: string) => void
     setDefaultTextSizeInBase: (val: TextSizeLabel) => void
     setDefaultTextFontFamilyInBase: (val: string) => void
-    // Restore every default to its factory value (used by "clear canvas" so a
-    // leaked default like linewidth:0 doesn't carry over to the next drawing).
     resetDefaults: () => void
 }
 
@@ -120,9 +111,7 @@ export function useElementDefaults(): ElementDefaultsApi {
                     defaultTextFontFamily,
                 })
             )
-        } catch {
-            /* noop */
-        }
+        } catch {}
     }, [
         defaultFill,
         defaultStrokeColor,
@@ -135,7 +124,6 @@ export function useElementDefaults(): ElementDefaultsApi {
         defaultTextFontFamily,
     ])
 
-    // Pure setters — these never deselect or close anything.
     const setDefaultLinewidthInBase = (val: number): void =>
         setDefaultLinewidth(val)
     const setDefaultStrokeTypeInBase = (val: string | null): void =>
@@ -152,8 +140,6 @@ export function useElementDefaults(): ElementDefaultsApi {
     const setDefaultTextFontFamilyInBase = (val: string): void =>
         setDefaultTextFontFamily(val)
 
-    // Reset all defaults to INITIAL_DEFAULTS. The persistence effect above then
-    // rewrites localStorage to the factory values on the resulting state change.
     const resetDefaults = (): void => {
         setDefaultFill(INITIAL_DEFAULTS.defaultFill)
         setDefaultStrokeColor(INITIAL_DEFAULTS.defaultStrokeColor)

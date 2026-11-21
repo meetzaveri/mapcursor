@@ -129,11 +129,6 @@ export const GET_BASE_COMPONENT_COUNT_QUERY: TypedDocumentNode<
     }
 `
 
-/**
- * One object's meta values, fetched when it is selected. `baseId` is in the
- * filter as well as `objectId` so a value can only ever be read in the base it
- * was written in, which is the same pairing the orphan sweep matches on.
- */
 export const GET_META_VALUES_FOR_OBJECT: TypedDocumentNode<
     GetMetaValuesForObjectQuery,
     GetMetaValuesForObjectQueryVariables
@@ -156,7 +151,6 @@ export const GET_META_VALUES_FOR_OBJECT: TypedDocumentNode<
     }
 `
 
-/** The values on a set of objects (paste copies them onto the new objects). */
 export const GET_META_VALUES_FOR_OBJECTS: TypedDocumentNode<
     GetMetaValuesForObjectsQuery,
     GetMetaValuesForObjectsQueryVariables
@@ -179,7 +173,6 @@ export const GET_META_VALUES_FOR_OBJECTS: TypedDocumentNode<
     }
 `
 
-/** Every value on a base (JSON export of a shared base). */
 export const GET_META_VALUES_FOR_BASE: TypedDocumentNode<
     GetMetaValuesForBaseQuery,
     GetMetaValuesForBaseQueryVariables

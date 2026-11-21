@@ -6,36 +6,16 @@ interface MapcursorLoaderProps {
     caption?: string
 }
 
-/**
- * The route the cursor traces.
- *
- * One declaration, because three animations have to agree on it exactly: the
- * mask that wipes the dashed line on, the `offset-path` that carries the
- * cursor, and the group fade. It reaches the stylesheet as the
- * `--mc-route-path` custom property rather than being written out a third
- * time — drift between them and the cursor leaves the end of the drawn line.
- *
- * The timing lives in mapcursorLoader.css (`--mc-cycle` and the three
- * `@keyframes`), which is also where the shape of the loop is explained.
- */
 const ROUTE_D = 'M70,75 L105,75 Q115,75 115,85 L115,115 L140,115'
 const ROUTE_LENGTH = 106.231
 
-/** Cycle length in ms. Must match `--mc-cycle` in the stylesheet. */
 const CYCLE_MS = 2800
 
-/**
- * How long a gap between one loader unmounting and the next mounting still
- * counts as the same continuous loader.
- */
 const HANDOFF_GRACE_MS = 250
 
-/** `performance.now()` at which the currently-running cycle hit 0%. */
 let cycleOrigin: number | null = null
-/** `performance.now()` at which the last loader left the screen. */
 let lastUnmountedAt = 0
 
-/** How far into its cycle the inline boot copy is, or 0 if it has gone. */
 const bootElapsed = (): number => {
     try {
         const boot = document.querySelector('#mc-boot .mc-cursor')
@@ -43,38 +23,12 @@ const bootElapsed = (): number => {
         const elapsed = running?.currentTime
         if (typeof elapsed === 'number' && elapsed > 0) return elapsed
     } catch {
-        /* no-op — an unsynced loader is still a correct one */
     }
     return 0
 }
 
-/**
- * The phase this copy should pick up at, as a negative `animation-delay`.
- *
- * The loader appears more than once per startup and is a different element
- * each time: the copy inlined into `#root` in index.html paints first, React's
- * first commit replaces it with this component, and the `AppInit` gate then
- * hands over to the base's Suspense fallback — a third mount. Each of those is
- * a fresh set of CSS animations starting at 0%, which is a cursor visibly
- * snapping back to the start of the route at every changeover.
- *
- * So the cycle's origin is held at module scope and handed to each new copy.
- * The first mount of a session seeds it from the boot copy's own running
- * animation (still in the DOM during this render — React clears `#root` at
- * commit), so React picks up mid-stride from where the inline markup left off.
- *
- * The grace window is what keeps this from being merely "always continuous".
- * A loader that appears long after the last one is a new event, not a
- * hand-off, and should open on the resting frame with the cursor at the start
- * of the route — so anything past `HANDOFF_GRACE_MS` restarts the cycle.
- */
 const routePhase = (): string => {
     const now = performance.now()
-    // A copy still on screen means this is a hand-off, not a new appearance.
-    // That test has to come first: this runs in React's render phase, so the
-    // outgoing loader's unmount cleanup has not fired yet and its timestamp is
-    // still stale. `lastUnmountedAt` covers the reverse order, where the old
-    // copy is torn down before the new one renders.
     const handingOver =
         cycleOrigin !== null &&
         (document.querySelector('#mc-boot, .mc-loader') !== null ||
@@ -84,30 +38,11 @@ const routePhase = (): string => {
     return `-${(elapsed / 1000).toFixed(3)}s`
 }
 
-/**
- * Full-screen startup loader: the mapcursor mark — a folded map with the
- * cursor tracing a dashed route across it. Used for the `AppInit` startup gate
- * and the base's Suspense fallback. A copy is also inlined into `#root` in
- * index.html so the loader paints before the JS bundle arrives — keep the two
- * in sync.
- *
- * The route animation is CSS, not SMIL. SMIL's timeline does not start until
- * the document `load` event, which on this page waits on a render-blocking
- * font stylesheet and the bundle; see the long note in mapcursorLoader.css.
- *
- * Ink colour is deliberately NOT set on the paths — the stylesheet drives it so
- * the mark can flip to cream on the dark backdrop. The route keeps its amber
- * attribute (it reads on both), and the mask path must stay `#FFFFFF` or it
- * stops revealing.
- */
 const MapcursorLoader = ({
     caption = 'setting up your map',
 }: MapcursorLoaderProps): ReactElement => {
-    // Read once, at mount — the phase must not shift on a re-render.
     const [phase] = useState(routePhase)
 
-    // Mark the hand-off point so a loader mounting straight after this one
-    // continues the same cycle rather than snapping back to the start.
     useEffect(
         () => () => {
             lastUnmountedAt = performance.now()
@@ -129,8 +64,6 @@ const MapcursorLoader = ({
         >
             <svg className="mc-mark" viewBox="0 0 200 200" aria-hidden="true">
                 <defs>
-                    {/* Wipes the dashed route on from tail to head. White =
-                        revealed; see the note above about the ink rule. */}
                     <mask
                         id="mc-loader-route-mask"
                         maskUnits="userSpaceOnUse"
@@ -151,8 +84,6 @@ const MapcursorLoader = ({
                     </mask>
                 </defs>
 
-                {/* The folded map. Sits under the route and never animates —
-                    it is the thing being drawn on. */}
                 <g
                     className="mc-map"
                     transform="translate(-4213.726,-7162.326) scale(2.0)"

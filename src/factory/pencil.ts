@@ -7,10 +7,6 @@ import type { ComponentMetadata } from '../types/base'
 export interface PencilProperties {
     stroke?: string
     linewidth?: number
-    /**
-     * `geometry` is a LineString in absolute surface coords; the per-point
-     * pressure widths ride alongside in `properties.widths`.
-     */
     metadata?: ComponentMetadata | null
     strokeType?: string | null
 }
@@ -28,12 +24,8 @@ export default class PencilFactory extends Main<PencilProperties> {
         const prevY = this.y
         const { stroke, linewidth, strokeType } = this.properties
 
-        // Coordinates and per-point widths are stored as parallel arrays; this
-        // re-pairs them into the {x, y, lw} points the smoothing works on.
         const points = pencilPointsOf(this.properties)
 
-        // Chaikin smoothing rounds the polyline without overshoot. Matches
-        // the smoothing applied during live preview in newCanvas.js.
         const smoothed = points.length > 2 ? chaikinSmooth(points, 2) : points
 
         const path = two.makePath()

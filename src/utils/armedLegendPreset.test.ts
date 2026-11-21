@@ -21,8 +21,6 @@ describe('armedPresetPatch', () => {
         expect(armedPresetPatch('circle')).toEqual({})
     })
 
-    // A radius map is borderless and reads as one mark, so its stroke column
-    // follows its fill — the drawn disc and the legend swatch must agree.
     it('carries a radius map colour and its binding', () => {
         setArmedPreset('circle', preset())
 
@@ -33,10 +31,6 @@ describe('armedPresetPatch', () => {
         })
     })
 
-    // The ordering bug this guards: arming happens AFTER the tool is picked,
-    // because the chips for a tool only appear once it is current. Anything
-    // reading the armed map has to read it at CREATION time, not before —
-    // a patch built before the arm is, correctly, empty.
     it('reflects an arm that happened after an earlier read', () => {
         const atToolPick = armedPresetPatch('circle')
         expect(atToolPick).toEqual({})

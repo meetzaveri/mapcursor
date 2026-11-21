@@ -1,19 +1,13 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
 /node_modules
 /.pnp
 .pnp.js
 
-# testing
 /coverage
 
-# production
 /dist
 /build
 /public/build-info.json
 
-# misc
 .DS_Store
 .env.local
 .env.development.local
@@ -25,7 +19,6 @@ yarn-debug.log*
 yarn-error.log*
 
 .env
-# playwright artifacts
 /test-results/
 /playwright-report/
 /blob-report/

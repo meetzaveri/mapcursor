@@ -15,10 +15,6 @@ import {
     type EraserSize,
 } from '../constants/misc'
 
-// Toggle helpers accept an optional options bag that lets the caller plug
-// in the surrounding base state (selection clear, pending-element cancel,
-// toolbar visibility). Each callback is optional — the hook only fires
-// what's provided.
 export interface DrawingModeToggleOptions {
     cancelPendingElement?: () => void
     setSelectedComponent?: (component: unknown) => void
@@ -106,7 +102,6 @@ export function useDrawingModes(): DrawingModesApi {
                 localStorage.removeItem(RUBBER_MODE_KEY)
                 localStorage.removeItem(PAN_MODE_KEY)
             } catch {
-                /* noop */
             }
             const el = document.getElementById('main-two-root')
             if (el) el.style.cursor = 'default'
@@ -127,7 +122,6 @@ export function useDrawingModes(): DrawingModesApi {
                 localStorage.removeItem(RUBBER_MODE_KEY)
                 localStorage.removeItem(PAN_MODE_KEY)
             } catch {
-                /* noop */
             }
             localStorage.setItem(PENCIL_MODE_KEY, 'TRUE')
             const el = document.getElementById('main-two-root')
@@ -158,20 +152,16 @@ export function useDrawingModes(): DrawingModesApi {
                 localStorage.removeItem(PENDING_SHAPE_TYPE_KEY)
                 localStorage.removeItem(PENDING_SHAPE_PROPS_KEY)
             } catch {
-                /* noop */
             }
             if (root) root.style.cursor = 'grab'
-            // Clear any active selection so single-finger drag pans cleanly.
             try {
                 window.dispatchEvent(new CustomEvent('clearSelector', {}))
             } catch {
-                /* noop */
             }
         } else {
             try {
                 localStorage.removeItem(PAN_MODE_KEY)
             } catch {
-                /* noop */
             }
             if (root) root.style.cursor = 'default'
         }
@@ -184,7 +174,6 @@ export function useDrawingModes(): DrawingModesApi {
             try {
                 localStorage.removeItem(PAN_MODE_KEY)
             } catch {
-                /* noop */
             }
             localStorage.setItem(RUBBER_MODE_KEY, 'true')
             const el = document.getElementById('main-two-root')
@@ -201,7 +190,6 @@ export function useDrawingModes(): DrawingModesApi {
         try {
             localStorage.setItem(ERASER_SIZE_KEY, val)
         } catch {
-            /* noop */
         }
     }
 
@@ -210,15 +198,11 @@ export function useDrawingModes(): DrawingModesApi {
     const setTextDrawModeInBase = (val: boolean): void =>
         setIsTextDrawMode(val)
 
-    // Reflect any active draw mode as a class on #main-two-root so CSS can
-    // force the crosshair cursor on inner SVG nodes (.dragger-picker, text)
-    // that would otherwise win with their own cursor: pointer rule.
     useEffect(() => {
         const root = document.getElementById('main-two-root')
         if (!root) return
         const active = isPencilMode || isArrowDrawMode || isRubberMode
         root.classList.toggle('draw-mode-active', active)
-        // Pan mode shows a grab cursor across the canvas (see common.css).
         root.classList.toggle('pan-mode-active', isPanMode)
     }, [isPencilMode, isArrowDrawMode, isRubberMode, isPanMode])
 

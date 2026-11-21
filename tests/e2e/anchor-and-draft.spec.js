@@ -1,17 +1,3 @@
-// Regressions for two bugs that made a local canvas silently change.
-//
-// 1. The anchor is the georeference every element is measured from. It used
-//    to expire 30 days after the place was PICKED, while the draft renewed on
-//    every save, so a canvas still being edited a month later lost its anchor
-//    and was redrawn over the browser's timezone city (Kolkata, for India),
-//    with no prompt, because the start-location prompt only opens on an empty
-//    canvas. "Open as new canvas" lost it the same way, by rotating the local
-//    base id without writing an anchor for the new one.
-// 2. Deleting the LAST element never cleared the saved draft (an empty store
-//    skipped the write), so it came back on reload.
-//
-// Run under the timezone that exposed (1): a regression lands in Kolkata.
-
 import { test, expect } from './helpers/test.js'
 import { GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
@@ -58,7 +44,6 @@ async function openLocal(page, { anchorAgeDays, components = [POINT], extra = {}
                     savedAt: Date.now() - ageMs,
                 })
             )
-            // Saved today: the user is still working on this canvas.
             localStorage.setItem(
                 'mapcursor_local_draft',
                 JSON.stringify({
@@ -102,7 +87,6 @@ test.describe('the map anchor', () => {
         })
         expect(await storedAnchor(page, LOCAL_BASE)).toEqual(AHMEDABAD)
         await expect(page.locator('[data-component-id="p1"]')).toHaveCount(1)
-        // Housekeeping still clears OTHER bases' old anchors.
         expect(await storedAnchor(page, 'rotated-away-long-ago')).toBeNull()
 
         await page.reload()
@@ -142,7 +126,6 @@ test.describe('the map anchor', () => {
         expect(newId).not.toBe(LOCAL_BASE)
         expect(await storedAnchor(page, newId)).toEqual(KOLKATA)
 
-        // The bug only showed on the NEXT load, which found no anchor.
         await page.reload()
         await page.waitForSelector('[data-component-id="k1"]')
         expect(await storedAnchor(page, newId)).toEqual(KOLKATA)

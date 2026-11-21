@@ -17,7 +17,6 @@ describe('clampPanelPosition', () => {
         ).toEqual({ x: 940, y: 600 })
     })
 
-    // A stored spot from a bigger window must not strand the grip off screen.
     it('pins a panel larger than the viewport to the top-left', () => {
         expect(
             clampPanelPosition({ x: 300, y: 300 }, 260, 900, 1200, 800)

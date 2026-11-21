@@ -4,14 +4,10 @@ import roadTripImage from '../../assets/road-trip-usecase.png'
 import cityCorridorsImage from '../../assets/route-corridor-use-case.png'
 
 export interface UseCase {
-    /** URL segment: /use-cases/<slug>. Keep public/sitemap.xml in sync. */
     slug: string
     title: string
-    /** One-line teaser shown on the listing page. */
     summary: string
-    /** Document title for the detail route. */
     metaTitle: string
-    /** Meta description for the detail route. */
     metaDescription: string
     heroImage: string
     heroAlt: string

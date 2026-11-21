@@ -166,8 +166,6 @@ const MenuDrawer = (): ReactElement => {
         meta,
     } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
-    // Search lives in the top bar on desktop; on a phone that row is full, so
-    // the menu carries it.
     const showSearchEntry = isMobile
 
     useEffect(() => {
@@ -181,8 +179,6 @@ const MenuDrawer = (): ReactElement => {
         }
     }, [])
 
-    // Collapse the export/import flyouts whenever the menu itself closes, so
-    // neither lingers open on the next menu open (covers outside-click + toggle).
     useEffect(() => {
         if (!showMenu) {
             setShowExportSubmenu(false)
@@ -231,15 +227,11 @@ const MenuDrawer = (): ReactElement => {
         const scene = twoJSInstance?.scene
         const viewport = scene
             ? {
-                  // scene.scale is uniform (number) in this app; guard the
-                  // Two.js Vector union rather than cast.
                   scale: typeof scene.scale === 'number' ? scene.scale : 1,
                   tx: scene.translation.x,
                   ty: scene.translation.y,
               }
             : { scale: 1, tx: 0, ty: 0 }
-        // A failed meta fetch (shared base, offline) must not cost the export
-        // itself: it goes out without meta properties instead.
         void meta
             .exportSet()
             .catch(() => undefined)
@@ -259,7 +251,6 @@ const MenuDrawer = (): ReactElement => {
     const handleImportJson = (): void => {
         setShowImportSubmenu(false)
         setShowMenu(false)
-        // base.tsx owns the file-pick → parse → chooser flow.
         beginBaseImport()
     }
 

@@ -28,17 +28,13 @@ import {
     TEXT_EDIT_START_EVENT,
 } from '../../constants/misc'
 
-// Clear space between the point's ink and its selection box, in surface units.
 const SELECTOR_PAD = 5
 
-// See circle.tsx for the rationale on the loose prop bag.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ElementProps = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
-// Comfortable minimum for the label editor, in screen px, so an empty point
-// still offers something to aim at when zoomed out.
 const MIN_INPUT_WIDTH = 90
 
 function Point(props: ElementProps): ReactElement {
@@ -52,18 +48,8 @@ function Point(props: ElementProps): ReactElement {
 
     const groupRef = useRef<ShapeLike>(null)
     const selectorRef = useRef<ShapeLike>(null)
-    // Re-fits the selection box. Held in a ref so the zoom handler and the label
-    // editor — both registered once — always call the live one.
     const syncSelectorRef = useRef<(() => void) | null>(null)
-    // Should committing the label editor put the selection box back? Set when
-    // the editor opens over a selected point, and cleared if the user clicks
-    // away — because a click-away deselects on mousedown but only commits the
-    // editor on the blur that follows, so an unconditional restore would draw a
-    // box around a point that is no longer selected.
     const restoreSelectorAfterEditRef = useRef(false)
-    // Live label text, mirrored to a ref so the DOM editor (registered once, in
-    // the mount effect) always reads the current value rather than the one
-    // frozen into its closure.
     const labelRef = useRef<string>(pointLabelOf(props))
 
     const two = props.twoJSInstance
@@ -90,22 +76,12 @@ function Point(props: ElementProps): ReactElement {
 
         groupRef.current = group
 
-        /**
-         * On-screen scale of anything inside this group: the camera's scale
-         * times the group's own zoom-resist counter-scale. The selector needs
-         * it to keep its outline a constant screen width — inside the group,
-         * both multiplications apply to it too.
-         */
         const effectiveScale = (): number => {
             const sceneScale = two?.scene?.scale || 1
             const groupScale = typeof group.scale === 'number' ? group.scale : 1
             return sceneScale * groupScale || 1
         }
 
-        // Seed the counter-scale from the current camera so the pin is
-        // sized correctly before the first zoom event fires. The board base
-        // context holds the addZUI wrapper ({ zui, ... }) — the live scale
-        // lives on the nested ZUI instance (fall back to the scene scale).
         const initialScale =
             (zuiInBase as ShapeLike)?.zui?.scale ?? two?.scene?.scale
         if (initialScale) {
@@ -120,99 +96,43 @@ function Point(props: ElementProps): ReactElement {
             groupEl.setAttribute('data-component-id', props.id)
         }
 
-        // Selection box. `0` = no corner handles: a point is a fixed-size pin,
-        // so there is nothing to resize — the box is purely "this is selected".
-        //
-        // It lives INSIDE the point's group, which is what makes it track the
-        // pin for free: the group carries both the translation and the
-        // zoom-resist counter-scale, so the box follows a drag and stays the
-        // same apparent size as the pin at every zoom, with no per-frame work.
         const { selector } = getEditComponents(two, group, 0)
         selectorRef.current = selector
         selector.areaGroup[POINT_CHROME_FLAG] = true
         selector.hide()
 
-        /** Is this point's label editor currently on screen? */
         const isEditingLabel = (): boolean =>
             !!document.getElementById(`point-label-input-${props.id}`)
 
-        /**
-         * Show the selection box, fitted to the CIRCLE only.
-         *
-         * The label is deliberately outside the box. The pin is the object; the
-         * label is an annotation hanging off it, and its width is whatever the
-         * user typed — so boxing both would make the selection jump and stretch
-         * as the name changes, and read as a text field rather than a point.
-         * A fixed square around the circle is also constant in group-local
-         * coordinates, which is why it needs no re-measuring.
-         */
         const syncSelector = (): void => {
             const sel = selectorRef.current
             if (!sel) return
-            // Editing owns the point — never draw the box over an open editor.
-            //
-            // A guard rather than careful ordering, because the ordering is not
-            // ours to control: placing a point creates it on MOUSEDOWN, so the
-            // matching `click` lands afterwards, on the element that did not
-            // exist when the press began. Hold the mouse down for longer than
-            // the editor's open delay and that click arrives after the editor
-            // is already up, re-showing a box we had just hidden.
             if (isEditingLabel()) return
             const half = POINT_RADIUS + SELECTOR_PAD
             sel.update(-half, half, -half, half, effectiveScale())
         }
         syncSelectorRef.current = syncSelector
 
-        // Show on click rather than mousedown: the canvas dispatches
-        // `clearSelector` during mousedown (and, on mobile, during touchstart),
-        // so anything shown earlier in the gesture is hidden again a moment
-        // later. Click lands after all of that has settled. Same reason
-        // text.tsx binds its selector here.
         interact(`#${group.id}`).on('click', syncSelector)
 
-        // Clicking away hides it. `clearSelector` already covers bare-canvas
-        // clicks; this covers landing on *another* element, which does not
-        // dispatch that event.
         const onGlobalMouseDown = (e: MouseEvent): void => {
             const path: EventTarget[] = e.composedPath ? e.composedPath() : []
             const onSelf = path.some(
                 (el) => (el as HTMLElement)?.id === group.id
             )
-            // The properties toolbar and the meta properties panel edit this
-            // point; clicking into them is not clicking away.
             const onToolbar = pathHitsSelectionChrome(path)
-            // The label editor is an overlay on <body>, not a child of the
-            // group, so typing in it would otherwise read as clicking away.
             const onLabelEditor = path.some(
                 (el) =>
                     (el as HTMLElement)?.id === `point-label-input-${props.id}`
             )
             if (onSelf || onToolbar || onLabelEditor) return
-            // Deselecting mid-edit: the editor's own commit runs later, on
-            // blur, and must not resurrect the box this click just dismissed.
             restoreSelectorAfterEditRef.current = false
             selectorRef.current?.hide()
             two.update()
         }
         window.addEventListener('mousedown', onGlobalMouseDown)
 
-        /**
-         * Open the label editor: an absolutely-positioned input laid over the
-         * label slot — the gap just right of the circle — so typing appears
-         * where the label will render.
-         *
-         * The overlay must match what's on screen, and a point's on-screen size
-         * folds the group's counter-scale on top of the camera scale (mirrors
-         * text.tsx's editor). Anchoring off the CIRCLE rather than the label
-         * node matters: an empty label has no glyphs and therefore no usable
-         * bounding box, which is exactly the state this opens in most often.
-         */
         const showLabelInput = (): void => {
-            // Pan mode navigates, it does not author. This editor is reached by
-            // a dblclick bound to our own SVG node, so the canvas-level guard in
-            // newCanvas never sees it — and on a map base pan is a tool the user
-            // sits in, so without this a stray double-tap while panning put them
-            // in a text field.
             if (isPanMode()) return
             const labelNode = getPointLabelNode(group)
             const circleNode = getPointCircle(group)
@@ -220,32 +140,20 @@ function Point(props: ElementProps): ReactElement {
                 | SVGGraphicsElement
                 | undefined
             if (!labelNode || !circleElem) return
-            // Already editing — don't stack a second input.
             if (document.getElementById(`point-label-input-${props.id}`)) return
 
             const circleRect = circleElem.getBoundingClientRect()
             const sceneScale = two?.scene?.scale || 1
             const groupScale = typeof group.scale === 'number' ? group.scale : 1
             const effScale = sceneScale * groupScale
-            // Read the type off elementData rather than props: size and family
-            // are editable from the toolbar, and props are frozen at mount, so
-            // the prop copy goes stale the moment the user picks either.
             const record = group.elementData ?? props
             const fontFamily = pointFontFamilyOf(record)
             const cssFontSize = pointFontSizeOf(record) * effScale
             const lineH = Math.ceil(cssFontSize * 1.4)
 
-            // The rendered label steps aside while its editor is open, so the
-            // glyphs aren't drawn twice at slightly different metrics.
             const renderedOpacity = labelNode.opacity ?? 1
             labelNode.opacity = 0
 
-            // The selection box steps aside too. While typing, the point is in
-            // edit mode, not selection mode — leaving the box up would draw a
-            // second, competing focus ring around the caret. Its prior state is
-            // captured so committing restores exactly what was there before,
-            // rather than asserting a selection the user never made (the editor
-            // opens by itself on a freshly placed point).
             restoreSelectorAfterEditRef.current =
                 selectorRef.current?.areaGroup?.opacity === 1
             selectorRef.current?.hide()
@@ -273,7 +181,6 @@ function Point(props: ElementProps): ReactElement {
 
             document.getElementById('main-two-root')?.append(input)
 
-            // Grow with the text so long names aren't typed into a keyhole.
             const measure = document.createElement('span')
             measure.style.position = 'absolute'
             measure.style.visibility = 'hidden'
@@ -292,19 +199,14 @@ function Point(props: ElementProps): ReactElement {
             autoSize()
             input.addEventListener('input', autoSize)
 
-            // What the label was when the editor opened — the value ✗ puts back.
             const valueAtOpen = labelRef.current
 
-            // On-screen ✓/✗ (mobile has no Enter or Escape). The buttons are
-            // React chrome in base.tsx; this is their other end.
             const onEditRequest = (e: Event): void => {
                 const detail = (e as CustomEvent<{ id?: string }>).detail
                 if (detail?.id && detail.id !== props.id) return
                 if (e.type === TEXT_EDIT_CANCEL_EVENT) {
                     input.value = valueAtOpen
                 }
-                // Commit runs on blur either way — cancel just restores first,
-                // so "cancel" and "confirm" share one write path.
                 input.blur()
             }
             window.addEventListener(TEXT_EDIT_COMMIT_EVENT, onEditRequest)
@@ -333,17 +235,12 @@ function Point(props: ElementProps): ReactElement {
                 measure.remove()
 
                 const value = input.value.trim()
-                // Tear the editor down BEFORE anything below reads whether we
-                // are still editing — syncSelector refuses to draw while the
-                // input is on screen, so restoring the box has to come after.
                 input.remove()
 
                 labelRef.current = value
                 labelNode.value = value
                 labelNode.opacity = renderedOpacity
                 two.update()
-                // Editing is over — put the box back if it was there before and
-                // the point is still selected.
                 if (restoreSelectorAfterEditRef.current) {
                     syncSelectorRef.current?.()
                 }
@@ -352,9 +249,6 @@ function Point(props: ElementProps): ReactElement {
                 const labelPatch = setProperties(group.elementData ?? props, {
                     label: value,
                 })
-                // Frozen props mean React won't re-render this element, so the
-                // scene node above and elementData here are the live copies —
-                // keep both in step with the store write.
                 if (group.elementData && labelPatch.metadata) {
                     group.elementData.metadata = labelPatch.metadata
                 }
@@ -368,8 +262,6 @@ function Point(props: ElementProps): ReactElement {
             input.addEventListener('keydown', (event: KeyboardEvent) => {
                 if (event.key === 'Enter' || event.key === 'Escape') {
                     event.preventDefault()
-                    // Escape keeps what was typed, same as every other text
-                    // editor on the canvas — blur() runs the commit above.
                     input.blur()
                 }
             })
@@ -378,8 +270,6 @@ function Point(props: ElementProps): ReactElement {
             input.select()
         }
 
-        // Placement fires this once the element has mounted, so a fresh point
-        // lands ready to be named; double-click reopens it later.
         const handleTriggerTextInput = (e: Event): void => {
             const detail = (e as CustomEvent<{ elementId: string }>).detail
             if (detail?.elementId !== props.id) return
@@ -402,9 +292,6 @@ function Point(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Counter-scale the pin on every camera change so it stays legible when the
-    // world zooms out. Reads the scale from the event each fire — no stale
-    // closure (see the React + Two.js stale-closure note in CLAUDE.md).
     useEffect(() => {
         const onZoom = (e: Event): void => {
             const group = groupRef.current
@@ -412,9 +299,6 @@ function Point(props: ElementProps): ReactElement {
             const scale = (e as CustomEvent<{ scale: number }>).detail?.scale
             if (!scale) return
             group.scale = computeCounterScale(scale, resist)
-            // Counter-scale is near-1 in apparent terms but not exactly, so the
-            // box's outline is re-normalised too rather than drifting thick or
-            // hairline at the extremes of the zoom range.
             selectorRef.current?.setScale(scale * group.scale)
             two.update()
         }
@@ -424,11 +308,6 @@ function Point(props: ElementProps): ReactElement {
         }
     }, [two, resist])
 
-    // The label is centred on its font's CAP BAND, and under `font-display: swap`
-    // the pin is drawn before the font that defines that band has arrived — so
-    // the offset used at build time was measured against the fallback face. Take
-    // it again once the real face lands. Re-placing, not rebuilding: the label's
-    // text and style are already right, only its y was measured too early.
     useEffect(() => {
         const onFontsLoaded = (): void => {
             const group = groupRef.current

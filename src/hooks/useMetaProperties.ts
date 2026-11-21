@@ -37,39 +37,9 @@ import type {
 } from '../types/metaProperty'
 import type { HistoryEntry } from './useComponentHistory'
 
-/**
- * The meta properties of one base, and every write to them.
- *
- * Mirrors useLegendPresets: gated on `isPersistedRef`, so on `/map/:id` writes
- * go to Hasura and on `/` to a localStorage sidecar (utils/metaPropertyStore).
- * Ids are minted client-side in both modes.
- *
- * Two layers:
- * - RAW operations (insertProperty, putValue, ...) write state and server,
- *   and know nothing about history. Undo/redo replays these.
- * - USER operations (addPropertyToObject, setValue, removeValue,
- *   renameProperty, deleteProperty) validate, run raw operations, and then
- *   record ONE `META` history entry, so Ctrl/Cmd+Z and the toolbar's undo/redo
- *   cover meta edits in the same stack as canvas edits. An entry is recorded
- *   only after its writes succeed: a failed server write never leaves an undo
- *   step that does nothing.
- *
- * Values are addressed by CELL (propertyId, objectId), not row id: an upsert
- * onto an existing cell keeps the server's row id, so history can't rely on
- * ids. On a shared base values are not all in memory; `cellCacheRef` holds
- * what `loadValues` last fetched, which is where "the previous value" comes
- * from when a cell is overwritten.
- *
- * Images are local-only until hosting lands: on a shared base an `image`
- * property can't be created and an image value can't be set, and sharing
- * leaves image definitions behind (persistToBase).
- */
-
-/** Shared bases don't host images yet; see .claude/context/meta-properties.md. */
 export const META_IMAGE_SHARED_ERROR =
     "Images aren't supported on shared canvases yet."
 
-/** One reversible step. A history entry holds a list of them. */
 export type MetaHistoryOp =
     | { kind: 'createProperty'; property: MetaProperty }
     | { kind: 'deleteProperty'; property: MetaProperty; values: MetaValue[] }
@@ -79,9 +49,7 @@ export type MetaHistoryOp =
           id: string
           from: MetaPropertyType
           to: MetaPropertyType
-          /** Every value as it was: undo puts all of them back. */
           before: MetaValue[]
-          /** The values that survived, converted. Cleared ones are absent. */
           after: MetaValue[]
       }
     | { kind: 'setValue'; prev: MetaValue | null; next: MetaValue }
@@ -92,9 +60,7 @@ export type MetaHistoryDirection = 'undo' | 'redo'
 export interface UseMetaPropertiesArgs {
     baseId: string
     isPersistedRef: MutableRefObject<boolean>
-    /** `metaProperties` off GET_COMPONENTS_FOR_BASE_QUERY; undefined in local mode. */
     seed: readonly unknown[] | undefined
-    /** From useComponentHistory: records the `META` entries. */
     recordToHistoryLog: (entry: HistoryEntry) => void
 }
 
@@ -107,7 +73,6 @@ export type MetaWriteResult<T = object> =
     | ({ ok: true } & T)
     | { ok: false; error: string }
 
-/** Which property the wizard is adding: one of the map's, or a new one. */
 export type MetaPropertyChoice =
     | { existing: MetaProperty }
     | { create: { name: string; type: MetaPropertyType } }
@@ -115,62 +80,41 @@ export type MetaPropertyChoice =
 export interface UseMetaPropertiesApi {
     metaProperties: MetaProperty[]
     metaPropertiesRef: MutableRefObject<MetaProperty[]>
-    /** Bumped on every value write (incl. undo/redo), so panels re-load. */
     valuesVersion: number
-    /** Check a new property's name before the wizard's value step. */
     validateNewName: (name: string) => MetaWriteResult<{ name: string }>
     loadValues: (objectId: string) => Promise<MetaValue[]>
-    /** Wizard Save: (create and) attach a property with a value. One undo step. */
     addPropertyToObject: (
         choice: MetaPropertyChoice,
         cell: MetaCell,
         rawValue: unknown
     ) => Promise<MetaWriteResult<{ property: MetaProperty }>>
-    /** Edit an existing cell. One undo step. */
     setValue: (
         property: MetaProperty,
         cell: MetaCell,
         rawValue: unknown
     ) => Promise<MetaWriteResult>
-    /** Detach a property from one object. One undo step. */
     removeValue: (value: MetaValue) => Promise<MetaWriteResult>
     renameProperty: (id: string, name: string) => Promise<MetaWriteResult>
-    /** What a type change would convert and clear (for the confirm dialog). */
     previewTypeChange: (
         id: string,
         to: MetaPropertyType
     ) => Promise<TypeChangePlan | null>
-    /**
-     * Change a property's type: values that fit are converted, the rest
-     * cleared (utils/metaValue.ts convertMetaValue). One undo step, which
-     * restores the old type and every original value.
-     */
     changePropertyType: (
         id: string,
         to: MetaPropertyType
     ) => Promise<MetaWriteResult>
-    /** Delete the definition and every value of it. One undo step. */
     deleteProperty: (id: string) => Promise<MetaWriteResult>
-    /** Undo/redo a `META` history entry (wired by base.tsx). */
     applyHistory: (
         ops: readonly MetaHistoryOp[],
         direction: MetaHistoryDirection
     ) => Promise<void>
-    /** Paste: copy the source objects' values onto their new copies. */
     copyValuesForPaste: (objectIdMap: ReadonlyMap<string, string>) => Promise<void>
-    /** JSON merge-import: bring a file's set in under re-keyed objects. */
     mergeIncoming: (
         incoming: MetaPropertySet,
         objectIdMap: ReadonlyMap<string, string>
     ) => Promise<void>
-    /** Local mode: the whole set (definitions + every value). */
     readLocalSet: () => MetaPropertySet
-    /** The whole set, for JSON export (fetches values on a shared base). */
     exportSet: () => Promise<MetaPropertySet>
-    /**
-     * Share: insert this local base's set under `serverBaseId`, with objects
-     * re-keyed through `objectIdMap`. Awaited inserts; throws on failure.
-     */
     persistToBase: (
         serverBaseId: string,
         objectIdMap: ReadonlyMap<string, string>
@@ -179,8 +123,6 @@ export interface UseMetaPropertiesApi {
 
 const nowIso = (): string => new Date().toISOString()
 
-// Rows as the server stores them: `createdBy` is left to the insert preset
-// (it is not an insertable column).
 const valueColumns = (v: MetaValue): Record<string, unknown> => ({
     id: v.id,
     baseId: v.baseId,
@@ -215,19 +157,15 @@ export function useMetaProperties({
     const client = useApolloClient()
     const [metaProperties, setMetaProperties] = useState<MetaProperty[]>([])
     const metaPropertiesRef = useRef<MetaProperty[]>([])
-    // Local mode: every value on the base.
     const localValuesRef = useRef<MetaValue[]>([])
-    // Shared mode: the values loadValues last fetched, per object.
     const cellCacheRef = useRef<Map<string, MetaValue[]>>(new Map())
     const [valuesVersion, setValuesVersion] = useState(0)
     const bumpValues = useCallback(() => setValuesVersion((v) => v + 1), [])
-    // Kept current every render: user operations close over it.
     const recordRef = useRef(recordToHistoryLog)
     recordRef.current = recordToHistoryLog
 
     const shared = (): boolean => isPersistedRef.current
 
-    // One writer for definitions + local values, so the refs never lag.
     const commit = useCallback(
         (properties: MetaProperty[], values?: MetaValue[]): void => {
             metaPropertiesRef.current = properties
@@ -243,9 +181,6 @@ export function useMetaProperties({
         [baseId, isPersistedRef]
     )
 
-    // Seed. Persisted: the query is the truth (definitions only). Local: the
-    // sidecar. Re-runs on baseId change, since share and import rotate the id
-    // under a mounted Base.
     useEffect(() => {
         cellCacheRef.current = new Map()
         if (seed !== undefined) {
@@ -275,7 +210,6 @@ export function useMetaProperties({
             .filter((v): v is MetaValue => v !== null)
     }
 
-    /** The value currently in a cell, as far as this tab knows. */
     const findCell = (propertyId: string, objectId: string): MetaValue | null => {
         const pool = shared()
             ? cellCacheRef.current.get(objectId) ?? []
@@ -283,7 +217,6 @@ export function useMetaProperties({
         return pool.find((v) => sameCell(v, { propertyId, objectId })) ?? null
     }
 
-    // Shared mode: keep the cache in step with a write we just made.
     const cachePut = (value: MetaValue): void => {
         const list = cellCacheRef.current.get(value.objectId) ?? []
         cellCacheRef.current.set(value.objectId, [
@@ -300,8 +233,6 @@ export function useMetaProperties({
             )
         }
     }
-
-    // --- Raw operations: state + server, no history -----------------------
 
     const insertPropertyRaw = async (property: MetaProperty): Promise<void> => {
         if (metaPropertiesRef.current.some((p) => p.id === property.id)) return
@@ -338,7 +269,6 @@ export function useMetaProperties({
         bumpValues()
         if (shared()) {
             try {
-                // Values go with it: FK ON DELETE CASCADE.
                 await client.mutate({ mutation: DELETE_META_PROPERTY, variables: { id } })
             } catch (e) {
                 commit(before)
@@ -382,7 +312,6 @@ export function useMetaProperties({
         }
     }
 
-    /** Write one cell (insert or overwrite). Returns the stored row. */
     const putValueRaw = async (value: MetaValue): Promise<MetaValue> => {
         if (!shared()) {
             const others = localValuesRef.current.filter((v) => !sameCell(v, value))
@@ -400,7 +329,6 @@ export function useMetaProperties({
         return stored
     }
 
-    /** Restore many cells at once (after their property was re-created). */
     const putValuesRaw = async (values: readonly MetaValue[]): Promise<void> => {
         if (values.length === 0) return
         if (!shared()) {
@@ -452,7 +380,6 @@ export function useMetaProperties({
                     : insertPropertyRaw(op.property)
             case 'deleteProperty':
                 if (undo) {
-                    // Same ids as before, so later history still lines up.
                     await insertPropertyRaw(op.property)
                     await putValuesRaw(op.values)
                     return
@@ -461,7 +388,6 @@ export function useMetaProperties({
             case 'renameProperty':
                 return renamePropertyRaw(op.id, undo ? op.from : op.to)
             case 'changeType': {
-                // Type first, so the rewritten values are read against it.
                 await retypePropertyRaw(op.id, undo ? op.from : op.to)
                 const keep = undo ? op.before : op.after
                 const drop = undo
@@ -490,8 +416,6 @@ export function useMetaProperties({
         if (ops.length > 0) recordRef.current({ action: 'META', ops })
     }
 
-    // --- Reads -------------------------------------------------------------
-
     const loadValues = useCallback(
         async (objectId: string): Promise<MetaValue[]> => {
             if (!isPersistedRef.current) {
@@ -500,7 +424,6 @@ export function useMetaProperties({
             const { data } = await client.query({
                 query: GET_META_VALUES_FOR_OBJECT,
                 variables: { baseId, objectId },
-                // Others may have edited since; values are small.
                 fetchPolicy: 'network-only',
             })
             const values = normalizeRows(data?.metaValues)
@@ -524,8 +447,6 @@ export function useMetaProperties({
         return validateMetaValue(type, rawValue)
     }
 
-    // --- User operations: validate, write, record one entry ----------------
-
     const addPropertyToObject = async (
         choice: MetaPropertyChoice,
         cell: MetaCell,
@@ -548,8 +469,6 @@ export function useMetaProperties({
             }
             isNew = true
         }
-        // Check the value BEFORE creating anything, so a bad value never
-        // leaves a stray definition behind.
         const checked = checkValue(property.type, rawValue)
         if (!checked.ok) return checked
 
@@ -574,7 +493,6 @@ export function useMetaProperties({
         } catch (e) {
             return { ok: false, error: errorText(e, "Couldn't save that value.") }
         } finally {
-            // Whatever did land is undoable, even if a later step failed.
             record(ops)
         }
     }
@@ -632,7 +550,6 @@ export function useMetaProperties({
         }
     }
 
-    /** Every value of a property on the base (fetched on a shared base). */
     const snapshotValues = async (propertyId: string): Promise<MetaValue[]> => {
         if (!shared()) {
             return localValuesRef.current.filter((v) => v.propertyId === propertyId)
@@ -651,7 +568,6 @@ export function useMetaProperties({
         const property = metaPropertiesRef.current.find((p) => p.id === id)
         if (!property) return { ok: false, error: 'That property is gone.' }
         try {
-            // Snapshot every value first: undo has to bring them all back.
             const values = await snapshotValues(id)
             await deletePropertyRaw(id)
             record([{ kind: 'deleteProperty', property, values }])
@@ -695,7 +611,6 @@ export function useMetaProperties({
             record([op])
             return { ok: true }
         } catch (e) {
-            // Some of it may have landed: put everything back as it was.
             await applyOp(op, 'undo').catch(() => bumpValues())
             return { ok: false, error: errorText(e, "Couldn't change the type.") }
         }
@@ -705,22 +620,17 @@ export function useMetaProperties({
         ops: readonly MetaHistoryOp[],
         direction: MetaHistoryDirection
     ): Promise<void> => {
-        // Undo walks the step backwards; redo forwards.
         const ordered = direction === 'undo' ? [...ops].reverse() : ops
         for (const op of ordered) {
             try {
                 await applyOp(op, direction)
             } catch (e) {
-                // Server refused (e.g. offline). Re-load so the panel shows
-                // what is actually stored rather than what we hoped.
                 console.error(`[meta] ${direction} of ${op.kind} failed`, e)
                 bumpValues()
                 return
             }
         }
     }
-
-    // --- Moving values with their objects (not user edits: no history) -----
 
     const copyValuesForPaste = useCallback(
         async (objectIdMap: ReadonlyMap<string, string>): Promise<void> => {
@@ -779,7 +689,6 @@ export function useMetaProperties({
             )
             if (addedProperties.length === 0 && values.length === 0) return
             if (isShared) {
-                // Definitions first: values carry them as a real FK.
                 if (addedProperties.length > 0) {
                     await client.mutate({
                         mutation: INSERT_BULK_META_PROPERTIES,

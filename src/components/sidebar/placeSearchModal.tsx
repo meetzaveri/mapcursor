@@ -1,13 +1,3 @@
-// Place search, as a modal. The mobile face of the same control the desktop
-// pins to the top bar (placeSearch.tsx).
-//
-// A phone's top row has room for the menu, the base switcher and the share
-// button — and that is already the whole width. The search field squeezed in
-// beside them was a few characters wide, so it moved into the menu: tap "Search
-// a place", get a dialog with the field at the top and the suggestions filling
-// the screen underneath, which is where a list of place names wants to be on a
-// phone anyway.
-
 import { useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import Modal from '../common/modal'
@@ -28,8 +18,6 @@ const PlaceSearchModal = ({
     const { query, setQuery, results, searching, reset } = usePlaceSearch(open)
     const inputRef = useRef<HTMLInputElement | null>(null)
 
-    // Open with the field focused and empty: the dialog exists to be typed
-    // into, and a stale query from last time is noise, not a shortcut.
     useEffect(() => {
         if (!open) {
             reset()
@@ -47,9 +35,6 @@ const PlaceSearchModal = ({
 
     return (
         <Modal open={open} onClose={onClose}>
-            {/* Bounded by the viewport, not a fixed width: the modal shell caps
-                at `100vw - 32px`, and this fills whatever that leaves on a
-                phone while staying a normal dialog on a desktop. */}
             <div className="w-[min(420px,calc(100vw-72px))] flex flex-col">
                 <div className="flex items-center justify-between mb-3">
                     <h2 className="text-base font-semibold text-ink m-0">
@@ -74,9 +59,6 @@ const PlaceSearchModal = ({
                     aria-label="Search a place"
                     onChange={(e): void => setQuery(e.target.value)}
                     onKeyDown={(e): void => {
-                        // Enter takes the first suggestion — on a phone that
-                        // saves a deliberate tap into a list that has only just
-                        // finished loading.
                         if (e.key !== 'Enter') return
                         e.preventDefault()
                         const first = results[0]
@@ -87,8 +69,6 @@ const PlaceSearchModal = ({
                         placeholder:text-ink-muted focus:border-accent-dark"
                 />
 
-                {/* Scrolls inside the dialog rather than growing it past the
-                    modal's 85vh cap, so the field stays put while the list moves. */}
                 <div className="mt-2 max-h-[50vh] overflow-y-auto">
                     {query.trim() !== '' && searching && (
                         <div className="px-1 py-3 text-sm text-ink-muted">

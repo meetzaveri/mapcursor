@@ -1,20 +1,5 @@
 import { areaFillTypeToDb, areaOpacityOf } from '../utils/areaFill'
 
-// Legend presets — the named, pre-styled bundles that turn a canvas full of
-// coloured marks into a map with a key.
-//
-// A preset is scoped to ONE element type and to ONE base. An element that has
-// one applied stores its id in the `legendPresetId` column, and that binding is
-// live: editing the preset restyles every element bound to it, which is the
-// only reason a legend swatch can be trusted to match what is on the map.
-
-/**
- * The four placeable marks a preset can style.
- *
- * `circle` is the Radius Map tool — it keeps the componentType `'circle'`
- * because that is what the whole element pipeline is keyed on (see the comment
- * on its toolbar entry in `utils/constants.ts`).
- */
 export type LegendPresetType = 'point' | 'area' | 'route' | 'circle'
 
 export const LEGEND_PRESET_TYPES: readonly LegendPresetType[] = [
@@ -24,7 +9,6 @@ export const LEGEND_PRESET_TYPES: readonly LegendPresetType[] = [
     'circle',
 ]
 
-/** Toolbar-facing names, matching `elementDisplayName` in utils/constants.ts. */
 export const LEGEND_TYPE_LABELS: Record<LegendPresetType, string> = {
     point: 'Point',
     area: 'Area',
@@ -38,15 +22,6 @@ export function isLegendPresetType(
     return LEGEND_PRESET_TYPES.includes(value as LegendPresetType)
 }
 
-/**
- * The style keys a preset may carry.
- *
- * Deliberately only the COLUMN-BACKED visual keys — the ones that make a mark
- * read as red-vs-yellow. That is what keeps applying a preset a single
- * `updateComponentBulkPropertiesInLocalStore` call with no metadata round-trip.
- * Label font and size stay manual; `style` is jsonb, so adding them later is a
- * wizard page and an apply branch, not a migration.
- */
 export type LegendStyleKey =
     'fill' | 'stroke' | 'linewidth' | 'strokeType' | 'fillType' | 'opacity'
 
@@ -55,28 +30,10 @@ export interface LegendPresetStyle {
     stroke?: string
     linewidth?: number
     strokeType?: string | null
-    /** Area only: 'hachure' | 'cross-hatch', null for solid. */
     fillType?: string | null
-    /** Area only: the fill's opacity, 0–1 (see areaOpacityOf). */
     opacity?: number | null
 }
 
-/**
- * Which keys each type's preset carries — the single declaration the wizard's
- * pages, the apply path and the drift-unbind rule all read. Nothing re-lists
- * these.
- *
- * `area` and `route` are stroked marks, so they take `stroke`. `point` and
- * `circle` are FILLED marks with no outline of their own, so they take `fill`
- * and nothing else — listing `stroke` here too would let a wizard offer two
- * colours for one mark, and a border a radius map does not draw. This matches
- * `SETS.POINT` / `SETS.CIRCLE`, neither of which carries a stroke control.
- *
- * `fillType` and `opacity` are an area's alone: it is the only mark with an
- * interior to hatch, and the only one with an opacity control (it is its
- * FILL's, see areaFill.ts). Two areas the same colour can then still mean two
- * different things.
- */
 export const PRESET_STYLE_KEYS: Record<
     LegendPresetType,
     readonly LegendStyleKey[]
@@ -87,11 +44,6 @@ export const PRESET_STYLE_KEYS: Record<
     circle: ['fill'],
 }
 
-/**
- * Every key a preset can ever write, as a lookup. This is what the drift-unbind
- * rule in `applyProperty` tests a hand-edit against: editing one of these on a
- * bound element means the element no longer matches its caption, so it unbinds.
- */
 export const LEGEND_STYLE_KEYS: ReadonlySet<string> = new Set<string>([
     'fill',
     'stroke',
@@ -107,30 +59,10 @@ export interface LegendPreset {
     name: string
     elementType: LegendPresetType
     style: LegendPresetStyle
-    /** Order in the legend list. */
     position: number
-    /**
-     * Stamped SERVER-side from the `x-hasura-user-id` header (a Hasura column
-     * preset on insert), never sent by the client. Absent in local mode, where
-     * there is no server to stamp it.
-     */
     createdBy?: string | null
 }
 
-/**
- * The column patch a preset applies to an element of its type.
- *
- * The `fill → stroke` mirror lives here rather than at the call sites because
- * it is a property of the MARK, not of the gesture: a radius map and a point
- * both read as one mark, so the stroke column is kept in step with the fill
- * rather than stranded on an older colour. Neither type paints an outline — a
- * radius map is drawn borderless — so this is about the record staying one
- * colour, not about a ring. `applyProperty` does the same thing for a
- * hand-edit; this keeps a preset honest against it.
- *
- * Returns only keys the preset actually carries, so a partially-filled preset
- * (mid-wizard) never blanks a column it has no opinion about.
- */
 export function presetStylePatch(
     preset: LegendPreset
 ): Record<string, unknown> {
@@ -138,16 +70,10 @@ export function presetStylePatch(
     const patch: Record<string, unknown> = {}
     keys.forEach((key) => {
         const value = preset.style[key]
-        // An area preset saved before fill types existed has no `fillType`,
-        // and it was drawn solid. Writing that out (as null) rather than
-        // skipping it keeps the promise a legend makes: a mark bound to this
-        // preset looks like its swatch, even one that was hatched by hand.
         if (key === 'fillType') {
             patch.fillType = areaFillTypeToDb(value)
             return
         }
-        // Same promise for opacity: a preset saved before it carried one was
-        // drawn at the default half-strength fill.
         if (key === 'opacity') {
             patch.opacity = areaOpacityOf({ opacity: value })
             return
@@ -155,9 +81,6 @@ export function presetStylePatch(
         if (value === undefined) return
         patch[key] = value
     })
-    // A filled mark's stroke column follows its fill. One-way, exactly as in
-    // applyProperty: the preset never carries a separate `stroke` for these
-    // types.
     if (patch.fill !== undefined) patch.stroke = patch.fill
     return patch
 }

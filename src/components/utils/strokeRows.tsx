@@ -1,22 +1,11 @@
 import type { ReactElement, ReactNode } from 'react'
 
-// The stroke-width and stroke-type pickers, and the section heading they sit
-// under.
-//
-// Lifted out of `sidebar/elementProperties.tsx` when the legend-preset wizard
-// needed the same two controls: a preset's stroke has to be picked with the
-// identical swatches the properties panel uses, or the same value would be
-// chosen through two different-looking widgets in one product.
-
 export const STROKE_TYPES = [
     { label: '—', value: 'solid' },
     { label: '- -', value: 'dashed' },
     { label: '...', value: 'dotted' },
 ]
 
-// `inner` is the diameter (px) of the inner circle that visually nudges
-// the actual stroke width inside a constant outer ring. `0` renders the
-// "no stroke" state (a diagonal slash) instead of an inner circle.
 export const STROKE_WIDTHS = [
     { label: '0', value: 0, inner: 0 },
     { label: '1', value: 1, inner: 4 },
@@ -63,7 +52,6 @@ export const StrokeWidthRow = ({
                                 : 'border-transparent hover:border-accent-dark/40'
                         }`}
                     >
-                        {/* outer ring (constant) */}
                         <div
                             className="relative flex items-center justify-center rounded-full"
                             style={{
@@ -73,7 +61,6 @@ export const StrokeWidthRow = ({
                             }}
                         >
                             {w === 0 ? (
-                                /* "no stroke" — diagonal slash across the ring */
                                 <div
                                     className="absolute rotate-45 rounded-full"
                                     style={{
@@ -83,7 +70,6 @@ export const StrokeWidthRow = ({
                                     }}
                                 />
                             ) : (
-                                /* inner circle nudges the actual stroke width */
                                 <div
                                     className="rounded-full"
                                     style={{

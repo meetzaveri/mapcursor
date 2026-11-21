@@ -5,27 +5,10 @@ import { useBaseContext } from '../views/Base/baseContext'
 import { useMediaQueryUtils } from '../constants/exportHooks'
 import { HINT_SLOT_BOTTOM, TEXT_ZOOM_HINT_DISMISSED_KEY } from '../constants/misc'
 
-// How long the tip stays up before fading, and how long the fade takes (must
-// match the duration-300 class below).
 const VISIBLE_MS = 5000
 const FADE_MS = 300
-// Trailing debounce on `zoomChanged`. The wheel handler fires this event per
-// tick; we only care that a zoom gesture happened, not how many ticks it took.
-// A full second, so the tip lands after the user has settled on a zoom rather
-// than interrupting the gesture — every tick restarts this.
 const DEBOUNCE_MS = 5000
 
-/**
- * One-shot tip pointing at the "Zoom resistant" switch, shown under the primary
- * toolbar the first time a user zooms a map base that has text on it.
- *
- * Desktop only. The mobile toolbar is pinned bottom-left (shapesToolbar.tsx),
- * so there is no "below the toolbar" slot to occupy — mobile users still get
- * the switch itself in the properties panel's text tab.
- *
- * Shares the hint slot with #tool-hint (the toolbar's computed bottom
- * edge), so it stands down while one of those tools is armed.
- */
 const TextZoomHint = (): ReactElement | null => {
     const { componentStore, currentElement } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
@@ -33,25 +16,15 @@ const TextZoomHint = (): ReactElement | null => {
     const [mounted, setMounted] = useState(false)
     const [visible, setVisible] = useState(false)
 
-    // Latched the moment we decide to show, so the debounce can't queue a
-    // second showing before the localStorage write lands.
     const shownRef = useRef(false)
-    // Last scale we saw. `zoomChanged` also fires for programmatic camera moves
-    // — setZoomLimits clamps on mount, and fitToContent on load — so a single
-    // event is not evidence of a user zooming. Requiring two
-    // distinct scales keeps those from burning the one-shot.
     const lastScaleRef = useRef<number | null>(null)
 
-    // Read through refs: the listener is registered once, but these change as
-    // the user works.
     const canShowRef = useRef(false)
     canShowRef.current =
         !isMobile &&
-        // Nothing to point at until the base actually has text on it.
         Object.values(componentStore ?? {}).some(
             (c) => c?.componentType === 'text'
         ) &&
-        // Don't fight #tool-hint for the same slot.
         currentElement !== 'area' &&
         currentElement !== 'route' &&
         currentElement !== 'circle' &&
@@ -65,7 +38,6 @@ const TextZoomHint = (): ReactElement | null => {
                 return
             }
         } catch (_) {
-            // Private mode / blocked storage: fall through and just show it.
         }
 
         let debounce: ReturnType<typeof setTimeout> | null = null
@@ -76,9 +48,6 @@ const TextZoomHint = (): ReactElement | null => {
             if (shownRef.current) return
             const scale = (e as CustomEvent<{ scale: number }>).detail?.scale
             if (!scale) return
-            // NOTE: never call two.update() from a zoomChanged listener — the
-            // wheel handler renders once after dispatching (see
-            // utils/handleScale.ts). This listener only touches React state.
             const previous = lastScaleRef.current
             lastScaleRef.current = scale
             if (previous === null || previous === scale) return
@@ -88,7 +57,6 @@ const TextZoomHint = (): ReactElement | null => {
                 if (shownRef.current || !canShowRef.current) return
                 shownRef.current = true
                 setMounted(true)
-                // Next frame, so the opacity transition has a 0 to start from.
                 requestAnimationFrame(() => setVisible(true))
                 hideTimer = setTimeout(() => setVisible(false), VISIBLE_MS)
                 unmountTimer = setTimeout(
@@ -98,7 +66,6 @@ const TextZoomHint = (): ReactElement | null => {
                 try {
                     localStorage.setItem(TEXT_ZOOM_HINT_DISMISSED_KEY, '1')
                 } catch (_) {
-                    // Nothing to do — worst case the tip shows again next time.
                 }
             }, DEBOUNCE_MS)
         }

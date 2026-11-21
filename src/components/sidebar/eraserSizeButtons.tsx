@@ -6,9 +6,6 @@ import {
     type EraserSize,
 } from '../../constants/misc'
 
-// Hover labels for the eraser size dots. The dots' pixel sizes come from
-// ERASER_DOT_PX rather than living here, because the trail drawn on the canvas
-// reads the same map. That's what keeps the swatch and the beam identical.
 const ERASER_SIZE_LABEL: Record<EraserSize, string> = {
     small: 'Small',
     medium: 'Medium',
@@ -22,7 +19,6 @@ interface EraserSizeButtonsProps {
     tooltipPlacement: 'top' | 'bottom'
 }
 
-/** The three eraser size dots, shared by the desktop and mobile toolbars. */
 const EraserSizeButtons = ({
     eraserSize,
     onChange,

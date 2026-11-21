@@ -13,10 +13,6 @@ import ShareImagesNote from './shareImagesNote'
 import { IMAGE_COMPONENT } from '../../constants/misc'
 import { RIGHT_MARGIN } from '../../hooks/useTopRightOffset'
 
-// The share row in primary.tsx sits `right-1rem` with `px-2`, so the button's
-// natural right edge is 24px in. On mobile it is pulled out to RIGHT_MARGIN so
-// it lines up with the other right-edge buttons (styling, legend, meta
-// properties) in one column.
 const SHARE_ROW_INSET_PX = 24
 
 const ShareLinkPopup = (): ReactElement => {
@@ -35,14 +31,6 @@ const ShareLinkPopup = (): ReactElement => {
     } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
 
-    // Whether there's anything to share. Gate on the actual component store,
-    // NOT backgroundBaseId: that id is only minted by ensureBackgroundBase()
-    // on a user *mutation*, so a draft restored from localStorage renders
-    // components on the base while backgroundBaseId is still null — which
-    // wrongly showed "Nothing to share yet" until the user touched the canvas.
-    // Mirror persistBase's filter (entries without componentType are skipped
-    // there) so the two stay consistent. Images are dropped from the shared
-    // copy too (local-only), so they don't count as shareable on their own.
     const storeValues = Object.values(stateRefForComponentStore.current)
     const hasComponents = storeValues.some(
         (c) => c?.componentType && c.componentType !== IMAGE_COMPONENT
@@ -50,8 +38,6 @@ const ShareLinkPopup = (): ReactElement => {
     const hasImages = storeValues.some(
         (c) => c?.componentType === IMAGE_COMPONENT
     )
-    // `image` meta properties are left behind on share, with their photos.
-    // Only a local canvas can have them (a shared one refuses to create them).
     const imagePropertyNames = isPersisted
         ? []
         : meta.metaProperties
@@ -69,20 +55,12 @@ const ShareLinkPopup = (): ReactElement => {
         }
     }, [])
 
-    // Always route through the confirm modal, including for an already-persisted
-    // base. The old short-circuit just copied the URL and never published, so a
-    // base that reached its URL by any path other than this button (the
-    // storage-limit auto-persist, most reachably) had its link handed out while
-    // it was still private.
     const handleShareClick = (e: React.MouseEvent): void => {
         e.preventDefault()
         if (showLink) {
             setShowLink(false)
             return
         }
-        // Intent, not outcome. The gap between this and `share_succeeded` is
-        // how many people open the dialog and back out of it, which is a
-        // different problem from never reaching for share at all.
         trackEvent('share_clicked', { persisted: isPersisted })
         setShowConfirmModal(true)
     }
@@ -103,30 +81,16 @@ const ShareLinkPopup = (): ReactElement => {
             setShowConfirmModal(false)
             setShowLink(true)
 
-            // Already on this base — there is nothing to open.
             if (wasPersisted) return
 
-            // The landing view rides in the base row, which is
-            // device-independent and survives a copied link. The old vx/vy/vs
-            // params were neither, and would only race the better mechanism.
             const openUrl = url
 
-            // Mobile browsers block window.open after an await (the click's task
-            // chain is long gone), so the user would get a link panel and no tab
-            // — or nothing at all. Hand them the OS share sheet instead, which
-            // is the affordance they expect on a phone anyway.
             if (isMobile) {
-                void navigator
-                    ?.share?.({ url })
-                    // Dismissing the sheet rejects; the link panel is already
-                    // open behind it, so there is nothing to recover from.
-                    .catch(() => {})
+                void navigator?.share?.({ url }).catch(() => {})
                 return
             }
             window.open(openUrl, '_blank', 'noopener,noreferrer')
         } catch (e) {
-            // Re-thrown, not swallowed: this only observes the failure, it
-            // does not change what happens on one.
             trackEvent('share_failed', {
                 reason: e instanceof Error ? e.name : 'unknown',
             })
@@ -136,11 +100,6 @@ const ShareLinkPopup = (): ReactElement => {
         }
     }
 
-    // What the user is about to get. For a persisted base that is exactly the
-    // link; for a new one the id doesn't exist yet, so show the shape of it
-    // rather than a different base's id — this used to preview
-    // `backgroundBaseId`, which persistBase never uses, so the URL previewed
-    // was never the URL produced.
     const previewUrl = isPersisted ? baseUrl(baseId) : `${baseUrl('')}...`
 
     return (
@@ -155,8 +114,6 @@ const ShareLinkPopup = (): ReactElement => {
                 <div
                     id={SHARE_BUTTON_ID}
                     className={`border-border-panel border flex items-center justify-center bg-card-bg text-ink font-semibold ${
-                        // Mobile: 40px square, the size of every other button
-                        // in the right-edge column (legend, meta properties).
                         isMobile
                             ? 'w-10 h-10 rounded-lg shadow-panel'
                             : 'px-1 py-1 rounded-md'
@@ -168,7 +125,6 @@ const ShareLinkPopup = (): ReactElement => {
                     title={backdropReady ? 'Share' : 'Preparing the map\u2026'}
                     onClick={backdropReady ? handleShareClick : undefined}
                 >
-                    {/* <div className="pr-2 text-white">Share</div>{' '} */}
                     <div
                         className={`hover:bg-sidebar rounded-md ${isMobile ? 'p-0' : 'px-2 py-2'}`}
                     >
@@ -193,9 +149,6 @@ const ShareLinkPopup = (): ReactElement => {
                         bg-card-bg text-ink-mid border border-border-panel
                         rounded-md px-2 py-4
                         "
-                        // Never wider than the screen: 560px overflows every
-                        // phone, and the panel is right-anchored so the overflow
-                        // lands off-screen where the link can't be read or copied.
                         style={{ width: 'min(560px, calc(100vw - 24px))' }}
                     >
                         <div className="text-base text-left">

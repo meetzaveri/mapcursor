@@ -1,20 +1,10 @@
 import type { ReactElement } from 'react'
 
-// Shown first in the share dialog when the canvas holds anything image-based,
-// which stays on this device for now (shared canvases can't host images yet):
-//   - image elements placed on the map, and
-//   - `image` meta properties: on share the property itself is left behind
-//     along with its photos (see persistToBase in hooks/useMetaProperties.ts),
-//     because a shared canvas couldn't fill it in.
-// Ported from craftbase's shareLinkPopup and widened for meta properties.
-
 interface ShareImagesNoteProps {
     hasImageElements: boolean
-    /** Names of the canvas's `image` meta properties. */
     imagePropertyNames: readonly string[]
 }
 
-/** “A”, “A” and “B”, “A”, “B” and “C”. */
 export function quotedList(names: readonly string[]): string {
     const quoted = names.map((n) => `“${n}”`)
     if (quoted.length <= 1) return quoted.join('')

@@ -51,7 +51,6 @@ const HomePage: React.FC = () => {
             </nav>
 
             <main className="px-5 tablet-landscape:px-10 desktop:px-20 big-desktop:px-32 ultra-desktop:px-40">
-                {/* Hero */}
                 <header className="mt-16 desktop:mt-24 max-w-3xl">
                     <div className="font-mono text-xs text-ink-muted uppercase tracking-wider">
                         Local · No sign-up/login
@@ -70,10 +69,6 @@ const HomePage: React.FC = () => {
                     </p>
                 </header>
 
-                {/* Hero image: the editor itself, mid-edit. Same frame as the
-                    tool demos below. Not lazy: it is the first thing on the
-                    page past the intro. width/height reserve its box so the
-                    page does not jump when it arrives. */}
                 <figure className="mt-6 desktop:mt-10">
                     <img
                         src={heroImage}
@@ -120,7 +115,6 @@ const HomePage: React.FC = () => {
                         </Button>
                     </div>
 
-                    {/* Tool index */}
                     <ul className="mt-10 flex flex-wrap gap-2">
                         {TOOLS.map((tool) => (
                             <li key={tool.id}>
@@ -139,7 +133,6 @@ const HomePage: React.FC = () => {
                     </ul>
                 </div>
 
-                {/* Tools */}
                 <div className="mt-20 desktop:mt-28">
                     <div className="mb-8">
                         <div className="font-mono text-xs text-ink-muted uppercase tracking-wider">
@@ -162,7 +155,6 @@ const HomePage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Closing CTA */}
                 <section className="my-20 desktop:my-28 bg-card-bg border border-border-panel rounded-panel shadow-card p-8 desktop:p-12 flex flex-col laptop:flex-row laptop:items-center laptop:justify-between gap-6">
                     <div>
                         <h2 className="text-xl desktop:text-2xl font-bold text-ink tracking-tight font-display">

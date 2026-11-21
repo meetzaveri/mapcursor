@@ -45,9 +45,6 @@
         />
         <title>Mapcursor - Draw and annotate on maps</title>
 
-        <!-- Pre-paint theme: apply the saved/system theme before the bundle
-             loads so the boot loader + first paint match (no light flash).
-             Keep this logic in sync with src/hooks/useTheme.ts. -->
         <script>
             ;(function () {
                 try {
@@ -71,7 +68,7 @@
         <script
             defer
             src="https://cloud.umami.is/script.js"
-            data-website-id="df6d84fd-5cd0-4439-bd9f-d2b421dea79e"
+            data-website-id="%VITE_UMAMI_WEBSITE_ID%"
         ></script>
         <script type="application/ld+json">
             {
@@ -88,9 +85,6 @@
                 }
             }
         </script>
-        <!-- Inline startup loader (Variant A). Paints before the JS bundle
-             loads; React replaces #root on first commit. Keep in sync with
-             src/components/common/mapcursorLoader.css -->
         <style>
             #mc-boot {
                 position: fixed;

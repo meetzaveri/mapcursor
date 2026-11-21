@@ -1,21 +1,3 @@
-// "Where should the map open?" — asked once, on a base's first visit to the
-// map base, before there is any map content to disturb.
-//
-// Two doors, offered rather than forced:
-//
-//   1. Use my current location — hands off to the browser's own permission
-//      sheet. This is NOT the automatic geolocation prompt this modal once
-//      replaced: it fires from a tap, so the sheet arrives with context, and
-//      every failure lands on the timezone city with an explanation instead of
-//      a dead end. See `utils/geolocation.ts`.
-//   2. Search for a place — the original flow, unchanged. A city name is what a
-//      person actually thinks in when choosing where to start drawing.
-//
-// Declining stays a first-class answer at every step. The map is ALREADY
-// showing the timezone city behind this dialog, so dismissing is not a dead end
-// — it is acceptance of what is on screen, and the place search in the toolbar
-// can change it any time.
-
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import Modal from '../common/modal'
@@ -28,29 +10,18 @@ import type { GeolocationFailure } from '../../utils/geolocation'
 import type { PlaceResult } from '../../utils/placeSearch'
 import type { MapAnchor } from '../../baseTypes/types'
 
-/** Matches PlaceSearch: Nominatim asks for ~1 req/sec, so this is politeness. */
 const DEBOUNCE_MS = 450
 
-/** Which face of the dialog is showing. */
 type Step = 'choose' | 'locating' | 'search'
 
 interface MapStartLocationModalProps {
     open: boolean
-    /** City we already put them on, named so the fallback isn't a mystery. */
     fallbackCity: string
-    /** User picked a place — re-anchor the map there and close. */
     onPick: (anchor: MapAnchor) => void
-    /** User declined — keep the timezone city and stop asking. */
     onSkip: () => void
-    /**
-     * A location lookup failed. Commits the timezone city as the real anchor so
-     * the base is settled either way, but leaves the dialog open so the user can
-     * still search — a denied permission must not become a dead end.
-     */
     onFallbackToTimezone: () => void
 }
 
-/** Explanations, in the user's terms. Never blames them for declining. */
 const FAILURE_COPY: Record<GeolocationFailure, string> = {
     denied: 'No problem — location is off, so we’ve started you near',
     timeout: 'Your browser didn’t answer in time, so we’ve started you near',
@@ -71,13 +42,10 @@ export default function MapStartLocationModal({
     const [results, setResults] = useState<PlaceResult[]>([])
     const [searching, setSearching] = useState(false)
     const inputRef = useRef<HTMLInputElement | null>(null)
-    // The dialog can close while a lookup is still outstanding; a late resolve
-    // must not commit an anchor to a base the user has already moved on from.
     const liveRef = useRef(true)
 
     useEffect(() => {
         liveRef.current = open
-        // Reopening on another base starts from the choice again.
         if (!open) {
             setStep('choose')
             setFailure(null)
@@ -113,8 +81,6 @@ export default function MapStartLocationModal({
         }
     }, [query])
 
-    // Focus the field when the search step opens, so a user who knows their
-    // answer can just type.
     useEffect(() => {
         if (!open || step !== 'search') return
         const t = setTimeout(() => inputRef.current?.focus(), 200)
@@ -131,16 +97,12 @@ export default function MapStartLocationModal({
             onPick(outcome.anchor)
             return
         }
-        // Settle the base on the timezone city right away, then drop the user
-        // into search so the failure costs them nothing.
         setFailure(outcome.reason)
         setStep('search')
         onFallbackToTimezone()
     }
 
     return (
-        // Closing by any route means "skip" — dismissing the dialog IS declining
-        // to choose, and leaving it unanswered would re-ask on the next visit.
         <Modal open={open} onClose={onSkip} locked={false}>
             <div
                 className="p-2 text-left"
@@ -174,12 +136,6 @@ export default function MapStartLocationModal({
                                     width={20}
                                     height={20}
                                     strokeWidth={1.6}
-                                    // The asset hardcodes a blue stroke AND its
-                                    // own `color`, so `stroke="currentColor"`
-                                    // alone would resolve against that blue.
-                                    // Overriding `color` first makes it inherit
-                                    // the button's ink. SVGR spreads props after
-                                    // the original attrs, so these win.
                                     color="currentColor"
                                     stroke="currentColor"
                                     aria-hidden="true"

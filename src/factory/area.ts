@@ -9,9 +9,7 @@ export interface AreaProperties {
     stroke?: string
     linewidth?: number
     strokeType?: string | null
-    /** 'hachure' | 'cross-hatch'; null/absent is solid. See utils/areaFill.ts. */
     fillType?: string | null
-    /** `geometry` is a Polygon whose outer ring is in absolute surface coords. */
     metadata?: ComponentMetadata | null
 }
 
@@ -28,22 +26,14 @@ export default class AreaFactory extends Main<AreaProperties> {
         const prevY = this.y
         const { stroke, linewidth, strokeType, fillType } = this.properties
 
-        // `geometryPositions` hands back the ring OPEN. The stored ring repeats
-        // its first position last, per RFC 7946, but the path below is built
-        // with `closed = true` and closes itself — a duplicate final vertex
-        // there draws a zero-length segment and stacks a grab handle on top of
-        // the first one.
         const positions = geometryPositions(readGeometry(this.properties))
         const anchors = positions.map(
             ([x, y]) => new (Two as ShapeLike).Anchor(x - prevX, y - prevY)
         )
 
-        // closed = true → filled polygon (area)
         const path = new (Two as ShapeLike).Path(anchors, true, false)
         const strokeColor = stroke || '#A32D2D'
         path.stroke = strokeColor
-        // Fill is always derived from the stroke colour, never persisted as a
-        // colour: a wash for solid, otherwise a hatch sized to this area.
         path.fill = areaFillFor(two, strokeColor, fillType, this.properties)
         path.linewidth = linewidth ? linewidth : 2
         path.dashes = strokeTypeToDashes(strokeType)

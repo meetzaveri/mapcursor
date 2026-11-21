@@ -17,15 +17,6 @@ const Key = ({ children }: { children: ReactNode }): ReactElement => (
     </kbd>
 )
 
-/**
- * Per-tool copy. Split by pointer, because the gesture genuinely differs: on
- * desktop these draws end at Esc/Enter, and on touch there is no Esc and no
- * Enter — the ✓/✗ controls in base.tsx are the only way to finish or abandon
- * one. A shared string would have to name a key that half the users do not
- * have. Every mobile string is also kept under ~60 characters so the pill stays
- * TWO lines at 320px: at three it reaches past its neighbours and clips the top
- * of the menu drawer, which z-index cannot fix (see HINT_SLOT_Z).
- */
 const TOOL_HINTS: Record<string, { desktop: ReactNode; mobile: ReactNode }> = {
     route: {
         desktop: (
@@ -60,24 +51,6 @@ const TOOL_HINTS: Record<string, { desktop: ReactNode; mobile: ReactNode }> = {
     },
 }
 
-/**
- * Persistent per-tool guidance, shown for the whole time a tool is armed — not
- * a timed toast. These three tools are the ones whose gesture cannot be guessed
- * from their icon: two are multi-click draws that need an explicit exit, and
- * the third is drag-to-draw from the CENTRE out, which reads as a bounding box
- * until told otherwise.
- *
- * Keyed on `currentElement`, so it clears itself: every one of these draws ends
- * in `setPointerElement('pointer')` (newCanvas.tsx), and switching tools
- * re-renders with a different key.
- *
- * Two slots, because the toolbar moves. On desktop it sits at the bottom of the
- * page (HINT_SLOT_BOTTOM). On mobile the toolbar is pinned bottom-left, so
- * there is no "below the toolbar" slot at all — the hint takes the empty strip
- * across the TOP, between the menu and share buttons. That strip is only ~193px
- * wide on a 320px phone, which is why the mobile copy above is written short
- * rather than wrapped from the desktop string.
- */
 const ToolHint = (): ReactElement | null => {
     const { currentElement } = useBaseContext()
     const { isMobile } = useMediaQueryUtils()
@@ -92,18 +65,12 @@ const ToolHint = (): ReactElement | null => {
             setVisible(false)
             return
         }
-        // Next frame, so the opacity transition has a 0 to start from.
         const raf = requestAnimationFrame(() => setVisible(true))
         return (): void => cancelAnimationFrame(raf)
-        // `currentElement` and not just `hint`: switching straight from area to
-        // route keeps a hint mounted, and it should re-fade for the new copy
-        // rather than swap text mid-sentence.
     }, [hint, currentElement])
 
     if (!hint) return null
 
-    // Mobile pins both edges so the pill fills the gap between its neighbours
-    // and wraps inside it; desktop is a full-width centring row at the bottom.
     const slot = isMobile
         ? {
               top: HINT_SLOT_MOBILE_TOP,

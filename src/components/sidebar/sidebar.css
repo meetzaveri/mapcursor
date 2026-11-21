@@ -5,12 +5,11 @@
 
 .secondary-sidebar-content {
     font-weight: 600;
-    /* background: ; */
 }
 
 .tooltip-child {
-    opacity: 0; /* define initial transition property */
-    -webkit-transition: all 0.2s ease-in-out; /* define transitions */
+    opacity: 0;
+    -webkit-transition: all 0.2s ease-in-out;
     transition: all 0.2s ease-in-out;
     z-index: -1;
 }

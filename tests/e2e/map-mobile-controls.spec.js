@@ -1,10 +1,3 @@
-// Mobile controls on a map base.
-//
-// Three things a phone has that a desktop does not: no Delete key, no Enter or
-// Escape to leave a text editor, and a top row too narrow to hold the search
-// field as well as the menu, the base switcher and share. Each of those gaps
-// had a control that looked present and did nothing.
-
 import { test, expect } from './helpers/test.js'
 import { baseRow, GQL_MOCK_RESPONSES, pointAt } from './helpers/index.js'
 
@@ -77,8 +70,6 @@ async function openMapBase(page) {
     })
     await page.goto(`/map/${BASE_ID}`)
     await page.locator(`text=${LABEL}`).first().waitFor({ timeout: 15_000 })
-    // Park the camera at identity so the fixture's surface coords are screen
-    // coords — the taps below aim at real pixels.
     await page.evaluate(() => {
         const two = window.__mcTwo
         two.scene.translation.set(0, 0)
@@ -88,14 +79,12 @@ async function openMapBase(page) {
     await page.waitForTimeout(300)
 }
 
-/** Tap the label to select it. */
 async function selectLabel(page) {
     const box = await page.locator(`text=${LABEL}`).first().boundingBox()
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
     await page.waitForTimeout(400)
 }
 
-/** Every string currently painted as canvas text. */
 const canvasText = (page) =>
     page.evaluate(() =>
         Array.from(document.querySelectorAll('text')).map((n) => n.textContent)
@@ -109,10 +98,6 @@ test('the delete button removes map text, canvas and all', async ({ page }) => {
     await expect(del).toHaveCount(1)
     await del.tap()
 
-    // The store write alone was never enough: nothing unmounts an element
-    // component when its record goes (handleSetComponentsToRender only ever
-    // ADDS wrappers), so the glyphs used to stay on the canvas until a reload
-    // while the row was already gone.
     await expect.poll(() => canvasText(page)).not.toContain(LABEL)
     expect(
         await page.evaluate(
@@ -132,16 +117,11 @@ test('the pencil opens the editor; ✓ keeps the edit and ✗ discards it', asyn
     await openMapBase(page)
     await selectLabel(page)
 
-    // Entering the editor used to mean landing a double-TAP on glyphs a few
-    // pixels tall.
     const pencil = page.locator('[aria-label="Edit text"]')
     await expect(pencil).toHaveCount(1)
     await pencil.tap()
     await expect(page.locator('textarea.temp-input-area')).toHaveCount(1)
 
-    // The delete button stands down while editing — it shares this corner with
-    // the ✓/✗ pair, and deleting the element you are mid-sentence in is not
-    // what that tap means.
     await expect(page.locator('[aria-label="Delete selection"]')).toHaveCount(0)
 
     await page.locator('textarea.temp-input-area').fill('Discarded Text')
@@ -154,9 +134,6 @@ test('the pencil opens the editor; ✓ keeps the edit and ✗ discards it', asyn
     await page.locator('[aria-label="Done editing"]').tap()
     await expect.poll(() => canvasText(page)).toContain('Confirmed Text')
 
-    // ✗ must not be a disguised delete. It once was: acting on the PRESS ended
-    // the edit, which swapped this slot back to the delete button — and the
-    // tap's own click landed on it.
     expect(
         await page.evaluate(
             (id) =>
@@ -173,8 +150,6 @@ test('search lives in the menu, and its modal owns the screen', async ({
 }) => {
     await openMapBase(page)
 
-    // The top-bar field is desktop-only now; on a phone that row is menu +
-    // switcher + share and the field had a few characters of width left.
     await expect(
         page.locator('input[aria-label="Search a place"]')
     ).toHaveCount(0)
@@ -185,9 +160,6 @@ test('search lives in the menu, and its modal owns the screen', async ({
         page.locator('input[aria-label="Search a place"]')
     ).toHaveCount(1)
 
-    // Nothing behind the modal is reachable. The backdrop had no stacking
-    // order of its own, so it painted UNDER the toolbars (z 10–20) and every
-    // control behind the dimmed page still took taps.
     const probes = await page.evaluate(() => {
         const at = (x, y) => {
             const el = document.elementFromPoint(x, y)

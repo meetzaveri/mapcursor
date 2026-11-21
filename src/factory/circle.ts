@@ -1,12 +1,5 @@
 import Main from './main'
 
-// The radius map's ellipse.
-//
-// It is BORDERLESS by design (see CIRCLE_DEFAULTS): the mark is the translucent
-// disc, so no width and no dash pattern are accepted here — there is no ring to
-// paint them on. `stroke` is still taken, because the column follows the fill
-// and a zero-width stroke keeps the node's colour honest for anything that
-// reads it (SVG export, a grouped copy).
 export interface CircleProperties {
     fill?: string
     width?: number

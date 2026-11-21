@@ -1,20 +1,3 @@
-// The secondary drawer: which legend preset a mark belongs to.
-//
-// It unfurls from under the primary toolbar whenever one of the four
-// preset-able tools is selected — Point, Area, Route, Radius Map — and answers
-// the question you are about to act on: *what am I drawing?* Choosing before
-// you draw is what lets a legend be built as the map is made, rather than
-// reconstructed from memory afterwards.
-//
-// It also opens for an already-drawn mark that is selected, so an existing
-// element can be re-filed. Both cases are the same row; only what a pick does
-// differs — arm the tool, or restyle the selection.
-//
-// Picking is never compulsory. **None** always leads, because a mark with no
-// caption is a perfectly good mark. But a preset that IS picked overrides the
-// styling: the legend promises everything under a caption looks alike, and the
-// only way to keep that promise is for the caption to win.
-
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -26,11 +9,6 @@ import type { LegendPreset } from '../../types/legend'
 import { setArmedPreset } from '../../utils/armedLegendPreset'
 import { readLegendPresetTarget } from '../../utils/legendPresetTarget'
 
-/**
- * The primary toolbar's bottom edge: `top-2` (8px) plus its 46px height. The
- * drawer starts flush against it so it reads as coming OUT of the toolbar
- * rather than floating below it.
- */
 const TOOLBAR_BOTTOM = 54
 
 export const PRESET_CHIPS_ID = 'mc-preset-chips'
@@ -71,11 +49,6 @@ const Chip = ({
     </button>
 )
 
-/**
- * The row's contents, shared with the mobile properties panel — which renders
- * them inline rather than as floating chrome, because a phone's toolbar band is
- * already full.
- */
 export function PresetChipRow(): ReactElement | null {
     const {
         selectedComponent,
@@ -83,9 +56,6 @@ export function PresetChipRow(): ReactElement | null {
         legendPresets,
         applyLegendPresetToSelection,
     } = useBaseContext()
-    // The armed map lives in localStorage (the canvas reads it from a frozen
-    // handler), so a pick has nothing in React to re-render off. This bumps to
-    // force the re-read.
     const [armedTick, setArmedTick] = useState(0)
     void armedTick
 
@@ -98,8 +68,6 @@ export function PresetChipRow(): ReactElement | null {
 
     const pick = (preset: LegendPreset | null): void => {
         if (target.isArmed) {
-            // Nothing drawn to apply to yet — remember it for the next mark
-            // made with this tool.
             setArmedPreset(target.elementType, preset)
             setArmedTick((t) => t + 1)
             return
@@ -132,11 +100,6 @@ export function PresetChipRow(): ReactElement | null {
     )
 }
 
-/**
- * Desktop only. On mobile the same row renders inside the element-properties
- * panel — see ElementPropertiesToolbar — because the bottom band already
- * carries the toolbar, undo/redo and the draw controls.
- */
 export default function PresetChips(): ReactElement | null {
     const { selectedComponent, currentElement, isElementDragging } =
         useBaseContext()
@@ -144,8 +107,6 @@ export default function PresetChips(): ReactElement | null {
 
     if (isMobile) return null
 
-    // Mirrors the properties toolbar: chrome that follows the selection must
-    // get out of the way while that selection is being dragged.
     const target = isElementDragging
         ? null
         : readLegendPresetTarget(selectedComponent, currentElement)
@@ -156,9 +117,6 @@ export default function PresetChips(): ReactElement | null {
             style={{
                 top: `${TOOLBAR_BOTTOM}px`,
                 left: '50%',
-                // The centering lives on THIS element, not on the animated one:
-                // framer writes `transform` itself, so a translateX here would
-                // be overwritten the moment the drawer animates.
                 transform: 'translateX(-50%)',
                 zIndex: 10,
             }}
@@ -167,10 +125,6 @@ export default function PresetChips(): ReactElement | null {
                 {target && (
                     <motion.div
                         id={PRESET_CHIPS_ID}
-                        // Unfurls downward out of the toolbar: height drives the
-                        // reveal (the same `0 → auto` the colour picker uses),
-                        // and the small negative `y` makes it look tucked behind
-                        // the toolbar at the start rather than merely short.
                         initial={{ opacity: 0, height: 0, y: -8 }}
                         animate={{ opacity: 1, height: 'auto', y: 0 }}
                         exit={{ opacity: 0, height: 0, y: -8 }}

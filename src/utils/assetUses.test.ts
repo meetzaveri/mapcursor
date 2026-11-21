@@ -45,10 +45,8 @@ describe('imageComponentSource', () => {
     it('finds the ref on image elements only', () => {
         const store: ComponentStore = {
             a: record('a', 'image', { image: ref('hash-a') }),
-            // A point carrying an `image` key is NOT an image element; its
-            // photos are meta values, owned by a different source.
             b: record('b', 'point', { image: ref('hash-b') }),
-            c: record('c', 'image', { image: { assetId: 42 } }), // malformed
+            c: record('c', 'image', { image: { assetId: 42 } }),
         }
         const uses = imageComponentSource(store).collect()
         expect(uses).toEqual([
@@ -84,12 +82,9 @@ describe('collectAssetUses', () => {
             fixedSource('meta', [metaUse]),
         ])
         expect(uses).toHaveLength(2)
-        // The same photo used by both kinds of owner is one stored asset.
         expect(usedAssetIds(uses ?? [])).toEqual(new Set(['shared']))
     })
 
-    // The rule that keeps cleanup safe: a source we could not read must stop
-    // cleanup, not count as "owns nothing", or its images get deleted.
     it('returns null when any source is unreadable', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
         expect(
@@ -125,8 +120,6 @@ const metaSet = (assetId: string): MetaPropertySet => ({
 })
 
 describe('localAssetSources', () => {
-    // The guard against the bug the plan called out: without the meta-value
-    // source, cleanup on reload deleted every photo attached to a point.
     it('includes both owner kinds', () => {
         const names = localAssetSources({}).map((s) => s.name)
         expect(names).toEqual(['image-component', 'meta-value'])

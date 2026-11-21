@@ -1,8 +1,3 @@
-// Minimal renderHook for hook tests. @testing-library/react 16 needs
-// @testing-library/dom, which this repo doesn't install, so this mounts the
-// hook in a real React root instead. Call `unmountAllHooks()` in afterEach: a
-// mounted hook keeps its window listeners and would act on the next test.
-
 import { act, createElement } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'

@@ -5,12 +5,6 @@ import type { EraserSize } from '../../constants/misc'
 import EraserSizeButtons from './eraserSizeButtons'
 import type { DrawTool } from './mobileToolGroups'
 
-// Mobile secondary toolbar for the Draw group: Pencil | Eraser, plus the eraser
-// size dots while the eraser is active. It floats above the group's button and
-// stays up for as long as a draw tool is the current tool, so switching between
-// drawing and erasing is one tap.
-
-/** Gap between the toolbar and this bar, and the margin kept from screen edges. */
 const GAP_PX = 6
 const EDGE_PX = 10
 
@@ -45,8 +39,6 @@ const MobileDrawToolbar = ({
     const barRef = useRef<HTMLDivElement | null>(null)
     const [position, setPosition] = useState<Position | null>(null)
 
-    // Centre the bar over its trigger, then clamp it inside the screen. The bar
-    // grows when the eraser sizes appear, so re-measure on that too.
     useLayoutEffect(() => {
         const place = (): void => {
             const trigger = triggerRef.current
@@ -75,7 +67,6 @@ const MobileDrawToolbar = ({
             style={{
                 left: position?.left ?? 0,
                 bottom: position?.bottom ?? 0,
-                // Hidden for the one frame before it has been measured.
                 visibility: position ? 'visible' : 'hidden',
                 zIndex: 11,
             }}

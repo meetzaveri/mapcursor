@@ -15,7 +15,6 @@ import {
 } from '../../schema/queries'
 import {
     UPDATE_USER_REVISIT_COUNT,
-    INSERT_USER_ONE,
     INSERT_COMPONENT,
     INSERT_BULK_COMPONENTS,
     DELETE_COMPONENT_BY_ID,
@@ -53,6 +52,7 @@ import Canvas from '../../newCanvas'
 import ZoomControls from '../../components/ZoomControls'
 import GoToContentButton from '../../components/goToContentButton'
 import HelpButton from '../../components/helpButton'
+import ChromeReveal from '../../components/common/chromeReveal'
 import Sidebar from '../../components/sidebar/primary'
 import ElementPropertiesToolbar from '../../components/sidebar/elementProperties'
 import controlsIcon from '../../assets/controls.svg'
@@ -111,7 +111,7 @@ import type { UseMetaPropertiesApi } from '../../hooks/useMetaProperties'
 import { writeMetaLocal } from '../../utils/metaPropertyStore'
 import type { ParsedImport, BaseViewport } from '../../utils/importBase'
 import { draftFitsForStore } from '../../utils/baseSizeGuard'
-import { generateUUID, generateRandomUsernames } from '../../utils/misc'
+import { generateUUID } from '../../utils/misc'
 import { prefetchElementModule } from '../../elementModules'
 import {
     pollUntilElement,
@@ -184,12 +184,8 @@ import {
 } from '../../utils/geometry'
 import { BaseContext, useBaseContext } from './baseContext'
 
-// Re-exported so existing importers (`from '.../views/Base/base'`) and the
-// public lib.ts surface keep working — the canonical definition now lives in
-// the stable baseContext module (see the comment there for the HMR rationale).
 export { BaseContext, useBaseContext }
 
-// Strips __typename fields injected by Apollo before sending data back to Hasura
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function stripTypename(obj: any): any {
     if (Array.isArray(obj)) return obj.map(stripTypename)
@@ -202,7 +198,6 @@ function stripTypename(obj: any): any {
     return obj
 }
 
-/** Human-readable size for the live local-draft readout (UTF-8 bytes). */
 const formatDraftBytes = (n: number): string => {
     if (n < 1024) return `${n} B`
     if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
@@ -214,8 +209,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const baseIdFromUrl = routeParams.id
     const [localBaseId, setLocalBaseId] = useState(() => {
         if (baseIdFromUrl) return baseIdFromUrl
-        // Reuse the baseId stored with the local draft so viewport persistence
-        // keys stay stable across page refreshes in local (non-persisted) mode.
         try {
             const draft = localStorage.getItem(DRAFT_STORAGE_KEY)
             if (draft) {
@@ -223,10 +216,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 if (parsed?.baseId) return parsed.baseId
             }
         } catch (_) {}
-        // No draft yet — but the user may still have answered the map base's
-        // start-location prompt, whose anchor and camera are keyed by this id.
-        // The draft stays authoritative above; this only covers the gap where
-        // something was persisted before anything was drawn.
         try {
             const remembered = localStorage.getItem(LOCAL_BASE_ID_KEY)
             if (remembered) return remembered
@@ -242,14 +231,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const backgroundBaseIdRef = useRef<string | null>(null)
     const baseCreationInFlightRef = useRef<boolean>(false)
 
-    /**
-     * Claim a stable id for the local base at `/`.
-     *
-     * Called only when something worth reloading into has just been persisted
-     * against this base — today, an answer to the map start-location prompt.
-     * Deliberately not called on mount: a visit that touches nothing must leave
-     * localStorage alone, the same promise the base-type sidecar makes.
-     */
     const rememberLocalBaseId = useCallback((): void => {
         if (baseIdFromUrl) return
         try {
@@ -257,9 +238,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         } catch (_) {}
     }, [baseIdFromUrl, localBaseId])
 
-    // Keep a claimed id in step with rotations (share, import), which mint a new
-    // localBaseId. Guarded on the key already existing so this never claims one
-    // on its own — a rotation is not a reason to start remembering.
     useEffect(() => {
         if (baseIdFromUrl) return
         try {
@@ -269,10 +247,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         } catch (_) {}
     }, [localBaseId, baseIdFromUrl])
 
-    // Funnel: a persisted base was opened. `own` separates a real arrival from
-    // the sharer's own tab (shareLinkPopup opens the new link straight after
-    // sharing) and from the owner revisiting — without it the share loop looks
-    // like it works whether or not anyone ever follows a link.
     useEffect(() => {
         if (!baseIdFromUrl) return
         trackEvent('base_opened', { own: isOwnBase(baseIdFromUrl) })
@@ -318,8 +292,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         },
     ] = useMutation(UPDATE_USER_REVISIT_COUNT)
 
-    const [insertUser] = useMutation(INSERT_USER_ONE)
-
     const navigate = useNavigate()
 
     const [createBase, { loading: createBaseLoading, data: createBaseData }] =
@@ -349,8 +321,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         baseId,
     })
 
-    // Short self-dismissing notice at the bottom of the canvas (image drop
-    // refusals, etc.).
     const [canvasNotice, setCanvasNotice] = useState<string | null>(null)
     const [canvasNoticeMs, setCanvasNoticeMs] = useState(4000)
     const showCanvasNotice = useCallback(
@@ -370,14 +340,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const [zuiInBase, setZuiInBase] = useState<any>(null)
     const [selectedComponent, setSelectedComponent] = useState<unknown>(null)
     const [selectedGroup, setSelectedGroup] = useState<unknown>(null)
-    // Mirror of selectedGroup as a ref — useComponentHistory's applyBatch needs
-    // to read the currently-focused group at undo/redo time without re-running.
     const selectedGroupRef = useRef<unknown>(null)
-    // True while a selected element/group is actively being dragged or resized.
-    // Used to hide the (fixed-position) properties toolbar so it doesn't sit
-    // under the element mid-drag. Driven by a document-level pointer watcher
-    // below; `selectionPresentRef` lets that DOM handler read the live selection
-    // without re-binding on every selection change.
     const [isElementDragging, setIsElementDragging] = useState(false)
     const selectionPresentRef = useRef(false)
     const [currentElement, setCurrentElement] = useState<string | null>(null)
@@ -386,10 +349,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const { isDesktop, isMobile, isLaptop, isTablet } = useMediaQueryUtils()
 
     const stateRefForComponentStore = useRef<ComponentStore>({})
-    // newCanvas owns reorderSelected (it needs reconcileZOrder + the live zui
-    // selection). It populates this ref on mount; the context exposes a stable
-    // wrapper so the properties toolbar can trigger reordering too. No-op until
-    // Canvas mounts.
     const reorderSelectedRef = useRef<
         ((op: 'front' | 'forward' | 'backward' | 'back') => void) | null
     >(null)
@@ -399,9 +358,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         },
         []
     )
-    // newCanvas owns fitToContent (it lives on the live zui handle). It
-    // populates this ref on mount; the context exposes a stable wrapper so the
-    // "Go to content" button can frame all elements. No-op until Canvas mounts.
     const fitToContentRef = useRef<(() => boolean) | null>(null)
     const fitToContent = useCallback(
         (): boolean => Boolean(fitToContentRef.current?.()),
@@ -433,7 +389,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         clearDrawModesFromStorage,
     } = useDrawingModes()
 
-    // The map backdrop every base is drawn on.
     const {
         handleCameraChange: handleBackdropCameraChange,
         captureBackdrop,
@@ -441,30 +396,17 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setMapAnchor,
         hadStoredMapAnchor,
         ready: backdropReady,
+        firstPaint: mapFirstPaint,
     } = useMapBackdrop({
         baseId,
         serverConfig: props.serverBaseConfig,
     })
 
-    // Funnel: the canvas is mounted and usable. This is what every other step
-    // divides by. `backdropReady` only flips once mapBackdrop.mount returns a
-    // handle, i.e. once MapLibre has initialised — which needs WebGL, so a
-    // headless scanner never gets here. That makes it a much truer count of
-    // real arrivals than a pageview, which anything that parses HTML books.
     useEffect(() => {
         if (!backdropReady) return
         trackEvent('canvas_ready', { persisted: !!baseIdFromUrl })
     }, [backdropReady, baseIdFromUrl])
 
-    /**
-     * Where a recipient of this shared map should land, resolved once at mount.
-     *
-     * Requires BOTH halves of the base row's geography: the anchor (which makes
-     * the ink mean anything) and the landing view (the camera to open on). They
-     * are always written together, so anything less is a hand-edited row and is
-     * ignored rather than half-applied — Canvas then falls back to the saved
-     * camera, exactly as it did before this existed.
-     */
     const [initialMapLanding] = useState(() => {
         const anchor = props.serverBaseConfig?.mapAnchor
         const landing = props.serverBaseConfig?.landing
@@ -472,8 +414,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         return { anchor, lngLat: landing.lngLat, zoom: landing.zoom }
     })
 
-    // Kept in a ref-free plain callback because Canvas stores it in a ref of its
-    // own (see the stale-closure note in CLAUDE.md).
     const handleCameraChange = useCallback(
         (camera: CameraChangeEvent): void => {
             handleBackdropCameraChange(camera)
@@ -484,10 +424,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const { showMobileToolbarPanel, setShowMobileToolbarPanel } =
         useMobileToolbarPanels({ isMobile, selectedComponent })
 
-    // Mobile-only ✓/✗ controls for the multi-click curved-line draw. There's no
-    // Esc/Enter on touch, so the canvas signals the draw's start/end (via the
-    // same lifecycle as the "press Esc/Enter" nudge) and we surface finish/cancel
-    // buttons that dispatch back the equivalent events.
     const [showMultiClickDrawControls, setShowMultiClickDrawControls] =
         useState(false)
     useEffect(() => {
@@ -501,9 +437,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }, [])
 
-    // A text editor being open owns the same corner (its ✓/✗ live there), so
-    // the delete button stands down for its duration — deleting the element you
-    // are mid-sentence in is not what that tap means.
     const [isEditingText, setIsEditingText] = useState(false)
     useEffect(() => {
         const onStart = (): void => setIsEditingText(true)
@@ -517,7 +450,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     }, [])
 
     const {
-        // values
         defaultFill,
         defaultStrokeColor,
         defaultLinewidth,
@@ -527,7 +459,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         defaultTextColor,
         defaultTextSize,
         defaultTextFontFamily,
-        // raw setters (used by createApplyProperty + history)
         setDefaultFill,
         setDefaultStrokeColor,
         setDefaultLinewidth,
@@ -537,14 +468,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setDefaultTextColor,
         setDefaultTextSize,
         setDefaultTextFontFamily,
-        // base-facing setters (kept for any external callers)
         setDefaultLinewidthInBase,
         setDefaultStrokeTypeInBase,
         resetDefaults,
     } = useElementDefaults()
 
-    // Force the defaults on mount and on every theme toggle, overwriting any
-    // fill → transparent, stroke/text → ink.
     useEffect(() => {
         const forceInkDefaults = (): void => {
             setDefaultFill(TRANSPARENT_FILL)
@@ -567,7 +495,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     }, [setDefaultFill, setDefaultStrokeColor, setDefaultTextColor])
 
     const onStorageLimitRef = useRef<(() => Promise<void>) | null>(null)
-    // Write-side guard callback: assigned below once undoLastAction exists.
     const onDraftOverBudgetRef = useRef<(() => void) | null>(null)
 
     const {
@@ -594,8 +521,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         isMobile,
     })
 
-    // Filled in once useMetaProperties exists (below): history replays `META`
-    // entries through it.
     const applyMetaHistoryRef = useRef<
         UseMetaPropertiesApi['applyHistory'] | null
     >(null)
@@ -643,24 +568,14 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         seed: getComponentsForBaseData?.legendPresets,
     })
 
-    // Base-wide meta properties and their per-object values. Composed after
-    // the legend for the same reason: both seed off the base query and both
-    // ride persistBase's re-key. See .claude/context/meta-properties.md.
     const metaPropertiesApi = useMetaProperties({
         baseId,
         isPersistedRef,
         seed: getComponentsForBaseData?.metaProperties,
         recordToHistoryLog,
     })
-    // Closes the loop: meta edits record into the history above, and undo /
-    // redo of a `META` entry replays through the meta hook.
     applyMetaHistoryRef.current = metaPropertiesApi.applyHistory
 
-    // Write-side size guard. The measurement lives in useLocalDraftPersistence
-    // (real UTF-8 size of the persisted draft, after each save); when it's over
-    // budget it calls this, and we revert the last action + open the "canvas is
-    // full" modal. Skip when there's nothing to revert (a draft hydration or
-    // "open anyway"), so the guard never fights a load it can't roll back.
     const [showBaseFullModal, setShowBaseFullModal] = useState(false)
     onDraftOverBudgetRef.current = (): void => {
         if (historyLogRef.current.length === 0) return
@@ -668,8 +583,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setShowBaseFullModal(true)
     }
 
-    // Export the current base to a .json file — the "keep working elsewhere"
-    // path offered by the canvas-full modal. Reads viewport off the live scene.
     const handleExportBaseFromModal = useCallback(() => {
         const scene = twoJSInstanceRef.current?.scene
         const viewport = scene
@@ -679,8 +592,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                   ty: scene.translation.y,
               }
             : { scale: 1, tx: 0, ty: 0 }
-        // A failed meta fetch (shared base, offline) must not cost the export
-        // itself: it goes out without meta properties instead.
         void metaPropertiesApi
             .exportSet()
             .catch(() => undefined)
@@ -697,16 +608,10 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [readBackdropConfig])
 
-    // ---- Board import (P0) ----
-    // The chooser modal is driven by base state; the parsed file waits in a
-    // ref until the user picks "Open as new" vs "Merge".
     const [showImportChooser, setShowImportChooser] = useState(false)
     const [importError, setImportError] = useState<string | null>(null)
     const pendingImportRef = useRef<ParsedImport | null>(null)
 
-    // Set the camera absolutely to a saved viewport: reset to identity, then
-    // zoom + translate (the fitToContent pattern in newCanvas). zoomSet keeps
-    // ZUI's internal scale in sync — never set two.scene.scale directly.
     const restoreImportedViewport = useCallback((vp: BaseViewport): void => {
         const zui = zuiInBaseRef.current?.zui
         if (!zui) return
@@ -720,9 +625,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }, [])
 
-    // Belt-and-braces re-apply once the camera exists. newCanvas already
-    // installs the zoom range before restoring the saved viewport; this covers
-    // any later path that recreates the camera.
     useEffect(() => {
         zuiInBaseRef.current?.setZoomLimits?.(
             MAP_ZOOM_LIMITS.min,
@@ -730,18 +632,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         )
     }, [zuiInBase])
 
-    // Grab affordance for the empty-canvas drag-to-pan (common.css). Gated on
-    // the select tool specifically, not merely "no draw mode": with a draw tool
-    // armed the next drag authors an object, and a grab cursor would be
-    // promising the wrong gesture.
     useEffect(() => {
         const root = document.getElementById('main-two-root')
         if (!root) return
         root.classList.toggle('map-drag-pan', currentElement === 'pointer')
     }, [currentElement])
 
-    // Replace the whole canvas with the imported base and rotate the local
-    // base id. Mirrors clearBase's teardown + persistBase's id rotation.
     const importAsNewCanvas = useCallback(
         (parsed: ParsedImport): void => {
             window.dispatchEvent(new Event('clearSelector'))
@@ -752,9 +648,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             const newLocalId = generateUUID()
             const store: ComponentStore = {}
             Object.entries(parsed.components).forEach(([id, comp]) => {
-                // Backstop for the filter in beginBaseImport: this path sets
-                // the store directly, skipping addToLocalComponentStore's
-                // shared-base image guard.
                 if (
                     isPersistedRef.current &&
                     comp.componentType === IMAGE_COMPONENT
@@ -764,33 +657,15 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 store[id] = { ...comp, baseId: newLocalId }
             })
             stateRefForComponentStore.current = store
-            // The file's legend replaces the current one wholesale — this is
-            // "open as new canvas", so the old canvas's captions are as gone as
-            // its elements. Preset ids are kept exactly as the file has them,
-            // which is what makes the imported records' `legendPresetId` still
-            // resolve; there is nothing here to collide with.
             writeLegendPresetsLocal(newLocalId, parsed.legendPresets)
             replacePresets(parsed.legendPresets)
 
-            // The anchor goes with the canvas, for the same reason the legend
-            // does: the records' x/y were measured against the FILE's anchor,
-            // and the new local id has none until something writes one. Before
-            // this, the import looked right only until the next load, which
-            // found no anchor and drew it over the timezone city. A file with
-            // no anchor keeps the current one, which is at least where the
-            // user was. Local only: a shared base's anchor is the server's.
             if (!isPersistedRef.current) {
                 const anchor =
                     parsed.mapAnchor ?? readBackdropConfig().mapAnchor
                 if (parsed.mapAnchor) setMapAnchor(parsed.mapAnchor)
-                // Written explicitly: setMapAnchor persists under the id it was
-                // created with, which is the old one until the re-render.
                 if (anchor) writeAnchorConfig(newLocalId, { mapAnchor: anchor })
 
-                // Meta properties replace the current ones wholesale, like the
-                // legend. Component ids are kept as the file has them, so every
-                // value still names its object. The hook re-reads the sidecar
-                // when the id rotates below.
                 writeMetaLocal(newLocalId, {
                     properties: parsed.metaProperties.properties.map((p) => ({
                         ...p,
@@ -803,7 +678,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 })
             }
 
-            // Rotate localBaseId without the id-change effect wiping the store.
             skipComponentStoreResetRef.current = true
             setLocalBaseId(newLocalId)
             setComponentStore(store)
@@ -814,19 +688,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         [isPersisted, restoreImportedViewport, readBackdropConfig, setMapAnchor]
     )
 
-    // Merge the imported base into the current canvas: re-key every id to a
-    // fresh UUID (so it can't collide) and stack on top. One BATCH entry so a
-    // single undo removes the whole import.
     const mergeImportedBase = useCallback(
         async (parsed: ParsedImport): Promise<void> => {
             const records = Object.values(parsed.components)
-            // Add in ascending original z-order so the assigned positions
-            // preserve the imported set's relative stacking.
             records.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
 
-            // Precompute the current top position ONCE. Passing explicit
-            // positions makes addToLocalComponentStore skip its per-add O(n)
-            // max-scan — otherwise a bulk merge is O(n²) and freezes.
             const baseMax = Object.values(
                 stateRefForComponentStore.current
             ).reduce((m: number, c) => {
@@ -838,13 +704,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             const idMap = new Map<string, string>()
             records.forEach((r) => idMap.set(r.id, generateUUID()))
 
-            // The legend merges the same way the elements do: every imported
-            // preset is re-keyed so it cannot collide with one already on this
-            // canvas, and each record's binding is rewritten through that map.
-            // An imported preset is ADDED rather than matched by name — two
-            // canvases can easily both have a "Residential cluster" meaning
-            // different colours, and silently folding them together would
-            // restyle the marks already here.
             const presetIdMap = new Map<string, string>()
             const importedPresets = parsed.legendPresets.map((preset, i) => {
                 const newId = generateUUID()
@@ -861,16 +720,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                     ...legendPresetsRef.current,
                     ...importedPresets,
                 ])
-                // replacePresets only mirrors to localStorage in local mode, so
-                // a merge into a SAVED base has to insert them itself — the
-                // components around them are already being inserted by
-                // addToLocalComponentStore below, and a binding whose preset
-                // row never landed would violate the FK.
                 if (isPersistedRef.current) {
-                    // AWAITED, unlike most mutations here. The component
-                    // inserts below carry legendPresetId as a real FK, so a
-                    // fire-and-forget preset insert can lose the race and take
-                    // the whole batch down with a constraint violation.
                     await insertBulkLegendPresets({
                         variables: {
                             objects: importedPresets.map((p) => ({
@@ -891,12 +741,8 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 const newId = idMap.get(r.id) as string
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const cloned: any = { ...r, id: newId, baseId }
-                // A binding whose preset did not survive validation is dropped
-                // rather than carried as a dangling id — the mark keeps its
-                // styling and simply arrives without a caption.
                 cloned.legendPresetId =
                     presetIdMap.get(r.legendPresetId ?? '') ?? null
-                // Explicit top position, in sorted order — O(1) per add.
                 cloned.position = baseMax + i + 1
                 addToLocalComponentStore(
                     newId,
@@ -912,9 +758,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             })
             if (batch.length > 0) recordBatchToHistoryLog(batch)
 
-            // Meta properties follow the re-keyed objects. A property with the
-            // same name and type as one already here is reused; see
-            // mergeMetaSets. Not part of the undo batch, like the legend.
             await metaPropertiesApi
                 .mergeIncoming(parsed.metaProperties, idMap)
                 .catch((e) => console.error('[import] meta merge failed', e))
@@ -925,11 +768,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
 
     const beginBaseImport = useCallback(async (): Promise<void> => {
         const text = await openBaseFilePicker()
-        if (text == null) return // cancelled
+        if (text == null) return
         try {
             const raw = parseImportedBase(text)
-            // Shared bases don't take images yet; drop them up front so the
-            // chooser can say how many were left out.
             const parsed = isPersistedRef.current ? excludeImages(raw) : raw
             if (Object.keys(parsed.components).length === 0) {
                 pendingImportRef.current = null
@@ -951,10 +792,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setShowImportChooser(true)
     }, [])
 
-    // Reject an import that can't fit BEFORE applying it. Applying then letting
-    // the write-side guard revert a too-large import is what froze the page —
-    // so gate here (against the browser's REAL localStorage quota) and keep the
-    // modal in its error state instead.
     const rejectIfWontFit = useCallback(
         (projected: ComponentStore): boolean => {
             if (draftFitsForStore(projected)) return false
@@ -975,10 +812,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             setShowImportChooser(false)
             return
         }
-        if (rejectIfWontFit(parsed.components)) return // stay open, show error
+        if (rejectIfWontFit(parsed.components)) return
         setShowImportChooser(false)
         pendingImportRef.current = null
-        // Blobs first, so image elements find their asset when they mount.
         void restoreImageAssets(parsed.assets).then(() =>
             importAsNewCanvas(parsed)
         )
@@ -990,12 +826,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             setShowImportChooser(false)
             return
         }
-        // Project the merged result (current store + imported) and gate on it.
         const projected: ComponentStore = {
             ...stateRefForComponentStore.current,
             ...parsed.components,
         }
-        if (rejectIfWontFit(projected)) return // stay open, show error
+        if (rejectIfWontFit(projected)) return
         setShowImportChooser(false)
         pendingImportRef.current = null
         void restoreImageAssets(parsed.assets).then(() =>
@@ -1009,31 +844,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setImportError(null)
     }, [])
 
-    // Clear stale interaction flags from localStorage on mount so a page refresh
-    // never triggers SCENARIO_DRAW_SHAPE / SCENARIO_ARROW_DRAW / etc. on the
-    // first mousedown. These keys are only meaningful within a single page session.
-    //
-    // This parent effect runs AFTER the child shapesToolbar effect that sets the
-    // pan default, so the sweep above (which clears PAN_MODE_KEY) would otherwise
-    // wipe it out — leaving pan highlighted but inert. Re-activate it here so the
-    // pan default actually takes effect when geo objects are enabled.
     useEffect(() => {
         clearDrawModesFromStorage()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Sweep viewport and base entries older than VIEWPORT_TTL_MS or missing
-    // savedAt. Each new local draft writes its own mapcursor_viewport_<id> key
-    // (and, once it settles on a place, mapcursor_map_anchor_<id>); without this
-    // sweep, localStorage accumulates dead entries indefinitely.
-    //
-    // MAP_ANCHOR_KEY_PREFIX is matched *additively* alongside the viewport
-    // prefixes — all three share the same savedAt/TTL shape. Take care here:
-    // broadening this match incorrectly would evict every base's saved camera.
-    //
-    // Except the CURRENT local base's anchor, which never expires by age: it is
-    // the georeference of the elements on screen, not a cache (see
-    // baseTypes/anchorStorage.ts for how losing it moved a canvas to Kolkata).
     useEffect(() => {
         try {
             const now = Date.now()
@@ -1068,14 +883,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 }
             }
         } catch (_) {}
-        // Mount-only housekeeping; `localBaseId` is read once, as the base
-        // being opened.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Reset component store whenever the base changes (persisted mode only).
-    // In local mode the baseId is a stable UUID and draft restore handles initialization.
-    // skipComponentStoreResetRef lets persistBase() rotate localBaseId without wiping the store.
     const prevBaseIdRef = useRef(baseId)
     useEffect(() => {
         if (prevBaseIdRef.current !== baseId) {
@@ -1087,37 +897,14 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }, [baseId])
 
-    // Update revisit count on every base open, persisted or local.
-    // A null payload means there's no revisit row for this userId — i.e.
-    // the user was never created in this DB. Self-heal by inserting the
-    // user with the known id; the `after_user_insert` Postgres trigger
-    // then creates the revisits row (count = 1) for this visit.
     useEffect(() => {
         const userId = localStorage.getItem('userId')
         if (!userId) return
-        // Capture the revisit moment client-side as an ISO 8601 string;
-        // Hasura coerces it into the timestamptz `last_visit` column for
-        // cohort analysis in the DB.
         updateUserRevisit({
             variables: { userId, lastVisit: new Date().toISOString() },
-        })
-            .then(({ data }) => {
-                if (data?.update_users_user_revisits_by_pk) return
-                const { nickname, firstName, lastName } =
-                    generateRandomUsernames()
-                return insertUser({
-                    variables: {
-                        object: { id: userId, nickname, firstName, lastName },
-                    },
-                })
-            })
-            .catch(() => {
-                // Non-blocking: revisit tracking is best-effort and must
-                // never break base mount (network/permission/conflict).
-            })
+        }).catch(() => {})
     }, [])
 
-    // Track last opened base only once it's persisted
     useEffect(() => {
         if (isPersisted && baseId) {
         }
@@ -1133,7 +920,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 const baseComponentStore: ComponentStore = { ...componentStore }
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 getComponentsForBaseData.components.forEach((item: any) => {
-                    // Shared bases never render images (local-only for now).
                     if (item.componentType === IMAGE_COMPONENT) return
                     baseComponentStore[item.id] = item as ComponentRecord
                 })
@@ -1146,15 +932,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         isPersistedRef.current = isPersisted
     }, [isPersisted])
 
-    // Warm the core element chunks once the base is idle after mount, so the
-    // first use of any of them finds its chunk already cached (the per-arm
-    // prefetch in primary.tsx still covers the quick-draw race). Best-effort:
-    // gated on idle so it never competes with initial paint/base-load.
-    //
-    // `groupobject` is included because group-selection lazy-loads it on
-    // demand; without warming, the group can't mount until its ~580ms (Slow 4G)
-    // chunk arrives, leaving the selected elements invisible — the group-select
-    // "blink".
     useEffect(() => {
         const CORE_ELEMENT_CHUNKS = [
             'point',
@@ -1187,11 +964,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         stateRefForComponentStore.current = componentStore
     }, [componentStore])
 
-    // NOTE: the persisted-base loading gate lives in the parent
-    // (views/Base/index.tsx). Never add a conditional `return` here — this
-    // component runs hundreds of hooks below this point and an early return
-    // changes the hook count between renders (Rules of Hooks violation).
-
     const setRootCursor = (cursor: string) => {
         const root = document.getElementById('main-two-root')
         if (root) root.style.cursor = cursor
@@ -1217,12 +989,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setPencilMode(value)
         if (value) {
             cancelPendingElement()
-            // Drop the selection, as togglePointer and pan mode do. Pencil mode
-            // shows the PENCIL properties set over any selection (see
-            // resolveSetKey), but applyProperty still writes to whatever is
-            // selected — so without this, setting the pencil's width also
-            // restyled the area just finished drawing. `clearSelector` takes
-            // the controller box and element-owned chrome with it.
             window.dispatchEvent(new CustomEvent('clearSelector', {}))
             setSelectedComponent(null)
             setRubberModeInBase(false)
@@ -1257,38 +1023,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setSelectedComponent(shape ?? null)
     }
 
-    /**
-     * Travel to a searched place.
-     *
-     * The map base georeferences the base through a SINGLE anchor: surface
-     * (0,0) is `anchor.lngLat`, and every element's surface coordinates mean a
-     * real place only in relation to it. Moving the anchor therefore re-points
-     * the entire base at new geography while the ink stays put — a route drawn
-     * around Satellite, Ahmedabad reappears in Virginia because it was never
-     * "in Ahmedabad", it was 500px from wherever the anchor happened to be.
-     *
-     * So the anchor is written once and then left alone, and travelling is a
-     * CAMERA move: the place's lng/lat resolves to a fixed surface point (pure
-     * Mercator arithmetic against the anchor — see mercator.ts) and we fly the
-     * viewport there across what is, in effect, a world-sized canvas.
-     *
-     * The one time re-anchoring is right is an empty map: with nothing drawn
-     * there is no geography to betray, and re-anchoring re-centres the ZUI's
-     * usable zoom window (~[anchor.zoom − 4.1, +3]) on where the user actually
-     * is, instead of stranding them at the edge of a window centred half a
-     * world away.
-     */
-    /**
-     * Put the map base in pan mode.
-     *
-     * Called wherever we hand the user a NEW VIEW they did not navigate to
-     * themselves — a search pick, the first-run location prompt. Landing
-     * somewhere unfamiliar, the first thing anyone does is look around, and on a
-     * map "look around" is the pan tool; leaving them in a draw or select tool
-     * meant the first drag either drew something or dragged an element. `pan`
-     * has to be set as the current element too, or the toolbar highlights one
-     * tool while the canvas is in another.
-     */
     const enterPanMode = useCallback((): void => {
         togglePanMode(true)
         setCurrentElement('pan')
@@ -1305,14 +1039,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
 
             if (!anchor || !mapHasContent) {
                 setMapAnchor(place)
-                // The place IS surface (0,0) now, and syncMapToZui puts surface
-                // (0,0) at screen (tx, ty) — which on an untouched camera is the
-                // top-left corner, not the middle. Centre it explicitly so
-                // "start here" actually lands here. Scale 1 is required, not
-                // cosmetic: mapZoom = anchor.zoom + log2(scale), so anything
-                // else would show a different zoom than the one just chosen.
-                // This also fires onCameraChange, which is what writes the
-                // viewport — the camera and the anchor land in storage together.
                 zuiInBaseRef.current?.centerOnSurface?.(0, 0, 1)
                 enterPanMode()
                 return
@@ -1329,45 +1055,14 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         [readBackdropConfig, setMapAnchor, enterPanMode]
     )
 
-    /**
-     * First-visit "where are you mapping?" prompt.
-     *
-     * Deliberately narrow — it may only fire while re-anchoring is still a free
-     * action. Three conditions, all necessary:
-     *
-     *  1. We are on the map base (nothing to ask otherwise).
-     *  2. The base has never persisted an anchor. Note this reads the value
-     *     snapshotted at load, not the live one: the provider fills in a
-     *     timezone guess the moment it mounts, so the live config always has an
-     *     anchor and would never let the prompt through.
-     *  3. Nothing is on the map yet. This is the one that really matters —
-     *     re-anchoring moves the geography UNDER the ink (element coordinates
-     *     never change across an anchor change), so asking after something has
-     *     been drawn would offer to silently relocate it. Same predicate
-     *     goToPlace uses to decide re-anchor vs. fly-the-camera, for exactly
-     *     the same reason.
-     *
-     * `askedRef` keeps it to once per session, so toggling bases repeatedly
-     * before answering doesn't re-open it. Across sessions, answering EITHER
-     * way persists an anchor, which retires condition 2 permanently — that is
-     * what makes "Skip" stick rather than nag on the next visit.
-     */
     const [showMapStartModal, setShowMapStartModal] = useState(false)
     const askedMapStartRef = useRef(false)
-    // True only between opening the prompt and the user answering it. Both
-    // answers write persisted state, so neither may run on a stray invocation —
-    // and one already did: a leaked Escape handler in Modal (since fixed) called
-    // onSkip long after the dialog was gone, re-anchoring a map the user had
-    // already placed. Defence in depth, because "a dismissed dialog silently
-    // moved my map" is not a failure the user can diagnose.
     const mapStartPendingRef = useRef(false)
     const [timezoneCity] = useState(() => resolveTimezoneCity())
 
     useEffect(() => {
         if (askedMapStartRef.current) return
         if (hadStoredMapAnchor) return
-        // Wait for the backdrop to actually be live, so a "Skip" has something
-        // to persist against.
         if (!backdropReady) return
 
         const store = stateRefForComponentStore.current ?? {}
@@ -1382,22 +1077,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setShowMapStartModal(true)
     }, [hadStoredMapAnchor, backdropReady, componentStore])
 
-    /**
-     * Commit the timezone city as this base's real anchor.
-     *
-     * Shared by "Skip" and by every failed location lookup. Both are decisions,
-     * not silence: persisting an anchor is what retires the prompt for good, so
-     * the user is never asked the same question twice on the same base.
-     */
     const settleOnTimezoneCity = useCallback((): void => {
         setMapAnchor({
             lngLat: [...timezoneCity.lngLat],
             zoom: readBackdropConfig().mapAnchor?.zoom ?? DEFAULT_ANCHOR_ZOOM,
         })
-        // Same reason as the re-anchor branch of goToPlace: the city is surface
-        // (0,0), which an untouched camera parks in the top-left corner. "Use
-        // Ahmedabad" should show Ahmedabad, and centring is also what fires
-        // onCameraChange and gets the viewport written alongside the anchor.
         zuiInBaseRef.current?.centerOnSurface?.(0, 0, 1)
         enterPanMode()
         rememberLocalBaseId()
@@ -1415,29 +1099,14 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             mapStartPendingRef.current = false
             trackEvent('map_start_answered', { via: 'pick' })
             setShowMapStartModal(false)
-            // The map is empty (that is the gate), so this re-anchors rather
-            // than flying the camera — which is what we want: the whole zoom
-            // window re-centres on the chosen place.
             goToPlace(place)
             rememberLocalBaseId()
         },
         [goToPlace, rememberLocalBaseId]
     )
 
-    /**
-     * A location lookup failed (denied, timed out, or unsupported).
-     *
-     * Settles the base on the timezone city so it is never left anchor-less,
-     * but deliberately leaves `mapStartPendingRef` set and the dialog open: the
-     * user has not answered yet, they were only refused by their browser. They
-     * can still search, and a later pick re-anchors the (still empty) map.
-     */
     const handleMapStartFallback = useCallback((): void => {
         if (!mapStartPendingRef.current) return
-        // Not an answer — the browser refused on their behalf and the dialog
-        // stays open — so it is tracked apart from 'skip'. A high share here
-        // means the prompt is losing people to a permission dialog they never
-        // asked for, which is a different fix from "they weren't interested".
         trackEvent('map_start_answered', { via: 'fallback' })
         settleOnTimezoneCity()
     }, [settleOnTimezoneCity])
@@ -1447,29 +1116,10 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         mapStartPendingRef.current = false
         trackEvent('map_start_answered', { via: 'skip' })
         setShowMapStartModal(false)
-        // Persist the timezone city they are already looking at. Declining is a
-        // decision, so we record it and stop asking, rather than treating it as
-        // "unanswered" and re-prompting forever.
         settleOnTimezoneCity()
     }, [settleOnTimezoneCity])
 
-    // Creates a base in the background on first interaction (non-blocking).
-    // Stores the server base ID in state + ref + localStorage for later use.
-    //
-    // `trigger` names the interaction that caused it, and rides the
-    // `first_element_drawn` event. Every guard above the insert is also a
-    // guard on that event, which is exactly what we want: the row is created
-    // once per browser, so the event marks the first edit this browser has
-    // ever made — the step the whole funnel turns on.
     const ensureBackgroundBase = async (trigger: string = 'unknown') => {
-        // Fired above every guard below, and before the insert is attempted.
-        // Activation is "this person edited something" — not "this person
-        // edited something AND Hasura happened to be up", which is what
-        // tracking it after the await used to mean. Above the isPersisted
-        // guard too, so a first edit made on a map opened from someone else's
-        // link still counts: that is activation by any honest reading.
-        // `onceEver` is what keeps it to one per browser now that the
-        // backgroundBaseId guard no longer gates it.
         if (onceEver('first_element_drawn')) {
             trackEvent('first_element_drawn', { trigger })
         }
@@ -1495,14 +1145,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }
 
-    // Records ADD action, updates store and syncs to DB
     const addToLocalComponentStore = (
         id: string,
         type: string,
         componentInfo: ComponentRecord,
         skipHistory: boolean = false
     ) => {
-        // groupobject is a transient visual construct and must never be persisted
         if (
             type === GROUP_COMPONENT ||
             componentInfo?.componentType === GROUP_COMPONENT
@@ -1510,12 +1158,8 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             return
         }
 
-        // Images are local-only for now. Covers every add path (drop is
-        // refused upstream with a notice; this catches import-merge and paste
-        // on a shared base) so an image row never reaches the DB.
         if (isPersistedRef.current && type === IMAGE_COMPONENT) return
 
-        // Strip transient grouping coords — not part of DB schema
         const {
             relativeX: _rX,
             relativeY: _rY,
@@ -1523,12 +1167,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } = (componentInfo ?? {}) as any
 
-        // Assign a z-order position so the element renders deterministically
-        // (and survives a refresh). New elements go on top: max(position)+1.
-        // Computed from the synchronous ref — not `componentStore` state —
-        // so back-to-back adds (rapid drawing, multi-paste) get increasing
-        // positions instead of colliding. A pre-set position is preserved so
-        // undo-of-delete and clipboard paste keep their original stacking.
         if (safeInfo.position == null) {
             const maxPos = Object.values(
                 stateRefForComponentStore.current
@@ -1540,7 +1178,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             safeInfo.position = maxPos + 1
         }
 
-        // Trigger background base creation on first interaction
         ensureBackgroundBase(type)
 
         if (!skipHistory) {
@@ -1577,9 +1214,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }
 
-    // Builds a text-element shapeData object using the dynamic defaults
-    // returned by GET_COMPONENT_TYPES (so dblclick/T-key paths produce the
-    // exact same shape the sidebar Text button does).
     const buildTextShapeData = (
         id: string,
         x: number,
@@ -1594,8 +1228,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 if (item.label === 'text') typeItem = item
             })
         }
-        // Fallback when the Hasura catalog isn't reachable — keeps text
-        // creation working when craftbase runs standalone as a library.
         if (!typeItem) {
             typeItem = {
                 width: 120,
@@ -1637,8 +1269,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }
 
-    // One-shot text-draw mode: cursor → crosshair, next mousedown on canvas
-    // places the pending text element via SCENARIO_TEXT_DRAW in newCanvas.
     const enableTextDrawMode = () => {
         togglePencilMode(false)
         togglePointer(false)
@@ -1653,11 +1283,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         addToLocalComponentStore(id, 'text', shapeData)
     }
 
-    // Place a text element at the given surface coords and immediately open
-    // the editing textarea. We can't dispatch triggerTextInput on a fixed
-    // timer — the NewText component is lazy-loaded, so on first use the
-    // listener may not be registered for several hundred ms. Poll the Two.js
-    // scene for the element instead, then dispatch once it's mounted.
     const createTextAtSurface = (x: number, y: number) => {
         const id = generateUUID()
         const shapeData = buildTextShapeData(id, x, y)
@@ -1674,54 +1299,32 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         })
     }
 
-    // Snapshots only the properties being changed before applying bulk updates
     const updateComponentBulkPropertiesInLocalStore = (
         id: string,
         bulkObj: Partial<ComponentRecord>,
         skipHistory: boolean = false,
         syncDefaults: boolean = false
     ) => {
-        // Editing a property counts as a first real interaction: spin up the
-        // background base, same as the shapes toolbar. One-shot.
         ensureBackgroundBase('property')
 
         const userId = localStorage.getItem('userId')
 
         if (!skipHistory) {
-            // Snapshot only the properties that bulkObj will overwrite
             const currentComponent = stateRefForComponentStore.current[id]
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const prevProps: Record<string, any> = {}
             Object.keys(bulkObj).forEach((key) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 let val = (currentComponent as any)?.[key]
-                // Opacity has no stored value until first set, but its effective
-                // prior value is "fully opaque" (or a legacy metadata.opacity).
-                // Capture that so undo of the FIRST opacity change restores it
-                // instead of no-op'ing on an empty snapshot.
                 if (val === undefined && key === 'opacity') {
                     val = readOpacity(currentComponent)
                 }
-                // Same trap as opacity: the column is unset until the user
-                // first turns the switch off, so without this the FIRST toggle
-                // snapshots nothing and undo leaves the label stuck scaling
-                // with the map. Absent means zoom-resistant — restore that.
                 if (val === undefined && key === 'zoomResistant') {
                     val = true
                 }
-                // And again for the legend binding. An element that has never
-                // carried a preset has no value here, so without this the
-                // snapshot omits the key entirely and undoing the FIRST apply
-                // reverts the styling while leaving the element bound — the
-                // legend would keep counting a mark that no longer matches it.
-                // `null` (not undefined) is what reaches the DB: toComponentColumns
-                // drops undefined and keeps an explicit null, which is the
-                // difference between "no opinion" and "unbind this".
                 if (val === undefined && key === 'legendPresetId') {
                     val = null
                 }
-                // An area drawn before fill types existed has no value; it
-                // painted solid, which is stored as null.
                 if (val === undefined && key === 'fillType') {
                     val = null
                 }
@@ -1765,14 +1368,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }
 
-    // Snapshots current x,y before updating position, then updates store and DB
     const updateComponentVerticesInLocalStore = (
         id: string,
         x: number,
         y: number
     ) => {
-        // Dragging counts as a first real interaction: spin up the background
-        // base, same as drawing via the shapes toolbar. Idempotent.
         ensureBackgroundBase('drag')
 
         const userId = localStorage.getItem('userId')
@@ -1784,12 +1384,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             prevY: stateRefForComponentStore.current[id]?.y ?? 0,
         })
 
-        // Move the GEOMETRY, not just the columns. This is the placement path
-        // for an element created off-screen and positioned by a later click
-        // (point, text, and anything else the canvas parks at -9999), so
-        // writing `x`/`y` alone left the record's own coordinates back at its
-        // creation position — it looked right until the next load, then
-        // reappeared where it was born.
         const current = stateRefForComponentStore.current[id]
         const moved = moveGeometryTo(current, Math.trunc(x), Math.trunc(y))
         const placement = moved ?? { x: Math.trunc(x), y: Math.trunc(y) }
@@ -1804,13 +1398,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         stateRefForComponentStore.current = updatedComponentStore
         setComponentStore(updatedComponentStore)
 
-        // Sync the LIVE scene copy as well. `ElementRenderWrapper` freezes each
-        // element's props at mount, and these elements are created off-screen —
-        // so `group.elementData` still holds the -9999 placeholder geometry,
-        // and it is the copy the element's own editors commit from. A point's
-        // label blur does exactly that (`setProperties(group.elementData, …)`),
-        // which wrote the placeholder position straight back over the placement
-        // and put the pin back off-screen on the next load.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const group = twoJSInstanceRef.current?.scene?.children?.find(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1858,7 +1445,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }
 
-    // Snapshots full component state before deletion, then removes from store and DB
     const deleteComponentFromLocalStore = (id: string) => {
         ensureBackgroundBase('delete')
 
@@ -1875,7 +1461,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         stateRefForComponentStore.current = updatedComponentStore
         setComponentStore(updatedComponentStore)
 
-        // Tell Canvas to untrack this id so a future restore (undo) gets a fresh wrapper
         window.dispatchEvent(
             new CustomEvent('elementRemoved', { detail: { id } })
         )
@@ -1890,16 +1475,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     }
 
     const setCurrentElementInBase = (val: string | null) => {
-        // The single chokepoint for "which tool is active", so it catches the
-        // keyboard shortcuts as well as the toolbar. Clearing the tool (null)
-        // is not a selection and isn't tracked.
-        //
-        // Two events, because they answer different questions. `tool_selected`
-        // fires on every switch and measures tool popularity; a single drawing
-        // session produces dozens. `first_tool_selected` fires once per
-        // session and is the funnel step — paired with `first_element_drawn`
-        // it separates "never found the toolbar" from "picked a tool and
-        // couldn't draw with it", which need completely different fixes.
         if (val) {
             if (oncePerSession('first_tool_selected')) {
                 trackEvent('first_tool_selected', { tool: val })
@@ -1917,24 +1492,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         })
     }
 
-    /**
-     * The geography a share has to carry, read at the moment of sharing.
-     *
-     * Two different things, and both are needed:
-     *
-     *  - **anchor** — the georeference. Surface (0,0) IS this lng/lat at this
-     *    zoom, and elements store surface pixels, so without it a recipient's
-     *    map falls back to a guess made from *their* timezone and every pin
-     *    lands in the wrong city.
-     *  - **landing** — where the camera opens: the centre of the view being
-     *    shared. Recorded as lng/lat/zoom, not tx/ty/scale, because pixel
-     *    translations replayed on a different-sized screen land somewhere else.
-     *
-     * `readBackdropConfig()` returns the anchor the base has settled on, which
-     * is null for a base whose owner never searched a place — `mapBackdrop.mount`
-     * deliberately never persists its timezone guess (doing so would permanently
-     * suppress the first-visit location prompt).
-     */
     const captureShareGeo = (): {
         anchor: MapAnchor | null
         landing: MapAnchor | null
@@ -1951,9 +1508,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             typeof scene?.scale === 'number' && scene.scale > 0
                 ? scene.scale
                 : 1
-        // two.width/height, never the container's clientWidth/clientHeight —
-        // #main-two-root is 0-height (the SVG is absolutely positioned), which
-        // would put the landing half a screen off.
         const vw = two.width || window.innerWidth
         const vh = two.height || window.innerHeight
         const centre = {
@@ -1969,7 +1523,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }
 
-    /** The georeference columns for an insert/update, omitting what we lack. */
     const shareGeoColumns = (geo: ReturnType<typeof captureShareGeo>) => ({
         ...(geo.anchor && {
             mapAnchorLng: geo.anchor.lngLat[0],
@@ -1984,14 +1537,8 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     })
 
     const persistBase = async (): Promise<string> => {
-        // Stamp the base's geography onto the row itself. Without the anchor a
-        // recipient has no georeference, so every element's stored x/y means
-        // nothing and the ink lands in the wrong city.
         const geo = captureShareGeo()
 
-        // Always create a fresh base at share time. The background base
-        // pre-created by ensureBackgroundBase may be stale (e.g. DB was reset
-        // between sessions) — using its ID would cause a FK violation on insert.
         const { data: baseData } = await createBase({
             variables: {
                 object: { ...shareGeoColumns(geo) },
@@ -2000,17 +1547,8 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const serverBaseId = baseData?.base?.id
         if (!serverBaseId) throw new Error('createBase returned no id')
 
-        // Claim it before anyone can open it, so this browser's own visit to
-        // the new link isn't counted as someone arriving from a share.
         rememberOwnBase(serverBaseId)
 
-        // The legend goes FIRST, and its ids are re-minted like everything
-        // else. Components carry `legendPresetId` as a real FK, so inserting
-        // them before their presets exist would be a constraint violation —
-        // and carrying the OLD ids across would point every binding at rows on
-        // another base. `presetIdMap` is what keeps a shared canvas's captions
-        // attached to the marks they caption; without it, sharing silently
-        // unbinds the whole legend at the exact moment it starts mattering.
         const presetIdMap = new Map<string, string>()
         const presetsForDB = legendPresetsRef.current.map((preset) => {
             const newId = generateUUID()
@@ -2030,44 +1568,23 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             })
         }
 
-        // Insert all components to DB under the server base ID.
-        // Generate a fresh UUID for each component's id so re-sharing from '/'
-        // never hits a "duplicate key" uniqueness violation.
         const allEntries = Object.entries(stateRefForComponentStore.current)
         const componentIdMap = new Map<string, string>()
         const componentsForDB = allEntries
-            // Skip corrupt/partial store entries (no componentType). These come
-            // from undo/redo restore paths and would abort the whole bulk
-            // insert with a NOT NULL violation on componentType.
             .filter(([, comp]) => (comp as ComponentRecord)?.componentType)
-            // Images are local-only: their bytes live in this browser's
-            // IndexedDB, so a shared row would point at nothing. They stay in
-            // the local draft. Once uploads land (see
-            // .claude/context/meta-properties.md), rows with a hosted url can
-            // be let through.
             .filter(
                 ([, comp]) =>
                     (comp as ComponentRecord).componentType !== IMAGE_COMPONENT
             )
             .map(([key, comp]) => {
-                // Remembered so meta values can follow their objects to the
-                // shared copy (metaPropertiesApi.persistToBase below).
                 const newId = generateUUID()
                 componentIdMap.set((comp as ComponentRecord).id ?? key, newId)
                 return {
-                    // Allowlist, not a spread: a ComponentRecord carries
-                    // client-only fields (isDummy, relativeX/Y) that Hasura has no
-                    // column for, and it rejects the whole batch on the first one.
                     ...toComponentColumns(
                         stripTypename(comp) as Record<string, unknown>
                     ),
                     id: newId,
                     baseId: serverBaseId,
-                    // Re-point the binding at this base's copy of the preset. A
-                    // record whose preset somehow did not come across is unbound
-                    // rather than left pointing at a foreign row — it keeps its
-                    // styling and simply loses its caption, which is the same
-                    // outcome as deleting the preset.
                     legendPresetId:
                         presetIdMap.get(
                             (comp as ComponentRecord)?.legendPresetId ?? ''
@@ -2093,34 +1610,13 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             })
         }
 
-        // Meta properties go AFTER the components, because each value names
-        // its object. Definitions are re-minted and values re-pointed through
-        // componentIdMap; image properties stay behind (no hosting yet).
         await metaPropertiesApi.persistToBase(serverBaseId, componentIdMap)
 
-        // Mint a new local base ID so the '/' session continues independently
-        // from the now-shared base. Components keep their visual state; only the
-        // local identity rotates.
         const newLocalId = generateUUID()
 
-        // Carry this session's base type, anchor and camera to the new local id.
-        //
-        // Both are keyed by baseId, so rotating the id without moving them
-        // orphaned the lot: sharing a map and then reloading '/' brought the
-        // canvas back as a *whiteboard*, with every geo object hidden and the
-        // anchor gone — the user's own work invisible, on the base they had
-        // just been working on. The share and the '/' session are meant to
-        // diverge in identity, not in substrate.
         try {
             writeAnchorConfig(newLocalId, readBackdropConfig())
-            // The legend rides along for the same reason the anchor does: the
-            // `/` session keeps its elements, so it has to keep the captions
-            // that explain them. These stay on the ORIGINAL preset ids — the
-            // re-minted ones above belong to the shared copy, and the two
-            // diverge from here exactly as the component ids do.
             writeLegendPresetsLocal(newLocalId, legendPresetsRef.current)
-            // Meta properties too, on the ORIGINAL ids: the '/' session keeps
-            // its component ids, so every value still names its object.
             const localMeta = metaPropertiesApi.readLocalSet()
             writeMetaLocal(newLocalId, {
                 properties: localMeta.properties.map((p) => ({
@@ -2141,7 +1637,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 })
             }
         } catch (_) {
-            // A lost preference must never fail the share itself.
         }
 
         const updatedStore: ComponentStore = {}
@@ -2152,12 +1647,10 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         )
         stateRefForComponentStore.current = updatedStore
 
-        // Rotate localBaseId without wiping the Two.js scene or componentStore
         skipComponentStoreResetRef.current = true
         setLocalBaseId(newLocalId)
         setComponentStore(updatedStore)
 
-        // Persist draft immediately under the new local ID
         try {
             localStorage.setItem(
                 DRAFT_STORAGE_KEY,
@@ -2169,30 +1662,13 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             )
         } catch (_) {}
 
-        // Clear the background base (its work is now on the shared base)
         backgroundBaseIdRef.current = null
         setBackgroundBaseId(null)
         localStorage.removeItem(BACKGROUND_BASE_STORAGE_KEY)
 
-        // Stay in local (non-persisted) mode — new drawings on '/' are a fresh session
         return serverBaseId
     }
 
-    /**
-     * Publish this base and return the id its link points at. The single entry
-     * point for sharing, whichever state the base is in.
-     *
-     * The two paths used to diverge badly: an unpersisted base got created and
-     * published, while an already-persisted one just had its URL copied — never
-     * publishing it. So a base that reached `/base/:id` by any route other than
-     * the share button (the storage-limit auto-persist, most reachably) had its
-     * link handed out while `isPublic` stayed false.
-     *
-     * Re-sharing also refreshes the landing view, since the owner has almost
-     * certainly panned since the base was created. It deliberately does NOT
-     * touch the anchor: that is the georeference the stored elements were drawn
-     * against, and rewriting it would slide the world under ink that stays put.
-     */
     const shareBase = async (): Promise<string> => {
         if (!isPersistedRef.current) {
             const serverBaseId = await persistBase()
@@ -2212,14 +1688,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         return baseId
     }
 
-    // Assign storage-limit handler ref so useLocalDraftPersistence can call it
-    // without a direct dependency on persistBase being defined at hook-call time.
     onStorageLimitRef.current = async () => {
         try {
             const serverBaseId = await persistBase()
-            // Type-aware: a map base auto-persisted at the storage limit must
-            // hand back a /map/ link, or the user follows it to a whiteboard
-            // with all their geo work hidden.
             setStorageLimitBaseUrl(baseUrl(serverBaseId))
             setShowStorageLimitModal(true)
         } catch (e) {
@@ -2234,17 +1705,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 deleteBulkComponents({ variables: { _in: ids } })
             }
         }
-        // Tear down any active selection before scene clear so the
-        // selectionController doesn't hold stale group/shape refs that
-        // suppress the next selection's UI.
         window.dispatchEvent(new Event('clearSelector'))
         setSelectedComponent(null)
         twoJSInstanceRef.current?.clear()
         twoJSInstanceRef.current?.update()
         setComponentStore({})
         clearHistory(isPersisted)
-        // Reset element defaults to factory values so a previously-set default
-        // (e.g. linewidth:0) doesn't leak into shapes drawn after clearing.
         resetDefaults()
     }
 
@@ -2255,10 +1721,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         (sel?.shape?.type === 'arrowLine' ||
             sel?.group?.data?.elementData?.isLineCircle === true)
 
-    // Mirror text-property changes to a live editing textarea so the overlay
-    // visually matches what Two.js will render on blur. No-op when no
-    // textarea is open. fontSize is in surface units; we scale to screen
-    // pixels using the current scene zoom.
     const syncOpenTextarea = ({
         fontSize,
         fontFamily,
@@ -2280,14 +1742,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }
 
-    /**
-     * Ask a standalone text to re-measure its selection box.
-     *
-     * The toolbar resizes text by mutating its Two.Text nodes in place, which
-     * never reaches the mounted component through React — ElementRenderWrapper
-     * freezes its props at mount — so the box it drew at selection time is the
-     * only thing left describing bounds that no longer exist.
-     */
     const refreshTextSelector = (componentId?: string): void => {
         if (!componentId) return
         window.dispatchEvent(
@@ -2303,10 +1757,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const textSize = (sizesMap as any)[newLabel]
         const twoText = sel?.shape?.data
         if (!twoText) return
-        // Standalone multiline text is a stack of Two.Text line nodes (line 1
-        // is `twoText`, lines 2..N are satellites in the same group). Size
-        // EVERY node and re-stack the block at the new line height — sizing
-        // only line 1 left the rest unchanged until a reload.
         const sizeNodes = getShapeTextNodes(sel?.group?.data)
         const nodes = sizeNodes.length > 0 ? sizeNodes : [twoText]
         const n = nodes.length
@@ -2320,55 +1770,27 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const componentId = elementData?.id
         const patch = setProperties(elementData, {
             fontSize: textSize,
-            // Reconstruct the raw multiline string from every line node,
-            // not just line 1 — otherwise a reload would drop lines 2..N.
             content: nodes.map((node) => node.value).join('\n'),
         })
-        // Keep the in-place elementData.metadata current too. Other property
-        // handlers (e.g. opacity in applyProperty) read it as the merge base; if
-        // left stale they'd write the OLD fontSize back to the store and the
-        // resize would silently revert on reload.
         if (elementData && patch.metadata) {
             elementData.metadata = patch.metadata
         }
         updateComponentBulkPropertiesInLocalStore(componentId, patch)
         twoJSInstance?.update()
         syncOpenTextarea({ fontSize: textSize })
-        // The glyphs changed size, so the selection box around them is wrong.
-        // Nothing else re-measures it: Chromium happened to hide it on blur and
-        // Firefox happened to leave it stale, which is why the two looked so
-        // different. See TEXT_SELECTOR_REFRESH_EVENT.
         refreshTextSelector(componentId)
     }
 
-    // After a text style change (size/family) on a shape-with-text, re-wrap the
-    // text to the shape's current width at the NEW style and re-fit the shape's
-    // height to the resulting line count — then persist height + metadata
-    // together. This keeps the live scene and a post-reload render identical (a
-    // bigger font re-wraps to more lines and the box grows vertically, instead
-    // of the text spilling out; switching back reclaims that height rather than
-    // leaving the box stuck at its tallest-ever size). A height the user set by
-    // dragging is preserved — see `resolveHeightForTextStyleChange`. Width
-    // stays user-driven either way.
-    // Takes PROPERTY BAGS, not metadata envelopes — `shapeTextStyleFromMeta`
-    // and `applyShapeText` read named keys, and the envelope only wraps back
-    // around them at the store-write boundary below.
     const reflowShapeTextAfterStyleChange = (
         componentId: string,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         updatedProps: any,
-        // Properties as they were BEFORE this change — the style the current
-        // height was fitted to, needed to tell auto-fit from a user-dragged
-        // height.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         previousProps: any
     ) => {
         const group = sel?.group?.data
         const shapePath = sel?.shape?.data
         const kind = group?.elementData?.componentType
-        // While the inline editor is open the text layer is hidden and the
-        // blur path owns the reflow+persist — don't fight it; just persist
-        // the metadata so the editor reads the latest style.
         const editingActive = !!document.querySelector('.temp-input-area')
         const metadataPatch = setProperties(
             stateRefForComponentStore.current[componentId],
@@ -2384,7 +1806,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 ? updatedProps.textContent
                 : ''
         const width = shapePath.width
-        // Re-render the wrapped multiline layer at the new style.
         applyShapeText(twoJSInstance, group, kind, width, updatedProps)
         const { font: nextFont } = shapeTextStyleFromMeta(updatedProps)
         const { font: prevFont } = shapeTextStyleFromMeta(previousProps)
@@ -2412,8 +1833,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const textSize = (sizesMap as any)[newLabel]
         const twoText = sel?.text?.data
         if (!twoText) return
-        // Size every line node in the text layer (not just the first), so
-        // multiline updates live — not only after a reload.
         const sizeNodes = getShapeTextNodes(sel?.group?.data)
         ;(sizeNodes.length > 0 ? sizeNodes : [twoText]).forEach(
             (n) => (n.size = textSize)
@@ -2421,8 +1840,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         twoJSInstance?.update()
 
         const componentId = sel?.group?.data?.elementData?.id
-        // stateRefForComponentStore is always current; group.elementData.metadata
-        // is only set at mount and is stale after blur updates the store.
         const storeRecord = stateRefForComponentStore.current[componentId]
         const existingProps = readProperties(storeRecord)
         const updatedProps = { ...existingProps, textFontSize: textSize }
@@ -2442,9 +1859,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const handleTextFontFamilyChange = (fontFamily: string) => {
         const twoText = sel?.shape?.data
         if (!twoText) return
-        // Apply to every line node (line 1 + satellites), not just line 1,
-        // so multiline standalone text updates live. Family doesn't change
-        // line height, so no re-stack is needed.
         const familyNodes = getShapeTextNodes(sel?.group?.data)
         const nodes = familyNodes.length > 0 ? familyNodes : [twoText]
         nodes.forEach((node) => (node.family = fontFamily))
@@ -2452,28 +1866,21 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         const componentId = elementData?.id
         const patch = setProperties(elementData, {
             textFontFamily: fontFamily,
-            // Reconstruct the raw multiline string from every line node,
-            // not just line 1 — otherwise a reload would drop lines 2..N.
             content: nodes.map((node) => node.value).join('\n'),
         })
-        // Keep in-place elementData.metadata current so later handlers (opacity,
-        // etc.) merge onto the new family instead of writing a stale one back.
         if (elementData && patch.metadata) {
             elementData.metadata = patch.metadata
         }
         updateComponentBulkPropertiesInLocalStore(componentId, patch)
         twoJSInstance?.update()
         syncOpenTextarea({ fontFamily })
-        // A different face has different metrics, so the box moves here too.
         refreshTextSelector(sel?.group?.data?.elementData?.id)
-        // Make selection universal: future new elements pick up this family.
         setDefaultTextFontFamily(fontFamily)
     }
 
     const handleRectangleTextFontFamilyChange = (fontFamily: string) => {
         const twoText = sel?.text?.data
         if (!twoText) return
-        // Apply to every line node so multiline text updates live.
         const familyNodes = getShapeTextNodes(sel?.group?.data)
         ;(familyNodes.length > 0 ? familyNodes : [twoText]).forEach(
             (n) => (n.family = fontFamily)
@@ -2492,16 +1899,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         if (sel?.group?.data?.elementData && patch.metadata) {
             sel.group.data.elementData.metadata = patch.metadata
         }
-        // Re-wrap + re-fit height: families differ in width at the same size
-        // (Frutiger sets wider than Avenir), changing the wrap — and switching
-        // back to the narrower family must give the height back.
         reflowShapeTextAfterStyleChange(
             componentId,
             updatedProps,
             existingProps
         )
         syncOpenTextarea({ fontFamily })
-        // Make selection universal: future new elements pick up this family.
         setDefaultTextFontFamily(fontFamily)
     }
 
@@ -2516,8 +1919,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         localStorage.removeItem(TEXT_DRAW_MODE_KEY)
         localStorage.removeItem(PENDING_SHAPE_TYPE_KEY)
         localStorage.removeItem(PENDING_SHAPE_PROPS_KEY)
-        // Abort any in-progress geo draw (multi-click area/route, point place)
-        // and tell the canvas to drop its preview vertices.
         localStorage.removeItem(DRAW_MODE_KEY)
         localStorage.removeItem(DRAW_TYPE_KEY)
         localStorage.removeItem(DRAW_PROPS_KEY)
@@ -2525,14 +1926,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         window.dispatchEvent(new CustomEvent('cancelGeoDraw', {}))
         setIsArrowDrawMode(false)
         setIsTextDrawMode(false)
-        // Detach selectionController so its hover listener stops overriding the cursor
         window.dispatchEvent(new CustomEvent('clearSelector', {}))
     }
 
-    // Track which group (if any) is currently focused on the canvas. groupobject
-    // dispatches groupFocused/groupBlurred on the window — this mirrors them
-    // into React state so the sidebar can react. Independent of newCanvas.js's
-    // own activeGroupRef listeners, which serve event-handler land.
     useEffect(() => {
         const onFocus = ((e: CustomEvent) => {
             const g = e?.detail?.group ?? null
@@ -2551,24 +1947,12 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         }
     }, [])
 
-    // Keep a live ref of "is anything selected" for the DOM pointer watcher
-    // below — it reads this synchronously inside a capture-phase handler that
-    // must not re-bind on every selection change.
     useEffect(() => {
         selectionPresentRef.current = !!selectedComponent || !!selectedGroup
     }, [selectedComponent, selectedGroup])
 
-    // Hide the fixed properties toolbar while a selected element/group is being
-    // dragged or resized, so it doesn't sit under the element mid-interaction.
-    // This watches the pointer at the document level (capture phase) rather than
-    // threading through the four separate drag paths (single-shape controller,
-    // group object, arrow endpoints, resize handles) — any of them manifests as
-    // "pointer down on the canvas with a selection, then move". Pure DOM + one
-    // boolean of React state: no canvas/React races, and pointerup/cancel always
-    // resets it. Drags that start on the toolbar itself (e.g. the opacity
-    // slider) are excluded so adjusting a control never hides the panel.
     useEffect(() => {
-        const DRAG_THRESHOLD_SQ = 4 * 4 // px², ignore click jitter
+        const DRAG_THRESHOLD_SQ = 4 * 4
         let armed = false
         let moved = false
         let startX = 0
@@ -2578,9 +1962,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             if (e.button !== 0) return
             const target = e.target as HTMLElement | null
             if (!target) return
-            // Ignore presses on the toolbar/UI chrome or outside the canvas, and
-            // on the in-canvas text-edit field (drag-selecting text isn't an
-            // element drag — the textarea is appended under #main-two-root).
             if (target.closest('#floating-toolbar')) return
             if (
                 target.closest(
@@ -2589,11 +1970,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
             )
                 return
             if (!target.closest('#main-two-root')) return
-            // Arm only when something draggable is under (or already engaged by)
-            // the pointer: a press directly on an element node, or any active
-            // selection (covers resize handles, which live in the overlay group,
-            // and select-then-drag). Empty-canvas presses — pan, marquee, draw —
-            // are left alone so they never hide a defaults panel.
             const onElement = !!target.closest('[data-component-id]')
             if (!onElement && !selectionPresentRef.current) return
             armed = true
@@ -2664,20 +2040,11 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         setDefaultTextFontFamily,
     })
 
-    // --- Legend presets: the three writes that reach elements --------------
-
     const legendApplyDeps = {
         twoJSInstance,
         updateComponentBulkPropertiesInLocalStore,
     }
 
-    /**
-     * Snapshot the columns a preset application is about to overwrite, so a
-     * BATCH entry can reverse it. Mirrors the snapshot
-     * `updateComponentBulkPropertiesInLocalStore` takes for a single write —
-     * including the `undefined → null` fallback for a never-bound element,
-     * without which undoing the first apply would leave it bound.
-     */
     const snapshotForPreset = useCallback(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (id: string, keys: string[]): Record<string, any> => {
@@ -2689,8 +2056,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 let val = (current as any)?.[key]
                 if (val === undefined && key === 'legendPresetId') val = null
                 if (val === undefined && key === 'fillType') val = null
-                // Unset reads as the element's effective value (an area's is
-                // its half-strength fill), or undo would restore nothing.
                 if (val === undefined && key === 'opacity') {
                     val = readOpacity(current)
                 }
@@ -2701,14 +2066,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         []
     )
 
-    /**
-     * Restyle every element bound to a preset, as ONE undo step.
-     *
-     * This is the live binding doing its job. The DB half is a single
-     * statement; the client half has to repaint each mounted element by hand,
-     * because ElementRenderWrapper froze their props at mount and a store write
-     * alone would not reach them until a reload.
-     */
     const restyleBoundElements = useCallback(
         (preset: LegendPreset): void => {
             const ids = idsBoundToPreset(
@@ -2745,8 +2102,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
     const updateLegendPreset = useCallback(
         (id: string, patch: Partial<LegendPresetInput>): void => {
             const next = updatePreset(id, patch)
-            // A rename changes no styling, so only re-sweep when the style (or
-            // the type, which decides which keys the style even has) moved.
             if (!next) return
             if (patch.style === undefined && patch.elementType === undefined) {
                 return
@@ -2756,10 +2111,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         [updatePreset, restyleBoundElements]
     )
 
-    /**
-     * Delete unbinds; it never restyles. The FK is ON DELETE SET NULL, so the
-     * server does its half — this does the client's, which the DB cannot.
-     */
     const deleteLegendPreset = useCallback(
         (id: string): void => {
             const ids = idsBoundToPreset(stateRefForComponentStore.current, id)
@@ -2790,14 +2141,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         [selectedComponent, twoJSInstance]
     )
 
-    // Keep the ARMED presets honest against the live legend.
-    //
-    // The armed map stores whole presets so a creation path needs nothing but
-    // that file to style a mark — which means a stale copy would keep arming a
-    // colour the legend no longer has, or an id no longer in the table (a
-    // dangling FK, and a failed insert). Re-syncing here is what lets every
-    // creation path simply trust the map: a deleted preset disarms, an edited
-    // one re-arms with its new style, a rename carries over.
     useEffect(() => {
         const armed = readArmedPresets()
         const next: ArmedPresetMap = {}
@@ -2816,7 +2159,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         if (changed) writeArmedPresets(next)
     }, [legendPresets])
 
-    /** How many elements carry each preset — the "(3)" on a legend row. */
     const legendPresetCounts = useMemo(() => {
         const counts: Record<string, number> = {}
         Object.keys(componentStore).forEach((id) => {
@@ -2881,8 +2223,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         createTextAtSurface,
         updateComponentVerticesInLocalStore,
         updateComponentBulkPropertiesInLocalStore,
-        // Exposed so groupobject's blur path can snapshot prevProps for a
-        // single batched history entry instead of one per child.
         stateRefForComponentStore,
         deleteComponentFromLocalStore,
         deleteBulkComponentsFromLocalStore,
@@ -2906,8 +2246,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         fitToContent,
         componentStore,
         isElementDragging,
-        // Defaults — read by ElementPropertiesToolbar, also still exposed
-        // individually so legacy primary.js / Canvas reads keep working.
         defaultFill,
         defaultStrokeColor,
         defaultLinewidth,
@@ -2917,10 +2255,8 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
         defaultTextColor,
         defaultTextSize,
         defaultTextFontFamily,
-        // Legacy named setters kept for primary sidebar / shape factory paths.
         setDefaultLinewidthInBase,
         setDefaultStrokeTypeInBase,
-        // Mobile panel
         showMobileToolbarPanel,
         setShowMobileToolbarPanel,
         currentElement,
@@ -2944,7 +2280,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 value={contextValueForSidebar as unknown as BaseContextValue}
             >
                 <div>
-                    <Sidebar />
+                    <Sidebar chromeShown={mapFirstPaint} />
                     {isMobile && showMultiClickDrawControls && (
                         <div
                             style={{
@@ -2987,10 +2323,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                     <MobileTextControls
                         drawInProgress={showMultiClickDrawControls}
                     />
-                    {/* Mobile styling button: while something is selected (a
-                        single element or a multi-selection), or while the
-                        pencil tool is on, so a stroke's colour, width and line
-                        style can be set before drawing it. */}
                     {!isRubberMode &&
                         isMobile &&
                         Boolean(
@@ -3022,7 +2354,9 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                         )}
                     <ElementPropertiesToolbar />
                     <PresetChips />
-                    <LegendPanel />
+                    <ChromeReveal shown={mapFirstPaint} order={4}>
+                        <LegendPanel />
+                    </ChromeReveal>
                     <MetaPropertiesPanel />
                     <MobileSideActions />
                     <Canvas
@@ -3048,20 +2382,21 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                         fitToContentRef={fitToContentRef}
                         initialMapLanding={initialMapLanding}
                     />
-                    {!isMobile && <ZoomControls />}
+                    {!isMobile && (
+                        <ChromeReveal
+                            shown={mapFirstPaint}
+                            order={5}
+                            from="bottom"
+                        >
+                            <ZoomControls />
+                        </ChromeReveal>
+                    )}
                     <GoToContentButton />
-                    <HelpButton />
+                    <ChromeReveal shown={mapFirstPaint} order={6} from="bottom">
+                        <HelpButton />
+                    </ChromeReveal>
                 </div>
             </BaseContext.Provider>
-            {/* {isMobile ? (
-                <div>
-                    <div className="px-4 py-4 text-xl ">
-                        The mobile version isn't here yet. Please view Craftbase
-                        on your tablet or desktop (or on bigger screens) in the
-                        meantime.
-                    </div>
-                </div>
-            ) : null} */}
             <MapStartLocationModal
                 open={showMapStartModal}
                 fallbackCity={timezoneCity.city}
@@ -3112,20 +2447,6 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                 onClose={dismissPerfWarning}
                 message={`This canvas has over ${PERFORMANCE_WARNING_THRESHOLD.toLocaleString()} elements — panning, zooming and editing may feel slow.`}
             />
-            {/* {!isPersisted && draftSizeBytes > 0 && (
-                <div
-                    style={{
-                        position: 'fixed',
-                        bottom: 5,
-                        right: 12,
-                        zIndex: 10,
-                    }}
-                    className="text-xs text-ink-mid bg-card-bg border border-border-panel rounded px-2 py-1 select-none pointer-events-none"
-                    title="Local draft size (UTF-8)"
-                >
-                    Draft {formatDraftBytes(draftSizeBytes)}
-                </div>
-            )} */}
         </>
     )
 }

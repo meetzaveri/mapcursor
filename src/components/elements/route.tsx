@@ -16,7 +16,6 @@ import type {
     VertexPathRevertedDetail,
 } from '../utils/vertexHandles'
 
-// See circle.tsx for the rationale on the loose prop bag.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ElementProps = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,8 +35,6 @@ function Route(props: ElementProps): ReactElement {
     const shapeRef = useRef<ShapeLike>(null)
     const handlesRef = useRef<ShapeLike[]>([])
 
-    // Live values read inside DOM drag handlers registered once at mount — keep
-    // them in refs to dodge the stale-closure trap (see CLAUDE.md).
     const zuiRef = useRef<ShapeLike>(zuiInBase)
     const persistRef = useRef(updateComponentBulkPropertiesInLocalStore)
     const idRef = useRef<string>(props.id)
@@ -52,12 +49,7 @@ function Route(props: ElementProps): ReactElement {
     }, [props.id])
 
     const two = props.twoJSInstance
-    // `resolveResist` is the single reader — see the note in area.tsx. A route
-    // can carry a stored resist now; under the old vertex-array metadata
-    // `.resist` was always undefined and the default was all you could get.
     const resist = resolveResist(props)
-    // Logical (unscaled) stroke width. We counter-scale this on zoom rather
-    // than the whole group, so the polyline geometry stays glued to the world.
     const baseLinewidth = props.linewidth ?? 2.5
 
     useEffect(() => {
@@ -81,25 +73,16 @@ function Route(props: ElementProps): ReactElement {
             groupRef.current = group
             shapeRef.current = path
 
-            // Seed the stroke-width counter-scale from the current camera so the
-            // line is legible before the first zoom event fires. Only linewidth
-            // resists the zoom — the geometry stays glued to the world (unlike
-            // point.tsx, which counter-scales the whole group).
             const initialScale =
                 (zuiInBase as ShapeLike)?.zui?.scale ?? two?.scene?.scale
             if (initialScale) {
                 path.linewidth =
                     baseLinewidth * computeCounterScale(initialScale, resist)
             }
-            // The dash pattern is sized on screen from that width, so it is
-            // seeded (and re-derived on every zoom below) with it.
             applyStrokeDashes(path, props.strokeType, initialScale ?? 1)
 
             two.update()
 
-            // Per-vertex handles + the fat hit band. Route and area share the
-            // editing model: both are multi-point geometries whose coordinates
-            // are the mark.
             vertexHandles = attachVertexHandles({
                 two,
                 group,
@@ -131,10 +114,6 @@ function Route(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Counter-scale only the stroke width on every camera change so the route
-    // stays legible when the world zooms out, while the geometry stays glued to
-    // its coordinates. Reads scale from the event each fire — no stale closure
-    // (see the React + Two.js stale-closure note in CLAUDE.md).
     useEffect(() => {
         const onZoom = (e: Event): void => {
             const group = groupRef.current
@@ -142,8 +121,6 @@ function Route(props: ElementProps): ReactElement {
             if (!group || !path) return
             const scale = (e as CustomEvent<{ scale: number }>).detail?.scale
             if (!scale) return
-            // Logical width lives on elementData (kept in sync by the property
-            // panel); fall back to the mount-time base.
             const base = group.elementData?.linewidth ?? baseLinewidth
             path.linewidth = base * computeCounterScale(scale, resist)
             applyStrokeDashes(
@@ -159,7 +136,6 @@ function Route(props: ElementProps): ReactElement {
         }
     }, [two, resist, baseLinewidth])
 
-    // Show the vertex handles only while this route is the active selection.
     useEffect(() => {
         const group = groupRef.current
         if (!group) return
@@ -169,9 +145,6 @@ function Route(props: ElementProps): ReactElement {
         setVertexHandlesVisible(handlesRef.current, isSelected, two)
     }, [selectedComponent, two])
 
-    // Undo/redo of a vertex edit reverts our `metadata` in the store, but
-    // ElementRenderWrapper freezes our props at mount so no effect re-fires.
-    // The history hook dispatches this event instead.
     useEffect(() => {
         const handleReverted = ((
             e: CustomEvent<VertexPathRevertedDetail>

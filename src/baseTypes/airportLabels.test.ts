@@ -5,7 +5,6 @@ import {
 } from '@maplibre/maplibre-gl-style-spec'
 import { AIRPORT_LABEL_LAYER_ID, airportLabelLayer } from './airportLabels'
 
-/** A style with the given layers, each `[id, source, sourceLayer]`. */
 const styleWith = (layers: [string, string, string][]) => ({
     getLayersOrder: (): string[] => layers.map(([id]) => id),
     getLayer: (id: string) => {
@@ -14,7 +13,6 @@ const styleWith = (layers: [string, string, string][]) => ({
     },
 })
 
-// O'Hare, as it comes in CARTO's Protomaps tiles (decoded from z10–z14).
 const OHARE = {
     type: 1,
     properties: {
@@ -63,8 +61,6 @@ describe('airportLabelLayer', () => {
         ).toBeNull()
     })
 
-    // The real test of the layer: MapLibre's own validator accepts it, and its
-    // own filter evaluator shows O'Hare from its min_zoom and not before.
     it('is a valid layer that shows O’Hare from zoom 11', () => {
         const layer = airportLabelLayer(
             styleWith([['poi_park', 'protomaps', 'pois']])

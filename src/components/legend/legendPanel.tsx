@@ -1,16 +1,3 @@
-// The legend: the standing key to a map. It starts pinned top-right under the
-// place search, and can be picked up by the grip in its header and dropped
-// anywhere on screen (double-click the grip to send it back to the corner).
-//
-// It is the durable half of the feature. The secondary toolbar is how a preset
-// gets applied; THIS is what a person sees three weeks later, or what a
-// recipient of a shared link sees on first load — a list of captions with the
-// exact swatch the marks on the canvas are wearing.
-//
-// Desktop only, like PlaceSearch and for the same reason: a phone's top row is
-// menu + share and that is the whole width. On mobile the same list is a menu
-// entry that opens `legendPanelModal`; both render `LegendList`.
-
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
@@ -32,24 +19,13 @@ import {
     readSelectedTypeLabel,
 } from '../../utils/legendPresetTarget'
 
-/** Top of the panel: 8px margin + the 46px search shell + an 8px gap. */
 export const LEGEND_PANEL_TOP = 62
 const PANEL_WIDTH = 260
 
 export const LEGEND_PANEL_ID = 'mc-legend-panel'
-/** Set on the panel while it is floating rather than docked in its corner. */
 export const LEGEND_FLOATING_ATTR = 'data-floating'
 const POSITION_STORAGE_KEY = 'mapcursor:legendPanelPosition'
 
-/**
- * Where the panel sits until it is dragged: the screen's right edge, NOT the
- * search field's. The panel used to take the measured offset that keeps the
- * place search clear of the share button, which lined the two up and made the
- * legend read as a dropdown hanging off the search field. Tucked against the
- * edge it reads as what it is: a panel about the map, parked in the corner.
- * `useTopRightOffset` stays for the place search, which does still have to
- * dodge the share button.
- */
 const DOCKED_PLACEMENT = {
     top: `${LEGEND_PANEL_TOP}px`,
     right: `${RIGHT_MARGIN}px`,
@@ -61,27 +37,11 @@ interface LegendListProps {
     onCreate: () => void
     onEdit: (preset: LegendPreset) => void
     onDelete: (id: string) => void
-    /**
-     * Mobile modal only. With a mark selected, tapping a row of another type
-     * blurs it and says why it can't be applied, instead of doing nothing.
-     */
     blockMismatches?: boolean
 }
 
-/** How long the "Cannot be applied" notice stays on a row. */
 const MISMATCH_NOTICE_MS = 2500
 
-/**
- * The rows themselves, shared by the desktop panel and the mobile modal.
- *
- * A count of 0 is rendered as "Unused" rather than "(0)", because zero is a
- * meaningful state here — a preset created before the marks it describes — and
- * a bare zero reads like a bug.
- *
- * When a mark on the canvas is selected, rows of the SAME type offer "Apply" on
- * hover — the same apply path as the secondary drawer's chips, reached from the
- * place the preset is actually described.
- */
 export function LegendList({
     presets,
     counts,
@@ -96,7 +56,6 @@ export function LegendList({
         ? readSelectedTypeLabel(selectedComponent)
         : null
 
-    // The row currently showing "Cannot be applied to …", if any.
     const [blockedId, setBlockedId] = useState<string | null>(null)
     useEffect(() => {
         if (!blockedId) return
@@ -107,7 +66,6 @@ export function LegendList({
         return (): void => window.clearTimeout(timer)
     }, [blockedId])
 
-    /** A row of another type than the selection: it cannot be acted on. */
     const isMismatch = (preset: LegendPreset): boolean =>
         !!selectedType && preset.elementType !== selectedType.componentType
 
@@ -142,12 +100,6 @@ export function LegendList({
                     const count = counts[preset.id] ?? 0
                     const isBlocked = blockedId === preset.id
                     const mismatched = isMismatch(preset)
-                    // Same row as the wizard's review card — swatch, then a
-                    // min-w-0 text block — so a preset reads the same way in
-                    // the list it lands in as it did on the page it was made
-                    // on. `text-left` is not decoration: the panel is a child
-                    // of `.App`, which sets `text-align: center`, and the
-                    // wizard only escapes that by portalling to the body.
                     return (
                         <li
                             key={preset.id}
@@ -177,9 +129,6 @@ export function LegendList({
                                     size={28}
                                 />
                             </span>
-                            {/* flex-1 is the whole justification story: it
-                                pushes the actions to the far edge, where the
-                                wizard's card simply has nothing. */}
                             <div
                                 className={`min-w-0 flex-1 transition ${
                                     isBlocked ? 'blur-[2px] opacity-40' : ''
@@ -190,19 +139,8 @@ export function LegendList({
                                 </div>
                                 <div className="text-[11px] text-ink-muted">
                                     {LEGEND_TYPE_LABELS[preset.elementType]}
-
-                                    {/* {count === 0 ? 'Unused' : `${count} on map`} */}
                                 </div>
                             </div>
-                            {/* Always in the DOM, revealed on hover/focus —
-                                mounting them on hover would make them
-                                unreachable by keyboard. Collapsed to zero
-                                WIDTH, not just faded: an invisible-but-sized
-                                strip would truncate the name even at rest. */}
-                            {/* Not rendered at all on a mismatched row: with a
-                                mark of another type selected, the row is
-                                blocked outright (no Apply, Edit or Delete), and
-                                any tap on it shows the notice instead. */}
                             {!mismatched && (
                                 <div
                                     className="flex items-center gap-1 shrink-0 overflow-hidden
@@ -294,10 +232,6 @@ export function LegendList({
     )
 }
 
-/**
- * Owns the wizard for both surfaces, so "edit" and "create" behave identically
- * whether they were reached from the pinned panel or the mobile modal.
- */
 export function useLegendWizard(): {
     wizardOpen: boolean
     editing: LegendPreset | null
@@ -342,9 +276,6 @@ export default function LegendPanel(): ReactElement | null {
     )
     const isFloating = position !== null
 
-    // The meta properties panel stacks under the DOCKED legend and takes the
-    // corner itself while the legend floats. Fired after the render that set
-    // the attribute, so a re-measure on the far side sees it.
     useEffect(() => {
         window.dispatchEvent(new CustomEvent(LEGEND_PANEL_MOVED_EVENT))
     }, [isFloating])
@@ -363,20 +294,10 @@ export default function LegendPanel(): ReactElement | null {
                         ? { left: `${position.x}px`, top: `${position.y}px` }
                         : DOCKED_PLACEMENT),
                     width: `${PANEL_WIDTH}px`,
-                    // One below the place search (12), so its results
-                    // dropdown opens over this panel; well below the modal
-                    // backdrop (1000). Raised while carried, so it passes
-                    // over the other panels rather than under them.
                     zIndex: isDragging ? 13 : 11,
                 }}
             >
-                {/* Chrome mirrors the search field and the toolbar exactly —
-                    same card background, panel border and card radius — so the
-                    whole top-right corner reads as one surface. */}
                 <div className="bg-card-bg border border-border-panel rounded-card overflow-hidden shadow-panel">
-                    {/* The grip sits BESIDE the collapse button, not in it: a
-                        drag must not also toggle the list, and a button
-                        cannot hold another control. */}
                     <div className="flex items-center gap-0.5 pl-1">
                         <DragGrip
                             label="Drag to move · double-click to dock"

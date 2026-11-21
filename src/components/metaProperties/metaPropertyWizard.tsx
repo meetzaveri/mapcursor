@@ -17,28 +17,13 @@ import type { MetaProperty, MetaPropertyType } from '../../types/metaProperty'
 type Choice = { kind: 'existing'; property: MetaProperty } | { kind: 'new' }
 
 interface MetaPropertyWizardProps {
-    /** The map's properties not yet on this object: offered for reuse. */
     available: readonly MetaProperty[]
     isShared: boolean
     onCancel: () => void
-    /** Checks a new property's name (unique on the map, not blank). */
     validateNewName: (name: string) => MetaWriteResult<{ name: string }>
-    /**
-     * Create (if new) and attach the property with its value: one undo step.
-     * Resolves to an error message, or null once stored.
-     */
     onSave: (choice: MetaPropertyChoice, draft: MetaDraft) => Promise<string | null>
 }
 
-/**
- * "Add property": choose an existing property of the map or define a new one,
- * then fill in its value. Back returns a step, Cancel returns to the list.
- *
- * A new definition is created only on Save (together with its value, as one
- * undo step), so going Back or cancelling never leaves an empty property
- * behind on the map. Its name is validated on Next, so a clash shows up
- * before the value step.
- */
 export default function MetaPropertyWizard({
     available,
     isShared,
@@ -216,9 +201,6 @@ export default function MetaPropertyWizard({
                             autoFocus
                             className={`${META_INPUT_CLASS} h-8`}
                         />
-                        {/* A native select, not common/dropdown: this panel
-                            scrolls (overflow-y-auto), and that dropdown's
-                            absolutely positioned list would be clipped by it. */}
                         <div className="space-y-1">
                             <label
                                 htmlFor={typeSelectId}

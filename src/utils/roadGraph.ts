@@ -1,104 +1,35 @@
-// A routable graph of the roads currently on screen, built from the basemap's
-// own vector tiles.
-//
-// This is the brain behind snap-to-road route drawing. It is deliberately
-// PURE — no maplibre, no DOM, no Two.js — so it can be reasoned about and
-// asserted in Node (see tests/e2e/road-graph.spec.js). Everything MapLibre
-// touches lives in `baseTypes/roadSource.ts`, which hands this module plain
-// surface-space polylines.
-//
-// ## Why a graph, and not the angle rule it replaces
-//
-// The obvious way to follow a road is to look at which way the cursor moved and
-// pick the branch nearest that bearing — "if the cursor swings into the 60°
-// quadrant and there's a road going that way, turn onto it". That rule is right
-// about the *intent* but it has to re-derive, at every junction, something the
-// graph already knows.
-//
-// Snapping the cursor to the nearest road and asking for the SHORTEST PATH
-// along roads from the last committed point produces that behaviour for free:
-// keep the cursor on the same street and the path runs straight down it; swing
-// it onto a cross street and the shortest way to that new position is "continue
-// to the junction, then turn" — which is exactly the divert being described.
-// It also handles what the angle rule cannot: one-block detours, dual
-// carriageways, and a cursor that has drifted three junctions ahead.
-//
-// The bearing intuition is not thrown away. It survives as the tie-breaker in
-// `chooseSnap` (which of several roads under the cursor did the user MEAN?) and
-// as the turn penalty in `routeAlongRoads` (given equal length, go straight).
-//
-// ## The shape of the graph
-//
-// Every vertex of every road polyline becomes a node, and every consecutive
-// pair becomes a single straight edge. That is denser than a classic
-// junction-to-junction road graph, and it is chosen on purpose: it makes the
-// routed path follow the road's real curvature vertex for vertex, and it makes
-// junction detection fall out of node welding rather than needing a separate
-// segment-intersection pass. OSM models a crossing as a SHARED NODE, and that
-// node survives tiling as a coincident vertex in both linestrings — so welding
-// coincident vertices reconstructs the junctions exactly.
-
 export interface Pt {
     x: number
     y: number
 }
 
-/** One road, in surface space, as handed over by the road source. */
 export interface RoadPolyline {
-    /** OMT `class` — 'motorway' | 'primary' | 'residential' | 'path' | … */
     roadClass: string
     points: Pt[]
 }
 
 export interface RoadGraph {
     nodes: Pt[]
-    /** Edge endpoints, as node indices. Every edge is one straight segment. */
     edgeA: number[]
     edgeB: number[]
     edgeLen: number[]
     edgeClass: string[]
-    /** Directed edge ids leaving each node. See `dirEdge` for the encoding. */
     outEdges: number[][]
-    /** Edge indices bucketed by spatial cell, for nearest-road queries. */
     grid: Map<string, number[]>
     cellSize: number
     unitsPerMeter: number
-    /**
-     * Connected-component id per node, and the node count of each component.
-     *
-     * A screenful of tiles is NOT one connected network. Roads are cut at the
-     * tile-load boundary, and — the case that actually bites — footpaths,
-     * service roads and driveways routinely appear as small islands that join
-     * the street network somewhere off-screen, or through geometry the tileset
-     * simplified away. Measured on central Ahmedabad at z16: 15,515 nodes, and
-     * a click that landed on a park path snapped to a component of 41.
-     *
-     * Knowing this up front is what turns "the route silently drew straight"
-     * into a question the snapper can answer before it searches.
-     */
     nodeComponent: number[]
     componentSizes: number[]
-    /** Id of the biggest component — the street network, in practice. */
     largestComponent: number
 }
 
-/** Where a surface point lands on the network. */
 export interface SnapResult {
-    /** Index into the graph's edge arrays. */
     edge: number
-    /** Parameter along that edge, 0 at `edgeA`, 1 at `edgeB`. */
     t: number
-    /** The snapped point itself — on the road centreline. */
     point: Pt
-    /** Surface-space distance from the query point to `point`. */
     distance: number
     roadClass: string
 }
-
-// ── Directed edges ───────────────────────────────────────────────────────────
-// A turn penalty needs to know which way you ARRIVED, so the search runs over
-// directed edges rather than nodes: `d = edge * 2 + dir`, dir 0 = A→B, 1 = B→A.
-// `d ^ 1` is the reverse, which is how U-turns are detected.
 
 const edgeOf = (d: number): number => d >> 1
 const tailOf = (g: RoadGraph, d: number): number =>
@@ -112,50 +43,19 @@ function bearingOf(g: RoadGraph, d: number): number {
     return Math.atan2(b.y - a.y, b.x - a.x)
 }
 
-/** Smallest angle between two bearings, in [0, π]. */
 export function angleBetween(a: number, b: number): number {
     let diff = Math.abs(a - b) % (Math.PI * 2)
     if (diff > Math.PI) diff = Math.PI * 2 - diff
     return diff
 }
 
-// ── Build ────────────────────────────────────────────────────────────────────
-
 export interface BuildOptions {
-    /** Surface units per metre, from `surfaceUnitsPerMeter(anchor)`. */
     unitsPerMeter: number
-    /**
-     * How close two vertices must be to be treated as the same junction.
-     *
-     * Tile coordinates are quantised to a 4096-unit extent, so a node shared by
-     * two OSM ways arrives from two different tiles with sub-metre disagreement.
-     * Weld too tight and every junction silently becomes two dead ends that no
-     * route can cross; weld too loose and roads passing over each other on a
-     * bridge fuse into a junction that does not exist. A metre and a half clears
-     * the quantisation and stays well under any real road separation.
-     *
-     * That holds for detailed tiles only. Zoomed out, the tile grid is coarser
-     * (about 38 m per step at z8), so the caller passes a wider value — see
-     * `roadWeldMeters` below. It is also how far a dead end may be
-     * joined onto another road's segment (see `joinDeadEnds`).
-     */
     weldMeters?: number
 }
 
 const DEFAULT_WELD_METERS = 1.5
 
-/**
- * How close two road vertices (or a dead end and a road) must be to count as
- * joined, for tiles read at `mapZoom`.
- *
- * Tile vertices sit on a 4096-step grid per tile, so the grid step in metres
- * doubles with every zoom level out: about 0.5 m at z15, 4.4 m at z11, 38 m at
- * z8. Two copies of one junction can disagree by a step or so, hence twice
- * that, with DEFAULT_WELD_METERS as the floor for detailed tiles. Measured on
- * Gandhinagar's ring road: a fixed 1.5 m left z8–z11 broken into pieces (no
- * route at all), and this value let every zoom from z8 to z13 route round it.
- * At z8 the 75 m it allows is a quarter of a screen pixel.
- */
 export function roadWeldMeters(mapZoom: number, latitude: number): number {
     const tileZoom = Math.max(0, Math.floor(mapZoom))
     const stepMeters =
@@ -164,19 +64,10 @@ export function roadWeldMeters(mapZoom: number, latitude: number): number {
         4096
     return Math.max(DEFAULT_WELD_METERS, stepMeters * 2)
 }
-/** Spatial index cell, in metres. Roughly a city block. */
 const GRID_CELL_METERS = 80
 
 const cellKey = (cx: number, cy: number): string => `${cx}|${cy}`
 
-/**
- * Build the routable graph from a screenful of road polylines.
- *
- * Coincident vertices are welded into one node, which both reconstructs
- * junctions and collapses the duplicate geometry that tile overlap produces —
- * the same road arrives once per tile it crosses, and the shared segments land
- * on the same node pair and are dropped as duplicate edges.
- */
 export function buildRoadGraph(
     polylines: RoadPolyline[],
     { unitsPerMeter, weldMeters = DEFAULT_WELD_METERS }: BuildOptions
@@ -185,8 +76,6 @@ export function buildRoadGraph(
     const cellSize = Math.max(weld * 4, GRID_CELL_METERS * unitsPerMeter)
 
     const nodes: Pt[] = []
-    // Node lookup keyed on a weld-sized lattice. A vertex is compared against
-    // the 9 surrounding cells, so a pair straddling a cell boundary still welds.
     const nodeCells = new Map<string, number[]>()
     const weldCell = weld > 0 ? weld : 1
 
@@ -218,9 +107,6 @@ export function buildRoadGraph(
     const edgeB: number[] = []
     const edgeLen: number[] = []
     const edgeClass: string[] = []
-    // Dedupes the overlap where the same road is delivered by two adjacent
-    // tiles. Keyed on the unordered node pair — direction is not meaningful
-    // here, the search generates both directions itself.
     const seenEdges = new Set<string>()
 
     for (const line of polylines) {
@@ -229,7 +115,7 @@ export function buildRoadGraph(
         let prev = nodeAt(pts[0]!)
         for (let i = 1; i < pts.length; i++) {
             const curr = nodeAt(pts[i]!)
-            if (curr === prev) continue // zero-length after welding
+            if (curr === prev) continue
             const key = prev < curr ? `${prev}-${curr}` : `${curr}-${prev}`
             if (!seenEdges.has(key)) {
                 seenEdges.add(key)
@@ -258,8 +144,6 @@ export function buildRoadGraph(
         outEdges[a]!.push(e * 2)
         outEdges[b]!.push(e * 2 + 1)
 
-        // Index the edge into every cell its bounding box touches, so a long
-        // segment is still found from a query point in the middle of it.
         const pa = nodes[a]!
         const pb = nodes[b]!
         const x0 = Math.floor(Math.min(pa.x, pb.x) / cellSize)
@@ -276,8 +160,6 @@ export function buildRoadGraph(
         }
     }
 
-    // Label connected components with an iterative flood fill — one pass over
-    // the graph, and it turns an expensive failed search into a lookup.
     const nodeComponent = new Array<number>(nodes.length).fill(-1)
     const componentSizes: number[] = []
     for (let seed = 0; seed < nodes.length; seed++) {
@@ -332,24 +214,6 @@ interface EdgeLists {
     seenEdges: Set<string>
 }
 
-/**
- * Join each dead end that stops within `tolerance` of ANOTHER road's segment
- * onto that segment, splitting it there.
- *
- * Vertex welding only finds a junction when both roads carry the shared vertex.
- * Tiles break that in two ways. Simplification drops vertices per road, so at a
- * T-junction the through road can lose the very vertex the side road ends on.
- * And a road clipped at a tile edge ends wherever the clip cut it, which is
- * mid-segment on the neighbouring tile's copy. Either way the end sits a few
- * metres from the other road, not on one of its vertices, and the network
- * splits there. Measured on Gandhinagar's outer ring road: 36 such breaks
- * along one curve at z12 (all within 3 m) and 15 at z11 (within 7 m), enough
- * to send every route through the city instead of round it.
- *
- * Only dead ends are joined, never two roads that merely pass close: a node
- * with two or more edges is a road carrying on, and joining it is how a bridge
- * would fuse with the street under it.
- */
 function joinDeadEnds(
     lists: EdgeLists,
     tolerance: number,
@@ -364,11 +228,6 @@ function joinDeadEnds(
         degree[edgeB[e]!]!++
     }
 
-    // A throwaway index over the edges as they stand, at the graph's own cell
-    // size: at least four tolerances wide, so one ring of neighbouring cells
-    // covers every reach, and block-sized, so an edge lands in one or two
-    // cells. Keys are numeric for speed. Two cells sharing a key only adds
-    // candidates, which the distance test then rejects.
     const cell = Math.max(cellSize, tolerance, 1)
     const key = (cx: number, cy: number): number => cx * 1_000_003 + cy
     const index = new Map<number, number[]>()
@@ -405,15 +264,13 @@ function joinDeadEnds(
         indexEdge(edgeA.length - 1)
     }
 
-    // Which dead end last examined each edge, so an edge listed in several
-    // neighbouring cells is measured once. Cheaper than a Set per dead end.
     const seenBy: number[] = []
 
     const deadEnds: number[] = []
     for (let n = 0; n < nodes.length; n++) if (degree[n] === 1) deadEnds.push(n)
 
     for (const n of deadEnds) {
-        if (degree[n] !== 1) continue // already joined by an earlier split
+        if (degree[n] !== 1) continue
         const p = nodes[n]!
         const cx = Math.floor(p.x / cell)
         const cy = Math.floor(p.y / cell)
@@ -460,8 +317,6 @@ function joinDeadEnds(
             x: pa.x + bestT * (pb.x - pa.x),
             y: pa.y + bestT * (pb.y - pa.y),
         }
-        // Landing on (or within tolerance of) an existing vertex: just connect
-        // to it. Otherwise split the segment at the foot of the perpendicular.
         let target: number
         if (Math.hypot(q.x - pa.x, q.y - pa.y) <= tolerance) target = a
         else if (Math.hypot(q.x - pb.x, q.y - pb.y) <= tolerance) target = b
@@ -469,8 +324,6 @@ function joinDeadEnds(
             target = nodes.length
             nodes.push(q)
             degree.push(0)
-            // Reuse `best` for a→q and append q→b. The old key is dropped so a
-            // later identical a–b segment is not mistaken for this one.
             seenEdges.delete(a < b ? `${a}-${b}` : `${b}-${a}`)
             seenEdges.add(a < target ? `${a}-${target}` : `${target}-${a}`)
             edgeB[best] = target
@@ -484,12 +337,9 @@ function joinDeadEnds(
     }
 }
 
-/** Which connected component a snapped position sits on. */
 export function componentOf(g: RoadGraph, snap: SnapResult): number {
     return g.nodeComponent[g.edgeA[snap.edge]!]!
 }
-
-// ── Snapping ─────────────────────────────────────────────────────────────────
 
 function projectOnEdge(g: RoadGraph, e: number, p: Pt): SnapResult {
     const a = g.nodes[g.edgeA[e]!]!
@@ -514,18 +364,6 @@ function projectOnEdge(g: RoadGraph, e: number, p: Pt): SnapResult {
     }
 }
 
-/**
- * Every road within `radius` of `p`, nearest first.
- *
- * The sweep covers every cell the radius touches, and deliberately does NOT
- * stop early once something is found. Stopping a ring after the first hit is
- * the obvious optimisation and it is wrong here: callers filter this list —
- * by connected component, above all — so the answer they want is routinely not
- * the nearest one. It cost a whole afternoon as "the route silently declines to
- * leave a footpath", because the street it needed was two rings further out and
- * the sweep had already returned. The radius bounds the work to a handful of
- * cells (the grid is ~80m); there was nothing to save.
- */
 export function snapCandidates(
     g: RoadGraph,
     p: Pt,
@@ -543,7 +381,6 @@ export function snapCandidates(
     for (let ring = 0; ring <= maxRing; ring++) {
         for (let dx = -ring; dx <= ring; dx++) {
             for (let dy = -ring; dy <= ring; dy++) {
-                // Ring, not disc: the interior was swept on earlier passes.
                 if (
                     ring > 0 &&
                     Math.abs(dx) !== ring &&
@@ -569,81 +406,20 @@ export function snapCandidates(
 }
 
 export interface ChooseSnapOptions {
-    /** How far from the cursor to look for a road, in surface units. */
     radius: number
-    /**
-     * The point the route is currently anchored at. When present, the bearing
-     * from it to the cursor decides between roads the cursor sits between.
-     */
     from?: Pt | null
-    /**
-     * Half-width of the "I meant that way" cone, in radians. A candidate whose
-     * bearing from `from` is inside the cone pays nothing; outside it, the
-     * penalty ramps to `directionWeight` at 180°.
-     *
-     * This is the 60°-quadrant rule, kept as a preference rather than a hard
-     * gate — a filter here would leave the route stuck whenever the only road
-     * available is behind the cursor's heading.
-     */
     coneHalfAngle?: number
-    /** Cost, in surface units, of being fully opposed to the cursor's bearing. */
     directionWeight?: number
-    /**
-     * How many nearest roads to consider. Raised automatically when
-     * `component` is set, because the filter can discard a long run of nearer
-     * candidates before reaching a usable one.
-     */
     limit?: number
-    /**
-     * Restrict candidates to one connected component.
-     *
-     * This is what makes a route in progress unable to fail. Once the first
-     * vertex has landed on a network, every later point is chosen from the same
-     * network, so a path between them is guaranteed to exist — rather than the
-     * search discovering, expensively and silently, that it does not.
-     */
     component?: number | null
-    /**
-     * Cost, in surface units, of sitting on a disconnected fragment rather than
-     * the main network. See `fragmentFraction`.
-     *
-     * Not a filter, deliberately. A user who clicks squarely on a park path
-     * means the park path, and gets it; the penalty only decides the case where
-     * a stub happens to be marginally nearer than the street the user was
-     * plainly aiming at.
-     */
     fragmentPenalty?: number
-    /**
-     * A component holding less than this fraction of the largest component's
-     * nodes counts as a fragment. Tile clipping leaves several legitimate
-     * medium-sized components at the edges of the viewport, so this has to be
-     * measured against the biggest network rather than an absolute node count.
-     */
     fragmentFraction?: number
 }
 
 const DEFAULT_CONE_HALF_ANGLE = (60 * Math.PI) / 180
-/** Below this, the cursor has barely left the anchor and its bearing is noise. */
 const MIN_BEARING_DISTANCE_UNITS = 2
 const DEFAULT_FRAGMENT_FRACTION = 0.1
 
-/**
- * Pick the road the user means, out of everything under the cursor.
- *
- * Distance alone gets this wrong in two ways, both measured on a real map
- * rather than imagined.
- *
- * It cannot tell a junction apart: two roads within a few metres of each other
- * and of the cursor, where only the direction the hand is travelling says which
- * was meant. That is the `from`/cone term.
- *
- * And it cannot tell the street network apart from an island. A click in a
- * block of central Ahmedabad found a park path 84 units away, on a component of
- * 41 nodes, in preference to the street 133 units away on the component of
- * 8,384 — and a route between the two simply does not exist, so the whole
- * feature fell back to a straight line with nothing to show for itself. That is
- * the `fragmentPenalty` term.
- */
 export function chooseSnap(
     g: RoadGraph,
     cursor: Pt,
@@ -664,9 +440,6 @@ export function chooseSnap(
     const largestSize = g.componentSizes[g.largestComponent] ?? 0
     const fragmentBelow = largestSize * fragmentFraction
 
-    // The bearing is only meaningful once the cursor has actually travelled;
-    // below the floor it is hand tremor, and letting it steer makes the first
-    // segment of every route flicker between streets.
     const travel = from ? Math.hypot(cursor.x - from.x, cursor.y - from.y) : 0
     const useBearing = from !== null && travel >= MIN_BEARING_DISTANCE_UNITS
     const intended = useBearing
@@ -705,30 +478,14 @@ export function chooseSnap(
     return best
 }
 
-// ── Routing ──────────────────────────────────────────────────────────────────
-
 export interface RouteOptions {
-    /**
-     * Cost added for a full 180° turn, in surface units, scaled linearly by
-     * turn angle. This is what makes the route prefer carrying straight on
-     * through a junction when two ways round are the same length — the
-     * behaviour the bearing rule was reaching for.
-     */
     turnPenalty: number
-    /**
-     * Hard ceiling on path cost, in surface units. A cursor that has jumped to
-     * an unconnected part of the network (across a river, onto a motorway with
-     * no junction nearby) must fail fast and let the caller fall back to a
-     * straight line, not walk half the city looking for a way round.
-     */
     maxCost: number
-    /** Safety valve on search size, for a pathological screenful of geometry. */
     maxSettled?: number
 }
 
 const DEFAULT_MAX_SETTLED = 60000
 
-/** Minimal binary min-heap over (cost, directed edge). */
 class MinHeap {
     private cost: number[] = []
     private item: number[] = []
@@ -794,21 +551,12 @@ class MinHeap {
     }
 }
 
-/**
- * The polyline along real roads from one snapped position to another.
- *
- * Returns the geometry only — first point is `start.point`, last is
- * `end.point`, and everything between is a road node. `null` means no route
- * within `maxCost`, which the caller should treat as "draw it straight", never
- * as an error.
- */
 export function routeAlongRoads(
     g: RoadGraph,
     start: SnapResult,
     end: SnapResult,
     { turnPenalty, maxCost, maxSettled = DEFAULT_MAX_SETTLED }: RouteOptions
 ): Pt[] | null {
-    // Already on the same segment: the road between them IS the straight line.
     if (start.edge === end.edge) return dedupe([start.point, end.point])
 
     const startLen = g.edgeLen[start.edge]!
@@ -818,9 +566,6 @@ export function routeAlongRoads(
     const prev = new Map<number, number>()
     const heap = new MinHeap()
 
-    // Two ways off the starting segment: forward to B, or back to A. Whichever
-    // the shortest path actually wants, it pays only the part of the segment it
-    // uses — which is what keeps a route that starts mid-block honest.
     const seedForward = start.edge * 2
     const seedBack = start.edge * 2 + 1
     best.set(seedForward, (1 - start.t) * startLen)
@@ -835,7 +580,7 @@ export function routeAlongRoads(
     while (heap.size > 0) {
         if (heap.peekCost() >= goalCost) break
         const { cost, item: d } = heap.pop()
-        if (cost > best.get(d)!) continue // stale heap entry
+        if (cost > best.get(d)!) continue
         if (cost > maxCost) break
         if (++settled > maxSettled) break
 
@@ -845,16 +590,12 @@ export function routeAlongRoads(
         const dBearing = bearingOf(g, d)
 
         for (const next of outgoing) {
-            // A U-turn mid-block is never what was meant; at a dead end it is
-            // the only way back out.
             if (next === (d ^ 1) && !isDeadEnd) continue
 
             const turn = angleBetween(dBearing, bearingOf(g, next))
             const turnCost = (turn / Math.PI) * turnPenalty
 
             if (edgeOf(next) === end.edge) {
-                // Arrived at the destination segment — stop at `end.t` rather
-                // than running to the far node.
                 const along = next & 1 ? (1 - end.t) * endLen : end.t * endLen
                 const total = cost + turnCost + along
                 if (total < goalCost) {
@@ -878,8 +619,6 @@ export function routeAlongRoads(
 
     if (goalDirected < 0 || goalCost > maxCost) return null
 
-    // Walk back to a seed. The chain is directed edges; the geometry is the
-    // node each one arrives at, bracketed by the two snapped points.
     const chain: number[] = []
     let cursor = goalDirected
     for (;;) {
@@ -888,12 +627,11 @@ export function routeAlongRoads(
         const back = prev.get(cursor)
         if (back === undefined) return null
         cursor = back
-        if (chain.length > g.edgeA.length + 2) return null // cycle guard
+        if (chain.length > g.edgeA.length + 2) return null
     }
     chain.reverse()
 
     const path: Pt[] = [start.point]
-    // Every arrival node except the destination segment's, which is `end.point`.
     for (let i = 0; i < chain.length - 1; i++) {
         path.push(g.nodes[headOf(g, chain[i]!)]!)
     }
@@ -901,7 +639,6 @@ export function routeAlongRoads(
     return dedupe(path)
 }
 
-/** Drop consecutive duplicates, which the bracketing points can introduce. */
 function dedupe(pts: Pt[]): Pt[] {
     const out: Pt[] = []
     for (const p of pts) {

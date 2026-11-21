@@ -17,10 +17,6 @@ import {
     translateGeometry,
 } from './geometry'
 
-// Two.js scene/shape objects in the codebase carry extra bookkeeping fields
-// (elementData, _renderer, etc.) that aren't part of the published types. Keep
-// these parameters loose; Stages 7–9 will install canonical scene types.
-//
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,14 +24,6 @@ type ShapeLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ZUILike = any
 
-// Tinted group background. The group surface must read as a subtle *darker*
-// overlay on the light parchment and a subtle *lighter* overlay on the dark
-// canvas, so members stay readable and the group reads as a raised surface in
-// both themes. In light mode we tint with the dark `--color-topbar` token; in
-// dark mode that token is near-black and would make the group look darker than
-// the canvas, so we tint with the light `--color-ink` token instead. This is a
-// Two.js scene color (static string, not a CSS class) so it can't inherit the
-// token otherwise. Low alpha keeps members readable underneath.
 export const getGroupFill = (): string => {
     if (typeof document === 'undefined') return 'rgba(26, 22, 18, 0.1)'
     const isDark = document.documentElement.classList.contains('dark')
@@ -59,8 +47,6 @@ interface ShapeStyleUpdate {
     opacity?: number
 }
 
-// Show or hide the endpoint circles on an arrowLine group.
-// children[1] and children[2] are the endpoint handle groups.
 export function setArrowEndpointsVisible(
     shape: ShapeLike,
     visible: boolean
@@ -70,12 +56,6 @@ export function setArrowEndpointsVisible(
     if (shape?.children?.[2]) shape.children[2].opacity = opacity
 }
 
-// Single source of truth for reading an element's opacity off a store row /
-// props / elementData. Opacity is persisted in the top-level `opacity` column
-// for every element type; the `properties.opacity` read below covers records
-// whose creation path still seeds it there. Absent from both → fully opaque,
-// except an area: its opacity is its FILL's, and defaults to the half-strength
-// wash it has always been drawn with (see areaOpacityOf in areaFill.ts).
 export function readOpacity(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     source: any
@@ -88,15 +68,6 @@ export function readOpacity(
     return 1
 }
 
-/**
- * The opacity an element's top-level GROUP should paint at. For most types
- * that is the element's opacity. Two exceptions keep the group at 1:
- *
- * - A radius map's opacity lives on the disc (see circle.tsx). Otherwise the
- *   label would dim and the disc would get the value twice (0.5 × 0.5).
- * - An area's opacity is in its fill colour (areaFillFor). Dimming the group
- *   would dim its border, which always paints at full strength.
- */
 export function groupOpacityOf(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     record: any
@@ -106,7 +77,6 @@ export function groupOpacityOf(
     return readOpacity(record)
 }
 
-// Convert a mouse event's client coords to Two.js surface coords via ZUI.
 export function clientToSurface(
     zui: ZUILike,
     e: MouseLikeEvent
@@ -114,7 +84,6 @@ export function clientToSurface(
     return zui.clientToSurface(e.clientX, e.clientY)
 }
 
-// Apply visual style properties to a Two.js shape.
 export function applyShapeStyle(
     shape: ShapeLike,
     { fill, stroke, linewidth, opacity }: ShapeStyleUpdate = {}
@@ -125,25 +94,9 @@ export function applyShapeStyle(
     if (opacity !== undefined) shape.opacity = opacity
 }
 
-// Component-row shape passed into cloneElementData. Loose-but-honest mapping
-// over the DB schema; full ComponentRecord shape lives in src/types/base.ts
-// but cloneElementData also handles canvas-only fields (relativeX/Y), hence
-// the local interface.
 interface ElementCloneSource {
     componentType: string
-    /**
-     * Which base the element belongs to. MUST be carried through a clone: it is
-     * the only thing marking a geo object as geo, and for the pencil — offered
-     * on every base — it is the only thing that says which base it was drawn on.
-     * Dropping it silently relocates the pasted copy to the wrong base.
-     */
     objectClass?: 'shape' | 'geo'
-    /**
-     * text's zoom-resistance switch. Unlike a metadata key — which rides
-     * along inside the cloned `metadata` object for free — a column is only
-     * copied if it is named here, so omitting it would silently reset every
-     * pasted label to the default.
-     */
     zoomResistant?: boolean | null
     x1: number
     y1: number
@@ -162,9 +115,6 @@ interface ElementCloneSource {
     children: unknown
     relativeX?: number
     relativeY?: number
-    // Connector port bindings (arrowLine only). Cloned as-is; the paste path
-    // remaps the shape ids to the pasted counterparts (group paste) or keeps
-    // them pointing at the still-present originals (single paste).
     tailShapeId?: string | null
     tailEdge?: string | null
     tailPortIndex?: number | null
@@ -180,14 +130,6 @@ interface ClonedElement extends ElementCloneSource {
     y: number
 }
 
-/**
- * The clone's geometry fields, translated so its bounding-box centre lands on
- * `(newX, newY)`.
- *
- * A source carrying no geometry is malformed rather than legacy, and clones as
- * a bare point at the cursor — enough for the paste to land somewhere visible
- * instead of throwing.
- */
 function moveCloneToCursor(
     src: ElementCloneSource,
     newX: number,
@@ -200,8 +142,6 @@ function moveCloneToCursor(
     return moved ?? geometryFields(pointGeometry(newX, newY))
 }
 
-// Deep-clone a canvas element's data for copy/paste, assigning a new UUID
-// and positioning at (newX, newY).
 export function cloneElementData(
     src: ElementCloneSource,
     baseId: string,
@@ -213,9 +153,6 @@ export function cloneElementData(
         baseId,
         componentType: src.componentType,
         ...(src.objectClass ? { objectClass: src.objectClass } : {}),
-        // Only when actually set: nothing but text reads this column, so an
-        // unconditional copy would stamp a value onto every pasted rectangle
-        // and carry it into the share insert.
         ...(src.zoomResistant != null
             ? { zoomResistant: src.zoomResistant }
             : {}),
@@ -228,18 +165,10 @@ export function cloneElementData(
         fill: src.fill,
         stroke: src.stroke,
         strokeType: src.strokeType,
-        // Only when set: solid is null, and only an area reads the column.
         ...(src.fillType != null ? { fillType: src.fillType } : {}),
         linewidth: src.linewidth,
         textColor: src.textColor,
         opacity: readOpacity(src),
-        // Land the clone's CENTRE under the cursor, moving the geometry and
-        // the x/y cache together. Offsetting from the source's ORIGIN instead
-        // would drop a route or a pencil stroke a corner's-worth from the
-        // pointer — for those the origin is just wherever the first click fell
-        // — and further the more the drawing wanders from that first point.
-        // For a point or a text label centre and origin coincide, so one path
-        // serves every type.
         ...moveCloneToCursor(src, newX, newY),
         children: src.children
             ? typeof structuredClone === 'function'
@@ -265,7 +194,6 @@ interface ResolveResult {
     avoidDragging: boolean
 }
 
-// Walk the DOM event path to find the Two.js group and determine drag behavior.
 export function resolveShapeFromPath(
     path: EventTarget[] | undefined,
     two: TwoLike
@@ -345,11 +273,6 @@ interface PollOptions {
     onTimeout?: () => void
 }
 
-/**
- * Poll `two.scene.children` for an element with the given id, calling
- * `onFound(el)` once the element (and optional extra condition) is present.
- * Falls back to `onTimeout()` after `maxRetries` animation frames.
- */
 export function pollUntilElement(
     two: TwoLike,
     id: string,
@@ -371,12 +294,6 @@ export function pollUntilElement(
     requestAnimationFrame(() => attempt(0))
 }
 
-// ── Shape text layer ──
-// Multiline text inside a shape lives in a dedicated, detectable sub-group
-// (one Two.Text per visual line). The marker `elementData.isTextLayer` lets
-// every consumer (group-apply, inspector, selection/resize) ask "is this the
-// text group?" and "give me all the line nodes" without ad-hoc value sniffing.
-
 export interface ShapeTextStyle {
     fill: string
     size: number
@@ -387,7 +304,6 @@ export interface ShapeTextStyle {
     lineHeight?: number
 }
 
-// Return the tagged text-layer sub-group of `group`, or null.
 export function findShapeTextLayer(group: ShapeLike): ShapeLike | null {
     const children = group?.children
     if (!children) return null
@@ -397,57 +313,15 @@ export function findShapeTextLayer(group: ShapeLike): ShapeLike | null {
     return null
 }
 
-// All Two.Text line nodes for a shape. Falls back to legacy direct
-// string-valued children so callers stay correct mid-migration.
 export function getShapeTextNodes(group: ShapeLike): ShapeLike[] {
     const layer = findShapeTextLayer(group)
     const source = layer ? layer.children : group?.children
     if (!source) return []
-    // `source` is a Two.js `Children` collection (a custom Array subclass with
-    // no Symbol.species). Calling `.filter` on it directly routes through
-    // `ArraySpeciesCreate(new Children(0))`, whose constructor mishandles the
-    // numeric length and seeds the result with a spurious `0`. When there are
-    // no text nodes that `0` survives, so the filter returns `[0]` instead of
-    // `[]` — and any caller dereferencing the result (`n.opacity`, `n.fill`)
-    // throws `Cannot create property … on number '0'`. Copy to a plain array
-    // first so the filter is well-behaved and returns `[]` for text-less shapes.
     return Array.from(source as ArrayLike<ShapeLike>).filter(
         (c: ShapeLike) => typeof c?.value === 'string'
     )
 }
 
-/**
- * Keep a transparent, full-block hit-area rectangle inside a STANDALONE text
- * group, sized to the rendered multiline block (anchored left/middle at the
- * group origin, matching the text layout).
- *
- * Why this exists: an SVG `<text>` only catches pointer events on the glyphs
- * themselves. For multiline text rendered as stacked `<text>` nodes, the blank
- * gaps between lines (and the padding around them) belong to no element, so a
- * click there misses the group `<g>` entirely and `resolveShapeFromPath` reads
- * it as "empty canvas" — the text can't be selected as a whole. A
- * transparent-but-painted (`rgba(0,0,0,0)`) rect spanning the block restores a
- * solid hit target across the whole block. (This is what the old per-element
- * `ObjectSelector.area` path used to provide before selection moved to the
- * generic SelectionController.)
- *
- * Idempotent: creates the rect on first call (tagged via `_isTextHitArea`),
- * resizes it on later calls. Added AFTER line 1 so `group.children[0]` stays
- * the text node the SelectionController attaches to, and excluded from
- * `getShapeTextNodes` (no string `value`).
- */
-/**
- * Give an element's rendered SVG node DOM focus.
- *
- * Blink focuses any SVG node on a bare `.focus()`; WebKit only focuses one that
- * is explicitly focusable, and silently does nothing otherwise. Selection here
- * rides on DOM focus/blur of the element's `<g>` — the `groupFocused` event
- * behind group copy/paste, the delete-key handlers, deselect-on-blur — so
- * without a tabindex every one of those events goes missing in Safari while
- * working fine in Chrome. `-1` makes the node programmatically focusable
- * without putting it in the tab order; the outline reset keeps Safari from
- * painting a focus ring around the shape.
- */
 export function focusSvgElement(el: Element | null | undefined): void {
     if (!el) return
     if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1')
@@ -487,22 +361,9 @@ export function syncTextHitRect(two: TwoLike, group: ShapeLike): void {
     }
     rect.width = maxW
     rect.height = blockH
-    // Text is left-aligned at the group origin (extends right) and vertically
-    // centered on it, so center the rect at (width/2, 0).
     rect.translation.set(maxW / 2, 0)
 }
 
-/**
- * Lay out STANDALONE text (the `newText` kind) as a vertical stack of one
- * Two.Text per hard-newline line, centered on the group origin. An SVG <text>
- * collapses `\n`, so multiline standalone text must be rendered as stacked
- * nodes — newText's component does this internally, but the same layout is
- * needed whenever the text is re-materialised outside that component (e.g. as a
- * cloned member of a group selection). Reuses any existing line nodes (line 1 is
- * the factory's text node), adds nodes for new lines, removes surplus ones.
- *
- * Keep in sync with newText.tsx's `syncMultilineLayout`.
- */
 export function layoutStandaloneText(
     two: TwoLike,
     group: ShapeLike,
@@ -545,16 +406,6 @@ export function layoutStandaloneText(
     }
 }
 
-/**
- * Render `lines` as a vertical stack of Two.Text nodes inside `group`'s text
- * layer, creating the layer on first use. Existing line nodes are reused
- * (value/position/style updated) and only the surplus is removed — we never
- * `two.remove` the layer group itself, sidestepping the documented Two.js
- * `scene.subtractions` double-removal crash. Caller owns `two.update()`.
- *
- * Lines are centered as a block around the group origin (the shape Path is
- * also centered there), so no `group.center()` is needed.
- */
 export function renderShapeTextLayer(
     two: TwoLike,
     group: ShapeLike,
@@ -572,10 +423,6 @@ export function renderShapeTextLayer(
     const n = lines.length
     const alignment = style.alignment ?? 'left'
 
-    // Two.Text positions relative to its translation per `alignment`. For a
-    // left-aligned block we shift every line left by half the widest line so
-    // the block stays centered in the shape while each line shares one left
-    // edge (ragged right).
     let blockX = 0
     if (alignment === 'left') {
         const font: FontSpec = {
@@ -609,7 +456,6 @@ export function renderShapeTextLayer(
         if (style.weight !== undefined) node.weight = style.weight
     }
 
-    // Drop surplus line nodes from a previous, longer render.
     if (layer.children.length > n) {
         const extras = layer.children.slice(n)
         layer.remove(extras)
@@ -618,8 +464,6 @@ export function renderShapeTextLayer(
     return layer
 }
 
-// Derive the text style + measurement font from a shape's metadata, matching
-// the historical single-makeText defaults (Caveat / theme ink / size 24).
 export function shapeTextStyleFromMeta(meta: ShapeLike): {
     style: ShapeTextStyle
     font: FontSpec
@@ -641,18 +485,6 @@ export function shapeTextStyleFromMeta(meta: ShapeLike): {
     }
 }
 
-/**
- * Reflow a shape's text to its current width and render it into the text
- * layer. Single entry point used by the rectangle/diamond/circle components
- * on mount and whenever width/metadata change, so persisted bases reflow
- * deterministically from raw content + width (no wrapped text is stored).
- * Caller owns `two.update()`.
- *
- * If the text's webfont hasn't loaded yet, the wrap is measured against a
- * fallback face and re-run for free once the real one lands — see
- * `./fontLoading`. That second pass owns its own render (its caller is long
- * gone by then).
- */
 export function applyShapeText(
     two: TwoLike,
     group: ShapeLike,
@@ -668,11 +500,7 @@ export function applyShapeText(
 
     if (isFontReady(font)) return
     runWhenFontReady(font, () => {
-        // The shape may have been deleted while we waited; Two.js deletes
-        // `parent` on remove, so this skips detached groups.
         if (!group?.parent) return
-        // Re-read the width off the shape path (children[0]) rather than
-        // trusting the captured one — a resize in the meantime moved it.
         const liveWidth = group.children?.[0]?.width ?? width
         const { lines: reflowed } = reflowTextForShape(
             kind,

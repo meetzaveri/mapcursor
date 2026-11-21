@@ -39,14 +39,12 @@ import {
 import './sidebar.css'
 import { openImageFilePicker } from '../../utils/imageFile'
 import { requestImageInsert } from '../../hooks/useImageDrop'
+import ChromeReveal from '../common/chromeReveal'
 import ShareLinkPopup from './shareLinkPopup'
 import MenuDrawer from './menuDrawer'
 
 const DRAW_SHAPE_TYPES = ['circle']
 
-// Defaults used when the Hasura componentTypes catalog isn't reachable
-// (craftbase runs standalone as a library without a backend). Keeps shape
-// creation working end-to-end without DB seeds.
 const FALLBACK_CATALOG: Record<
     string,
     { width: number; height: number; fill: string; textColor: string | null }
@@ -60,7 +58,11 @@ const FALLBACK_CATALOG: Record<
     text: { width: 120, height: 36, fill: 'transparent', textColor: '#3A342C' },
 }
 
-const PrimarySidebar = (): ReactElement => {
+interface PrimarySidebarProps {
+    chromeShown: boolean
+}
+
+const PrimarySidebar = ({ chromeShown }: PrimarySidebarProps): ReactElement => {
     const {
         baseId,
         updateLastAddedElement,
@@ -85,7 +87,6 @@ const PrimarySidebar = (): ReactElement => {
     const { loading: getComponentTypesLoading, data: getComponentTypesData } =
         useQuery(GET_COMPONENT_TYPES)
 
-    // Verify component-type seeds are present.
     useEffect(() => {
         if (
             !getComponentTypesLoading &&
@@ -129,9 +130,6 @@ const PrimarySidebar = (): ReactElement => {
                         strokeType: defaultStrokeType,
                         stroke: defaultStrokeColor ?? '#3A342C',
                         children: {},
-                        // Parked off-screen; the canvas places it on the next
-                        // click. `geometryFields` derives x/y from the
-                        // geometry, so the two can never disagree.
                         ...geometryFields(pointGeometry(-9999, -9999), {
                             ...((item.metadata as Record<string, unknown>) ??
                                 {}),
@@ -158,7 +156,6 @@ const PrimarySidebar = (): ReactElement => {
             })
         }
 
-        // Fallback when the Hasura catalog isn't reachable.
         if (!shapeData && FALLBACK_CATALOG[label]) {
             const userId = localStorage.getItem('userId')
             const fb = FALLBACK_CATALOG[label]
@@ -223,9 +220,6 @@ const PrimarySidebar = (): ReactElement => {
         enableTextDrawMode()
     }
 
-    // Point: single click-to-place. Pre-create the element off-screen (like the
-    // text/arrow flow) then let the canvas position it on the next click, which
-    // also opens its label editor.
     const handlePointElement = (): void => {
         togglePencilMode(false)
         togglePointer(false)
@@ -239,20 +233,11 @@ const PrimarySidebar = (): ReactElement => {
             componentType: 'point',
             linewidth: geoDef.linewidth,
             strokeType: null,
-            // `fill` is the circle's colour and the one the user can change;
-            // `stroke` mirrors it so anything reading either sees one colour.
             stroke: POINT_COLOR,
             children: {},
             ...geometryFields(pointGeometry(-9999, -9999), {
-                // Named on placement — the canvas opens the editor as soon as
-                // the element mounts.
                 label: '',
                 resist: DEFAULT_RESIST,
-                // The label picks up the current text style, exactly like a new
-                // text element does (see buildTextShapeData). The size default
-                // travels as a ladder LABEL, so 'XL' chosen on a map label
-                // becomes the POINT ladder's XL here — the same intent, sized
-                // for a pin.
                 textFontSize: pointLabelSizeFor(defaultTextSize),
                 ...(defaultTextFontFamily && {
                     textFontFamily: defaultTextFontFamily,
@@ -271,9 +256,6 @@ const PrimarySidebar = (): ReactElement => {
             fill: POINT_COLOR,
             textColor: null,
             updatedBy: userId,
-            // LAST, so an armed preset beats the design defaults above — that
-            // is what "the preset overrides the styling" means. `{}` when
-            // nothing is armed, so by default this changes nothing.
             ...armedPresetPatch('point'),
         }
 
@@ -289,8 +271,6 @@ const PrimarySidebar = (): ReactElement => {
         if (root) root.style.cursor = 'crosshair'
     }
 
-    // Multi-click vertex placement for the area/route tools: collect on click,
-    // finish on Esc/Enter/double-click.
     const handleMultiClickDraw = (label: 'area' | 'route'): void => {
         togglePencilMode(false)
         togglePointer(false)
@@ -314,20 +294,10 @@ const PrimarySidebar = (): ReactElement => {
         const root = document.getElementById('main-two-root')
         if (root) root.style.cursor = 'crosshair'
 
-        // Mobile has no Esc/Enter, no double-click and no right-click, so the
-        // ✓/✗ controls (base.tsx) are the ONLY way to finish or abandon a
-        // multi-click draw there. That's true of every tool in this family, so
-        // all three raise it — area and route were left out back when they were
-        // expected to finish through a consumer's own map UI, and there is no
-        // consumer any more. The canvas already handles the `finishGeoDraw` /
-        // `cancelGeoDraw` those buttons fire for any draw type.
         window.dispatchEvent(new CustomEvent('multiClickDrawStart'))
     }
 
     const addElement = (label: string): void => {
-        // Image is a one-shot action, not a draw mode: pick files, hand them to
-        // the canvas (useImageDrop places them at the viewport centre), and
-        // leave the active tool alone.
         if (label === IMAGE_COMPONENT) {
             prefetchElementModule(IMAGE_COMPONENT)
             void openImageFilePicker().then((files) => {
@@ -335,10 +305,6 @@ const PrimarySidebar = (): ReactElement => {
             })
             return
         }
-        // Warm the shape's lazy chunk NOW, while the user moves to the canvas
-        // and drags (~700ms–1s). By mouseup the chunk is cached, so the
-        // component mounts instantly instead of the freshly-drawn shape sitting
-        // dimmed during a first-time network fetch on prod.
         if (DRAW_SHAPE_TYPES.includes(label)) {
             prefetchElementModule(label)
         }
@@ -381,9 +347,6 @@ const PrimarySidebar = (): ReactElement => {
                 }
 
                 setTimeout(() => {
-                    // Circle's own guidance is persistent and lives in
-                    // ToolHint — it is armed for a whole drag, not a click, so
-                    // a transient pill was gone before the gesture began.
                     const clickEl = document.getElementById(
                         'show-click-anywhere-btn'
                     )
@@ -461,9 +424,6 @@ const PrimarySidebar = (): ReactElement => {
                     })
                 }
 
-                // Fallback when the DB catalog isn't reachable / doesn't
-                // seed this label. Lets craftbase work standalone as a
-                // library without a Hasura backend.
                 if (!shapeData && FALLBACK_CATALOG[label]) {
                     const userId = localStorage.getItem('userId')
                     const fb = FALLBACK_CATALOG[label]
@@ -510,16 +470,6 @@ const PrimarySidebar = (): ReactElement => {
                     }
                 }
 
-                // A circle is half-transparent so the basemap reads through
-                // it, and it is BORDERLESS — the stroke column follows the
-                // fill so the record stays one colour, but nothing is painted
-                // at zero width. The live `defaultLinewidth` is deliberately
-                // not consulted: a width picked on a route is not a radius
-                // map's, and there is no control here to correct it with.
-                //
-                // opacity goes on the top-level column, not metadata.opacity:
-                // readOpacity prefers the column, and the column is what the
-                // insert input and the base-load query carry.
                 if (label === 'circle' && shapeData) {
                     const geoFill = CIRCLE_DEFAULTS.fill
                     shapeData = {
@@ -528,20 +478,9 @@ const PrimarySidebar = (): ReactElement => {
                         stroke: geoFill,
                         linewidth: CIRCLE_DEFAULTS.linewidth,
                         opacity: CIRCLE_DEFAULTS.opacity,
-                        // The label's ink, seeded here rather than left to
-                        // whatever `textColor` the component-type catalog
-                        // happens to carry for a circle — that value was never
-                        // a text colour, since a circle had no text until now.
                         textColor: CIRCLE_LABEL_COLOR,
                         ...setProperties(shapeData as ComponentRecord, {
-                            // Named after drawing — empty until typed.
                             label: '',
-                            // The label picks up the current text style, exactly
-                            // like a new point or text does. The size default
-                            // travels as a ladder LABEL, so 'XL' chosen on a map
-                            // label becomes the POINT ladder's XL here — the
-                            // same intent, sized for an annotation rather than a
-                            // caption. Never copy a pixel size across ladders.
                             textFontSize: pointLabelSizeFor(defaultTextSize),
                             ...(defaultTextFontFamily && {
                                 textFontFamily: defaultTextFontFamily,
@@ -553,16 +492,11 @@ const PrimarySidebar = (): ReactElement => {
                 if (!shapeData) return
 
                 if (DRAW_SHAPE_TYPES.includes(label)) {
-                    // Draw-to-place: store pending shape props, canvas creates on mouseup
                     localStorage.setItem('pendingShapeType', label)
                     localStorage.setItem(
                         'pendingShapeProps',
                         JSON.stringify({
                             ...shapeData,
-                            // Folded in at STAGING time rather than on mouseup:
-                            // the canvas spreads these props first and overrides
-                            // none of them, so this is the last word — and the
-                            // drag preview picks up the preset's colour too.
                             ...(isLegendPresetType(label)
                                 ? armedPresetPatch(label)
                                 : {}),
@@ -586,13 +520,20 @@ const PrimarySidebar = (): ReactElement => {
     const isLiveSession = false
     return (
         <>
-            <ShapesToolbar addElement={addElement} />
-            <PlaceSearch />
-            <MenuDrawer />
-            {/* pointer-events-none: this is a full-width strip across the top
-                of the screen, hidden only by opacity, so it used to swallow
-                every press over the canvas beside the toolbars. It is a
-                read-only hint; nothing in it is meant to be clicked. */}
+            <ChromeReveal shown={chromeShown} order={0}>
+                <MenuDrawer />
+            </ChromeReveal>
+            <ChromeReveal shown={chromeShown} order={1}>
+                <PlaceSearch />
+            </ChromeReveal>
+            <ChromeReveal
+                shown={chromeShown}
+                order={2}
+                from={isMobile ? 'bottom' : 'top'}
+                deep
+            >
+                <ShapesToolbar addElement={addElement} />
+            </ChromeReveal>
             <div
                 id="show-click-anywhere-btn"
                 className="fixed w-full flex justify-center top-0 opacity-0
@@ -606,14 +547,7 @@ const PrimarySidebar = (): ReactElement => {
                     </div>
                 </div>
             </div>
-            {/* Persistent per-tool guidance (area / route / radius map).
-                Replaced the curved-line "press Esc/Enter" nudge, which had been
-                dead since curvedLine stopped routing through
-                handleMultiClickDraw — nothing set its opacity any more. */}
             <ToolHint />
-            {/* One-shot tip for the "Zoom resistant" switch. Desktop only, and
-                shares ToolHint's desktop slot — so it stands down while one of
-                those tools is armed. */}
             <TextZoomHint />
             <div className="absolute top-2 right-1rem flex items-center px-2 gap-1">
                 <div
@@ -651,7 +585,9 @@ const PrimarySidebar = (): ReactElement => {
                     </div>
                 )}
 
-                <ShareLinkPopup />
+                <ChromeReveal shown={chromeShown} order={3}>
+                    <ShareLinkPopup />
+                </ChromeReveal>
             </div>
         </>
     )

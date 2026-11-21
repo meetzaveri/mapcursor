@@ -19,56 +19,21 @@ import type { ComponentMetadata } from '../types/base'
 export interface PointProperties {
     fill?: string
     stroke?: string
-    /**
-     * `geometry` is a Point. `properties` carries the label and its styling:
-     *
-     *   label          the location name shown beside the circle
-     *   resist         zoom-resistance strength
-     *   textFontFamily / textFontSize   the label's face and size
-     *   category       legacy marker — the pre-generic catalog derived the
-     *                  pin's colour from it; see `pointColorOf`
-     */
     metadata?: ComponentMetadata | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
-/**
- * Set on the selection overlay that `point.tsx` parks inside the point's group.
- * `buildPointVisual` wipes the group to redraw, and the overlay is not part of
- * the drawing — without this marker every recolour would silently delete the
- * selector out from under a selected point.
- */
 export const POINT_CHROME_FLAG = '__mcPointChrome'
 
-/**
- * Set on the shadow discs drawn behind the pin. They come before the circle in
- * the group, so anything looking for "the pin" has to skip them, the same way
- * it skips selection chrome. See getPointCircle.
- */
 export const POINT_SHADOW_FLAG = '__mcPointShadow'
 
-/**
- * The colour a point's circle should render in.
- *
- * Points created before the generic redesign stored their *category's* colour
- * in `fill`/`stroke`, which was never a user choice — so those render in the
- * standard point colour instead, and only lose the legacy marker when the user
- * actually picks a colour (applyProperty strips `metadata.category` on write).
- */
 export function pointColorOf(record: ShapeLike): string {
     if (readProperties(record).category) return POINT_COLOR
     return record?.fill || record?.stroke || POINT_COLOR
 }
 
-/**
- * The font family a point's label should render in.
- *
- * Stored per record, seeded at creation from the shared text default (see
- * `handlePointElement` in primary.tsx) — a point written before the control
- * existed carries nothing and falls back to the design default.
- */
 export function pointFontFamilyOf(record: ShapeLike): string {
     const family = readProperties(record).textFontFamily
     return typeof family === 'string' && family
@@ -76,33 +41,16 @@ export function pointFontFamilyOf(record: ShapeLike): string {
         : DEFAULT_TEXT_FONT_FAMILY
 }
 
-/**
- * The font size a point's label should render at, in surface units.
- *
- * Stored per record, like the family — but seeded through the point's OWN
- * ladder (`pointLabelSizeFor`), because the shared default is a size *label*,
- * not a pixel count. See `pointFontFamilyOf`.
- */
 export function pointFontSizeOf(record: ShapeLike): number {
     const size = readProperties(record).textFontSize
     return typeof size === 'number' && size > 0 ? size : POINT_LABEL_FONT_SIZE
 }
 
-/** The label text of a point record, normalised to a string. */
 export function pointLabelOf(record: ShapeLike): string {
     const label = readProperties(record).label
     return typeof label === 'string' ? label : ''
 }
 
-/**
- * (Re)build a point's visual into `group`, in place: a fixed-radius filled
- * circle with a white ring, and its label set `POINT_LABEL_GAP` clear of the circle's edge,
- * left-aligned and vertically centred on the circle.
- *
- * Rebuilding in place (rather than remounting the component) is what lets a
- * recolour or a label edit land on an element whose React props are frozen at
- * mount — the same reason applyProperty reaches into the scene directly.
- */
 export function buildPointVisual(
     two: ShapeLike,
     group: ShapeLike,
@@ -115,16 +63,12 @@ export function buildPointVisual(
 ): void {
     const color = opts.color || POINT_COLOR
 
-    // Snapshot first — the collection mutates as we remove. Selection chrome is
-    // left in place: it belongs to the component, not the drawing.
     const existing: ShapeLike[] = [...(group.children || [])]
     existing.forEach((child: ShapeLike) => {
         if (child?.[POINT_CHROME_FLAG]) return
         group.remove(child)
     })
 
-    // Shadow first, so it paints behind the pin. Outermost (faintest) layer
-    // first, so each inner layer stacks on top.
     const ringOuter = POINT_RADIUS + POINT_BORDER_WIDTH / 2
     POINT_SHADOW_LAYERS.forEach(({ spread, alpha }) => {
         const shadow = new (Two as ShapeLike).Circle(
@@ -140,8 +84,6 @@ export function buildPointVisual(
 
     const circle = new (Two as ShapeLike).Circle(0, 0, POINT_RADIUS)
     circle.fill = color
-    // Fixed white ring, not the user's colour. Recolouring writes `fill` only,
-    // so it survives. See POINT_BORDER_COLOR.
     circle.stroke = POINT_BORDER_COLOR
     circle.linewidth = POINT_BORDER_WIDTH
     group.add(circle)
@@ -149,11 +91,6 @@ export function buildPointVisual(
     const family = opts.fontFamily || DEFAULT_TEXT_FONT_FAMILY
     const size = opts.fontSize || POINT_LABEL_FONT_SIZE
 
-    // Drawn on the ALPHABETIC baseline and positioned by hand, not with
-    // `baseline: 'middle'`. SVG's middle baseline centres the x-height, which
-    // leaves the label floating ~0.1em above the circle — visible at every size
-    // and by a different amount per font. `capCenterOffset` puts the cap band's
-    // centre on the circle's centre instead. See utils/fontMetrics.ts.
     const label = new (Two as ShapeLike).Text(
         opts.label ?? '',
         POINT_RADIUS + POINT_LABEL_GAP,
@@ -163,21 +100,11 @@ export function buildPointVisual(
     label.baseline = 'baseline'
     label.size = size
     label.family = family
-    // Fixed by design — the label is never recoloured with the circle.
     label.fill = POINT_LABEL_COLOR
     label.noStroke()
     group.add(label)
 }
 
-/**
- * The circle node of a built point group (for in-place recolouring) — the first
- * *content* child.
- *
- * Not a fixed index: a rebuild leaves any selection chrome in place and appends
- * the new circle and label after it, so the chrome ends up at index 0 and a
- * plain `children[0]` would hand a recolour the overlay instead of the pin.
- * The shadow discs sit before the pin too, so they are skipped the same way.
- */
 export function getPointCircle(group: ShapeLike): ShapeLike | null {
     const children = group?.children ?? []
     return (
@@ -188,7 +115,6 @@ export function getPointCircle(group: ShapeLike): ShapeLike | null {
     )
 }
 
-/** The label node of a built point group (for in-place text edits). */
 export function getPointLabelNode(group: ShapeLike): ShapeLike | null {
     const children = group?.children ?? []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

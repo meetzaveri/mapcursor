@@ -1,19 +1,3 @@
-// Screen-space DOM overlay for the shape-creation drag preview.
-//
-// Why this exists: while you drag out a new rectangle/circle/diamond, the old
-// path added the preview as a child of the Two.js scene and called
-// `two.update()` every mousemove. That repaints the SVG region under the
-// growing preview — and at low zoom the preview covers most of a dense base,
-// so the browser re-rasterises thousands of nested SVG nodes per frame (3-5fps
-// at 10% zoom). The scene itself isn't changing during the drag, only the
-// preview is, so there's no reason to touch the scene SVG at all.
-//
-// Instead we draw the preview as a single absolutely-positioned DOM element on
-// its own layer. Updating it is O(1) CSS and never dirties the scene SVG, so
-// the create-drag stays 60fps regardless of zoom or element count. The real
-// Two.js shape is still materialised on mouseup (unchanged) — this is purely
-// the transient drag visual.
-
 export type DrawPreviewKind = 'rectangle' | 'circle' | 'diamond'
 
 interface DrawPreviewStyle {
@@ -27,9 +11,6 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 
 let overlayEl: HTMLDivElement | null = null
 
-// Create (or replace) the preview element and attach it to <body>. Positioned
-// in viewport (client) coordinates, so callers pass raw clientX/clientY — no
-// world<->screen conversion, no dependence on the canvas element's offset.
 export function createDrawPreview(
     kind: DrawPreviewKind,
     style: DrawPreviewStyle
@@ -58,11 +39,6 @@ export function createDrawPreview(
         s.borderRadius = '50%'
         s.border = `${lw}px solid ${stroke}`
     } else if (kind === 'diamond') {
-        // A CSS border can't follow a clip-path edge, so a clip-path-only
-        // diamond has no visible outline — with a light fill it's invisible
-        // mid-drag. Render an inline SVG polygon instead so it carries a real
-        // stroke. viewBox + preserveAspectRatio:none stretches the unit diamond
-        // to the div; non-scaling-stroke keeps the outline a constant px width.
         const svg = document.createElementNS(SVG_NS, 'svg')
         svg.setAttribute('width', '100%')
         svg.setAttribute('height', '100%')
@@ -88,7 +64,6 @@ export function createDrawPreview(
     overlayEl = el
 }
 
-// Position/size the preview from the drag's two corners, in client coords.
 export function updateDrawPreview(
     x0: number,
     y0: number,

@@ -10,17 +10,14 @@ import type { ImageAssetRef } from '../../types/asset'
 import type { MetaPropertyType } from '../../types/metaProperty'
 import MetaValueView from './metaValueView'
 
-/** What a field holds while it is being edited. */
 export type MetaDraft = string | ImageAssetRef | null
 
-/** The draft for a stored value (or an empty one). */
 export function draftFor(type: MetaPropertyType, value: unknown): MetaDraft {
     if (type === 'image') return isImageAssetRef(value) ? value : null
     if (value === null || value === undefined) return ''
     return String(value)
 }
 
-// Same look as the legend wizard's fields, at the panel's compact size.
 export const META_INPUT_CLASS = `w-full px-2 text-xs bg-card-bg text-ink
     border border-border-card rounded-md focus:outline-none focus:border-accent
     placeholder:text-ink-muted`
@@ -36,9 +33,7 @@ interface MetaValueFieldProps {
     type: MetaPropertyType
     draft: MetaDraft
     onChange: (draft: MetaDraft) => void
-    /** Enter (Shift+Enter makes a new line in text). */
     onSubmit?: () => void
-    /** Escape. */
     onCancel?: () => void
     autoFocus?: boolean
     disabled?: boolean
@@ -58,8 +53,6 @@ function ImagePicker({
         setBusy(true)
         setError(null)
         try {
-            // The same path as a dropped image: EXIF/GPS stripped, downscaled,
-            // stored in IndexedDB. The value only keeps the reference.
             onChange(await storeImageFile(file))
         } catch (err) {
             setError(describeImageError(err))
@@ -86,7 +79,6 @@ function ImagePicker({
     )
 }
 
-/** The input for one value, per its property's type. */
 export default function MetaValueField({
     type,
     draft,

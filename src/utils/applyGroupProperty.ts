@@ -25,26 +25,6 @@ import {
     circleLabelOf,
 } from '../factory/circleLabel'
 
-// Bulk-apply a property to every child of the currently-focused group whose
-// element type accepts that property. Element types that don't accept the
-// property silently discard the change (Phase 1: no UI filtering — toolbar
-// shows the union of all properties; this layer enforces what each child can
-// actually receive).
-//
-// Per Phase 1 decisions:
-//   - Defaults are NOT touched on group edits (caller doesn't bump them).
-//   - No "mixed value" inspection — toolbar reads from defaults.
-//   - textSize/textFontFamily on rectangles-with-text use a simple direct
-//     write — no resize-on-grow logic from the single-element path.
-//
-// Mutates three places per child:
-//   1. The hidden Two.js shape in two.scene.children (opacity=0 while group
-//      is selected; becomes visible again on blur with the new properties).
-//   2. The visible nested coreObject inside the group's Two.js Group (so the
-//      user sees the change in real time while the group is still focused).
-//      Requires groupobject.js to stamp `coreObject.elementData = item`.
-//   3. The componentStore row via updateComponentBulkPropertiesInLocalStore.
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,15 +66,7 @@ export interface ApplyGroupPropertyDeps {
 }
 
 const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
-    // Standalone text (newText/text) has no background-fill concept — its
-    // color is `textColor`. Excluded so a group fill leaves text untouched and
-    // never stamps a spurious `fill` onto a text row.
     fill: new Set(['rectangle', 'circle', 'diamond', 'frame']),
-    // A radius map is borderless (see CIRCLE_DEFAULTS), so `circle` is absent
-    // from all three stroke keys: a group edit must not hand it the ring its
-    // own toolbar refuses to offer. Its fill still reaches it, and the fill
-    // branch below keeps the stroke COLUMN in step — that mirror is not gated
-    // on this set.
     stroke: new Set([
         'rectangle',
         'diamond',
@@ -117,11 +89,6 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
         'divider',
         'pencil',
     ]),
-    // Pencil's metadata IS its vertex array, so opacity can't live in
-    // `metadata.opacity` like every other type (it would clobber the points).
-    // Pencil therefore persists opacity in a top-level `opacity` field instead
-    // — see the pencil branch in the opacity handler below.
-    // No `circle`: a radius map has no opacity control (see SETS.CIRCLE).
     opacity: new Set([
         'rectangle',
         'diamond',
@@ -132,9 +99,6 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
         'pencil',
         'image',
     ]),
-    // rectangle, diamond AND circle all carry text the same way (see
-    // applyShapeText / the *-with-text components), so a group text edit
-    // must reach every one of them.
     textColor: new Set([
         'text',
         'text',
@@ -152,14 +116,6 @@ const ACCEPTS: Record<GroupPropertyKey, Set<string>> = {
     ]),
 }
 
-/**
- * Which record to read a group member's properties off.
- *
- * The live scene element is the truth when it has one; the group overlay's
- * detached child copy is the fallback. Preferring the live record matters
- * because a toolbar edit lands there first, and the overlay copy is only
- * refreshed when the group is rebuilt.
- */
 function metaSourceOf(sceneEl: ShapeLike, child: ShapeLike): ShapeLike {
     return readGeometry(sceneEl?.elementData) ? sceneEl.elementData : child
 }
@@ -182,9 +138,6 @@ function findVisibleCoreObject(
     return null
 }
 
-// Collect every Two.Text line node inside `obj`, recursing through the
-// text-layer sub-group (multiline text is a stack of nodes). Replaces the
-// old single-node finder so group text edits reach every visible line.
 function findTextNodesInside(obj: ShapeLike): ShapeLike[] {
     if (!obj?.children) return []
     const out: ShapeLike[] = []
@@ -196,13 +149,6 @@ function findTextNodesInside(obj: ShapeLike): ShapeLike[] {
     return out
 }
 
-// Recursively apply a dash pattern to every Path leaf inside `node`, skipping
-// Two.js Group containers (descended into) and Text nodes (a dash pattern on
-// glyph outlines is wrong, and consistent with the fill/stroke/linewidth
-// handling that leaves the text node untouched). Used by the strokeType branch
-// instead of `applyToTwoShape`: Two.js Group has no `dashes` setter (unlike
-// fill/stroke/linewidth — group.js:1168-1216), so writing `group.dashes` is a
-// dead own-property assignment that never reaches the child Paths.
 function applyDashesToLeaves(
     node: ShapeLike,
     dashes: number[],
@@ -238,9 +184,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
         propertyKey: GroupPropertyKey | string,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         value: any,
-        // `preview` applies the change to the live Two.js scene only, skipping
-        // the store/history writes — used for continuous slider drags. The final
-        // value commits normally (no preview) on release.
         opts?: { preview?: boolean }
     ): void {
         const {
@@ -268,9 +211,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
             const prev: Partial<ComponentRow> = {}
             keys.forEach((k) => {
                 let v = current[k]
-                // Opacity is unset until first edited; its effective prior value
-                // is fully opaque (or a legacy metadata.opacity). Capture that so
-                // undo of the first opacity change restores it.
                 if (v === undefined && k === 'opacity') v = readOpacity(current)
                 if (v !== undefined) prev[k] = v
             })
@@ -290,10 +230,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
             updateComponentBulkPropertiesInLocalStore(id, bulkObj, true)
         }
 
-        // A map stroke's dash pattern is sized on screen from its width
-        // (utils/strokeDashes), so it is re-derived on its STROKE path only —
-        // the first child, as the route/area factories and pencil.tsx place it.
-        // Not every leaf: the rest are vertex handles and selection chrome.
         const cameraScale = twoJSInstance?.scene?.scale ?? 1
         const redashStroke = (
             node: ShapeLike,
@@ -320,18 +256,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                 propertyKey === 'stroke' ||
                 propertyKey === 'linewidth'
             ) {
-                // Two.js Group.fill/stroke/linewidth setters propagate the
-                // value to *every* child (see node_modules/two.js/src/
-                // group.js — each setter loops `child[prop] = v`). For a
-                // rectangle-with-text the text node is a child of the same
-                // group, so a group-level write hits the text alongside the
-                // rectangle: `fill` repaints the text and it vanishes,
-                // `stroke` gives it an outline, `linewidth` thickens that
-                // outline. Capture the text node's own value before the group
-                // write and restore it after, so the shape changes but the
-                // text is left untouched. (The single-element path in
-                // rectangle.tsx and the `opacity` branch below already avoid
-                // this by targeting the shape leaf, not the group.)
                 const sceneTexts = findTextNodesInside(sceneEl)
                 const coreTexts = findTextNodesInside(coreObj)
                 const sceneTextValues = sceneTexts.map((t) => t?.[propertyKey])
@@ -340,7 +264,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                 applyToTwoShape(sceneEl, propertyKey, value)
                 applyToTwoShape(coreObj, propertyKey, value)
 
-                // Restore every line node's own value the group write clobbered.
                 sceneTexts.forEach((t, i) => {
                     if (sceneTextValues[i] !== undefined)
                         t[propertyKey] = sceneTextValues[i]
@@ -359,21 +282,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     redashStroke(coreObj, child.strokeType)
                 }
 
-                // A radius map reads as ONE mark: its stroke column follows
-                // its fill, from creation onward. Mirror it here too, or the
-                // same edit means two different things depending on whether
-                // the circle happens to be in a group. Nothing is painted at
-                // zero width — this keeps the record one colour.
-                // `applyToTwoShape` already painted the leaf's `fill`; this
-                // adds the `stroke` alongside it.
                 if (propertyKey === 'fill' && type === 'circle') {
-                    // Written to the LEAF, not the group. A Two.js Group's
-                    // stroke setter loops every child, and the label's line
-                    // nodes are children too — a group write would outline the
-                    // name in the ring's colour. (The `fill` write above gets
-                    // away with the group because it captures and restores the
-                    // text nodes' own value; there is nothing to restore here,
-                    // since a label carries no stroke of its own.)
                     const sceneLeaf = sceneEl?.children?.[0]
                     const coreLeaf = coreObj?.children?.[0]
                     if (sceneLeaf) sceneLeaf.stroke = value
@@ -408,20 +317,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
             }
 
             if (propertyKey === 'opacity') {
-                // Apply at GROUP level (mirrors the single-element path) so the
-                // value can't compound with the group-level opacity that
-                // revealMembers restores when the group is dismissed. The old
-                // code pre-staged the value on the hidden original's LEAF, then
-                // reveal set the GROUP opacity to the same value — leaf × group
-                // = value² (a 50% edit rendered as 25% after ungrouping). The
-                // hidden original stays hidden (its group opacity is 0 under the
-                // overlay); we only normalise its leaf/text to 1 so the value
-                // reveal sets later is exact. The visible overlay copy is dimmed
-                // at its own group level so the user sees the change live.
-                //
-                // A radius map is the exception: its opacity lives on the
-                // disc (its leaf), and revealMembers restores its group to 1
-                // (groupOpacityOf), so the value is staged on the leaf here.
                 const sceneLeaf = sceneEl?.children?.[0]
                 if (sceneLeaf) sceneLeaf.opacity = type === 'circle' ? value : 1
                 findTextNodesInside(sceneEl).forEach((t) => (t.opacity = 1))
@@ -431,12 +326,7 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     if (coreLeaf) coreLeaf.opacity = 1
                     findTextNodesInside(coreObj).forEach((t) => (t.opacity = 1))
                 }
-                // Live drag preview: scene only, defer the store/history write
-                // to the commit on release.
                 if (opts?.preview) return
-                // Opacity persists in the top-level `opacity` column for every
-                // element type (unified — pencil's metadata is its vertex array
-                // and the rest were migrated off metadata.opacity).
                 if (sceneEl?.elementData) sceneEl.elementData.opacity = value
                 child.opacity = value
                 recordChild(id, { opacity: value })
@@ -458,10 +348,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     child.textColor = value
                     recordChild(id, { textColor: value })
                 } else if (type === 'circle') {
-                    // A map circle's label ink is a COLUMN, not
-                    // `metadata.textFill` (see circleLabelColorOf), and its
-                    // line nodes live in a sub-group findTextNodesInside would
-                    // reach but the metadata write below would not describe.
                     const width = sceneEl?.elementData?.width ?? child?.width
                     const meta = readProperties(metaSourceOf(sceneEl, child))
                     if (sceneEl?.elementData)
@@ -474,7 +360,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                         color: value,
                         width: width ?? 100,
                     }
-                    // Live element and overlay copy both carry a label.
                     if (sceneEl) buildCircleLabel(twoJSInstance, sceneEl, opts)
                     if (coreObj) buildCircleLabel(twoJSInstance, coreObj, opts)
                     recordChild(id, { textColor: value })
@@ -512,18 +397,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                 propertyKey === 'textSize' ||
                 propertyKey === 'textFontFamily'
             ) {
-                // A map circle's label is not embedded shape text — it is a
-                // sub-group the circleLabel factory owns, and a size change
-                // re-wraps it AND moves the cap band it is centred on, so it
-                // is rebuilt rather than poked.
-                //
-                // The size also has to cross ladders. The group toolbar has
-                // already resolved the toolbar label against TEXT_SIZES_ARRAY
-                // (24–72) by the time it reaches us, so we map that pixel value
-                // back to its label and re-resolve it on the POINT ladder — the
-                // same "styles travel as labels, never as pixels" rule the
-                // creation paths follow. An unmatched pixel value is dropped
-                // rather than written.
                 if (type === 'circle') {
                     let metaPatch: Record<string, unknown> | null = null
                     if (propertyKey === 'textFontFamily') {
@@ -561,9 +434,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                         }),
                         width: width ?? 100,
                     }
-                    // The live element and the group overlay's detached copy
-                    // both carry a label; rebuild both or they disagree for as
-                    // long as the selection lasts.
                     if (sceneEl) buildCircleLabel(twoJSInstance, sceneEl, opts)
                     if (coreObj) buildCircleLabel(twoJSInstance, coreObj, opts)
                     recordChild(id, patch)
@@ -577,9 +447,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                         ? 'textFontSize'
                         : 'textFontFamily'
                 const twoKey = propertyKey === 'textSize' ? 'size' : 'family'
-                // Two views of the same edit: `updatedProps` is the property
-                // bag the text renderers read, `textPatch` is the envelope the
-                // store write needs.
                 const metaSource = metaSourceOf(sceneEl, child)
                 const existingProps = readProperties(metaSource)
                 const updatedProps = { ...existingProps, [metaKey]: value }
@@ -589,13 +456,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                 const updatedMeta = textPatch.metadata
 
                 if (type === 'text') {
-                    // Standalone text has no container box to fit — just restyle
-                    // every line node. A size change also changes the per-line
-                    // vertical offset, so re-lay the stack out (matching how the
-                    // newText component re-spaces its lines) to keep them from
-                    // overlapping. Rebuild the content string from the live line
-                    // nodes rather than trusting `metadata.content` (which can be
-                    // absent) so the re-layout never collapses the text.
                     sceneTexts.forEach((t) => (t[twoKey] = value))
                     coreTexts.forEach((t) => (t[twoKey] = value))
                     if (propertyKey === 'textSize') {
@@ -631,7 +491,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     return
                 }
 
-                // rectangle / diamond with embedded text (circle returned above).
                 if (
                     sceneTexts.length === 0 &&
                     coreTexts.length === 0 &&
@@ -640,15 +499,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     return
                 }
 
-                // Reflow the embedded text to the shape's CURRENT (fixed) width
-                // with the new size/family so it wraps inside the box instead of
-                // spilling out — never widen the box. Widening would break the
-                // group's relative horizontal spacing (shapes laid out side by
-                // side would overlap). Then re-fit ONLY the height to the
-                // reflowed block (`resolveHeightForTextStyleChange`), which
-                // keeps every x-position untouched. This mirrors the single
-                // element resize/reflow path (canvasUtils.applyShapeText +
-                // shapeTextFit) instead of the old getBBox width-grow.
                 const storeRow = stateRefForComponentStore?.current?.[id]
                 const width =
                     storeRow?.width ??
@@ -698,22 +548,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     if (sceneRect) sceneRect.height = newH
                     if (coreRect) coreRect.height = newH
 
-                    // Anchor the TOP edge: the shape path + text layer are
-                    // centered on the group origin, so changing `height` alone
-                    // resizes symmetrically and moves the top edge (and with it
-                    // the shape's visual y). Shift the group by half the height
-                    // delta so the box only grows/shrinks downward and the top
-                    // edge — the user's "y point" — stays put. The shape center
-                    // moves by the same half-delta (down when growing, up when
-                    // the new style reclaims height).
-                    //
-                    // Two coordinate spaces are in play: the scene element's
-                    // translation + the store row are ABSOLUTE world y, while the
-                    // group child entry's x/y are RELATIVE to the group center
-                    // (see the group assembly in newCanvas — `item.x - xMid`).
-                    // Shift each in its own space so a later drag-commit
-                    // (commitGroupMove: `gy + child.y`) recomputes the same
-                    // absolute position.
                     const dy = (newH - currentH) / 2
                     const prevAbsY = sceneEl?.translation?.y ?? storeRow?.y ?? 0
                     const newAbsY = prevAbsY + dy
@@ -730,10 +564,6 @@ export function createApplyGroupProperty(deps: ApplyGroupPropertyDeps) {
                     if (typeof child.relativeY === 'number')
                         child.relativeY += dy
                     bulkObj.height = Math.round(newH)
-                    // The top-edge anchor moved the origin, so the move goes
-                    // through the GEOMETRY — writing the `y` column alone would
-                    // leave it disagreeing with the coordinates the factory
-                    // rebuilds from.
                     Object.assign(
                         bulkObj,
                         setGeometry(

@@ -4,11 +4,6 @@ import { useMediaQueryUtils } from '../constants/exportHooks'
 import ShortcutsModal from './sidebar/shortcutsModal'
 import HelpIcon from '../assets/help.svg?react'
 
-/**
- * Floating help button pinned to the bottom-right corner. Opens the keyboard
- * shortcuts modal. Hidden on mobile — there the same modal is reachable from the
- * hamburger menu drawer instead (see menuDrawer.tsx).
- */
 const HelpButton = (): ReactElement | null => {
     const { isMobile } = useMediaQueryUtils()
     const [open, setOpen] = useState(false)

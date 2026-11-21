@@ -1,8 +1,3 @@
-// Vertex math for arrow lines. The Two.js types we need (Anchor, Commands) come
-// off the constructor namespace. Parameters are intentionally typed loosely
-// here because the calling sites pass through scene-bookkeeping shapes that get
-// fully typed in Stages 7–9 (canvas / newCanvas).
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoRefLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,8 +15,6 @@ export const updateX1Y1Vertices = (
     pointCircle1: PointCircleLike,
     two: TwoLike
 ): void => {
-    // Plain lines carry `noArrowhead` (set by the line factory) — rebuild as a
-    // bare 2-anchor segment so dragging the tail never sprouts an arrowhead.
     if (line?.noArrowhead === true) {
         line.vertices = [
             new TwoRef.Anchor(
@@ -115,7 +108,6 @@ export const updateX2Y2Vertices = (
     pointCircle2: PointCircleLike,
     two: TwoLike
 ): void => {
-    // Plain lines (see updateX1Y1Vertices) stay a bare 2-anchor segment.
     if (line?.noArrowhead === true) {
         line.vertices = [
             new TwoRef.Anchor(

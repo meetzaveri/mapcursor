@@ -14,7 +14,6 @@
     height: 35px;
     border-radius: 35px;
     display: block;
-    /* 	background-color:green; */
     border: 4px solid;
     animation: spinner 1s linear infinite;
 }
@@ -26,7 +25,6 @@
 .lg-loader {
     margin: 20px;
     display: block;
-    /* 	background-color:green; */
     border: 4px solid;
     animation: spinner 0.5s linear infinite;
     width: 45px;
@@ -36,7 +34,6 @@
 .md-loader {
     margin: 20px;
     display: block;
-    /* 	background-color:green; */
     border: 2.5px solid;
     animation: spinner 0.4s linear infinite;
     width: 20px;
@@ -46,7 +43,6 @@
 .sm-loader {
     margin: 20px;
     display: block;
-    /* 	background-color:green; */
     border: 3px solid;
     animation: spinner 0.4s linear infinite;
     width: 18px;
@@ -56,7 +52,6 @@
 .xs-loader {
     margin: 20px;
     display: block;
-    /* 	background-color:green; */
     border: 4px solid;
     animation: spinner 0.5s linear infinite;
     width: 15px;

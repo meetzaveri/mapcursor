@@ -17,16 +17,10 @@
     cursor: pointer;
 }
 
-/* A selected shape's body is a drag zone — show the 4-way move cursor over it.
-   More specific than the bare .dragger-picker rule, so it wins; draw/pan modes
-   still override via their !important rules. Resize handles aren't
-   .dragger-picker, so they keep the directional resize cursor from the root. */
 .shape-selected .dragger-picker {
     cursor: move;
 }
 
-/* While a draw mode (pencil/arrow/rubber) is active, the canvas-wide
-   crosshair cursor must not be overridden by per-shape rules. */
 .draw-mode-active .dragger-picker {
     cursor: crosshair !important;
 }
@@ -34,8 +28,6 @@
     cursor: crosshair !important;
 }
 
-/* Pan mode: the whole canvas (and shapes within) shows a grab cursor so the
-   per-shape pointer rule doesn't win; it becomes grabbing while dragging. */
 .pan-mode-active,
 .pan-mode-active .dragger-picker,
 .pan-mode-active text {
@@ -47,11 +39,6 @@
     cursor: grabbing !important;
 }
 
-/* Map base, select mode: empty canvas drags the geography, so the bare surface
-   carries the same grab affordance the pan tool does. Deliberately NOT applied
-   to shapes or text — on a map those are still grabbed and moved, and the
-   per-shape cursor is the honest signal for that. Below the pan-mode rules so
-   an explicit pan tool still wins on everything. */
 .map-drag-pan {
     cursor: grab;
 }
@@ -73,16 +60,12 @@
     gap: 1rem;
 }
 
-/* patch - to disable automatically appending iframe */
 iframe {
     z-index: -11111 !important;
 }
 
-/* css for text wireframe element's foreign object */
 .foreign-text-container-base {
-    /* border-radius: 5px; */
     background: transparent;
-    /* border: 2px solid #ccc; */
     height: 100%;
     display: flex;
     align-items: center;

@@ -13,18 +13,10 @@ Sentry.init({
     enabled: import.meta.env.MODE !== 'development' ? true : false,
 })
 
-// Stale-deploy recovery: when a tab loaded before a deploy lazy-imports a chunk
-// (e.g. the base chunk + its CSS), the old fingerprinted asset 404s and Vite
-// fires `vite:preloadError`. Reload once to fetch the fresh index.html + current
-// asset hashes. The sessionStorage flag prevents an infinite reload loop if the
-// asset is genuinely missing rather than just stale; it's cleared on a clean
-// load below so future stale deploys can recover again.
 const PRELOAD_RELOAD_KEY = 'vite-preload-reloaded'
 
 window.addEventListener('vite:preloadError', (event) => {
     if (sessionStorage.getItem(PRELOAD_RELOAD_KEY)) return
-    // Suppress the throw so it doesn't surface to the ErrorBoundary/Sentry —
-    // we're recovering by reloading.
     event.preventDefault()
     sessionStorage.setItem(PRELOAD_RELOAD_KEY, '1')
     window.location.reload()
@@ -39,7 +31,4 @@ if (rootEl) {
     ReactDOM.createRoot(rootEl).render(<App />)
 }
 
-// If you want your app to work offline and load faster, you can change
-// unregister() to register() below. Note this comes with some pitfalls.
-// Learn more about service workers: https://bit.ly/CRA-PWA
 serviceWorker.unregister()

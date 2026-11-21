@@ -7,39 +7,11 @@ import type { LegendPreset } from '../types/legend'
 import type { ComponentRecord } from '../types/base'
 import { getPointCircle } from '../factory/point'
 
-// Applying a legend preset: the store/DB write, and the live repaint that has
-// to accompany it.
-//
-// Why this is not just a loop over `applyProperty`: that function is built
-// around `selectedComponent` (the scene-bound selection scaffold), and a preset
-// edit restyles elements that are not selected and may never have been. It
-// works from the RECORD and finds the group itself.
-//
-// Why it is not `applyPropertyToTwoJSGroup` either: that one paints
-// `shape.linewidth = value` raw and leaves an area's fill alone, neither of
-// which is right for a geo mark (see the two rules below). It covers every key
-// shallowly; this covers a preset's keys properly.
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TwoLike = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ShapeLike = any
 
-/**
- * Paint one preset-owned key onto a live element group.
- *
- * Two rules here are the whole reason this function exists, and both are
- * lifted from `applyProperty`'s generic branch rather than re-derived:
- *
- * - **An area's fill is a light shade of its stroke.** It is never persisted
- *   (the column is untouched for an area), so it has to be re-derived on the
- *   Two.js path every time the stroke moves.
- * - **A geo stroke is counter-scaled.** route / area / geo-pencil paint
- *   `linewidth * computeCounterScale(...)`, re-applied on every `zoomChanged`.
- *   Writing the logical width straight onto the path leaves the mark
- *   hairline-thin below the anchor until the next zoom nudges it back. The
- *   RECORD keeps the logical width; only what is painted is scaled.
- */
 function paintPresetKey(
     group: ShapeLike,
     two: TwoLike,
@@ -48,12 +20,6 @@ function paintPresetKey(
 ): void {
     const elementData = group?.elementData
     const componentType = elementData?.componentType
-    // A point's pin is NOT children[0]. Rebuilding a point group leaves any
-    // selection chrome in place and appends the new circle and label after it,
-    // so once a point has been selected the chrome sits at index 0 — and a
-    // recolour lands on the overlay while the pin keeps its old colour. That is
-    // exactly why `getPointCircle` exists, and why a hand-edit through
-    // applyProperty was fine while a preset silently was not.
     const shape =
         componentType === 'point'
             ? getPointCircle(group)
@@ -86,7 +52,6 @@ function paintPresetKey(
                   )
                 : (value as number)
             if (elementData) elementData.linewidth = value
-            // The dash pattern is sized from the width (utils/strokeDashes).
             if (isStrokeScaled(elementData)) {
                 applyStrokeDashes(
                     shape,
@@ -109,8 +74,6 @@ function paintPresetKey(
             if (elementData) elementData.strokeType = value
             break
         case 'fillType':
-            // Painted from the element's stroke, which the preset's own
-            // `stroke` has already updated: the patch lists stroke first.
             if (componentType === 'area') {
                 shape.fill = areaFillFor(
                     two,
@@ -122,9 +85,6 @@ function paintPresetKey(
             }
             break
         case 'opacity':
-            // An area's opacity is its fill's alpha; the border and the group
-            // stay at full strength (see areaFill.ts). Listed last in the
-            // patch, so stroke and fill type are already in place.
             if (componentType === 'area') {
                 if (elementData) elementData.opacity = value
                 group.opacity = 1
@@ -151,16 +111,6 @@ export interface ApplyPresetDeps {
     ) => void
 }
 
-/**
- * The column patch one preset application writes.
- *
- * `legendPresetId` rides the SAME patch as the styling, which is what makes an
- * apply a single history entry: undo restores the old colours and the old
- * binding together, never one without the other.
- *
- * A null preset is "None" — unbind and leave the styling exactly as it is.
- * Clearing a caption is not a request to restyle a mark.
- */
 export function presetApplyPatch(
     preset: LegendPreset | null
 ): Partial<ComponentRecord> {
@@ -171,13 +121,6 @@ export function presetApplyPatch(
     } as Partial<ComponentRecord>
 }
 
-/**
- * Apply a preset to one element: repaint the live scene, then write the store
- * and (if persisted) the DB.
- *
- * `skipHistory` exists for the many-element case, which records one BATCH entry
- * for the whole application instead of one per element.
- */
 export function applyPresetToElement(
     deps: ApplyPresetDeps,
     id: string,
@@ -193,10 +136,6 @@ export function applyPresetToElement(
     if (group) {
         Object.entries(patch).forEach(([name, value]) => {
             if (name === 'legendPresetId') {
-                // Not a paint — but it must land on the frozen mount snapshot,
-                // or the properties toolbar keeps reporting the old binding
-                // until the element is remounted. ElementRenderWrapper freezes
-                // props at mount, so nothing else would tell it.
                 if (group.elementData) group.elementData.legendPresetId = value
                 return
             }
@@ -209,14 +148,6 @@ export function applyPresetToElement(
     return patch
 }
 
-/**
- * Apply a preset across many elements as ONE undo step.
- *
- * Mirrors `applyGroupProperty`: each element is written with `skipHistory`, its
- * own before/after snapshot is collected, and the caller records a single BATCH
- * entry. Used both when a preset is edited (restyling everything bound to it)
- * and when a preset is deleted (unbinding them).
- */
 export function applyPresetToMany(
     deps: ApplyPresetDeps,
     ids: readonly string[],
@@ -235,10 +166,6 @@ export function applyPresetToMany(
     return entries
 }
 
-/**
- * Which records are bound to a preset. The store is the source of truth here,
- * not the scene: an element scrolled far off-camera is still bound.
- */
 export function idsBoundToPreset(
     store: Record<string, ComponentRecord>,
     presetId: string

@@ -1,25 +1,10 @@
-// Meta properties: named, typed details on a point, route, area, radius map or
-// geo-text, edited in the panel at the middle of the right edge.
-//
-// What these protect, roughly in the order each is likely to break:
-//
-//   1. The panel is there exactly while ONE supported object is selected.
-//   2. The wizard creates a property and its value; a value that doesn't fit
-//      the type is refused with a reason, and nothing half-made is left.
-//   3. A photo attached to a place survives a reload. The image cleanup on
-//      load once only counted image ELEMENTS, and would have deleted it.
-//   4. Every edit (add, edit, remove, rename, change type, delete) undoes and
-//      redoes through Ctrl/Cmd+Z and the toolbar, in order with canvas edits.
-//   5. Paste gives the copy its own values; values whose object is gone are
-//      dropped on load; typing in the panel never reaches canvas shortcuts.
-//   6. A JSON export carries the properties and their photos.
-
 import { test, expect } from './helpers/test.js'
 import {
     clickRedoButton,
     clickUndoButton,
     GQL_MOCK_RESPONSES,
     lineThrough,
+    mockAuth,
     pointAt,
     triggerRedoKeyboard,
     triggerUndoKeyboard,
@@ -30,7 +15,6 @@ const LOCAL_BASE = '99999999-9999-9999-9999-999999999999'
 const PANEL = '#mc-meta-panel'
 const DIALOG = '[data-meta-panel-dialog]'
 
-// At the opening camera, surface coords are screen coords.
 const POINT_AT = { x: 700, y: 450 }
 
 const row = (extra) => ({
@@ -71,8 +55,8 @@ const ROUTE = row({
     ]),
 })
 
-/** Open `/` already holding `components` (and optionally a meta sidecar). */
 async function openSeeded(page, { components = [POINT, ROUTE], meta = null } = {}) {
+    await mockAuth(page)
     await page.route('**/v1/graphql', async (route) => {
         let data = {}
         try {
@@ -87,7 +71,6 @@ async function openSeeded(page, { components = [POINT, ROUTE], meta = null } = {
     })
     await page.addInitScript(
         ({ base, components, meta }) => {
-            // Seed once: a reload must read what the app itself wrote.
             if (sessionStorage.getItem('seeded')) return
             sessionStorage.setItem('seeded', '1')
             localStorage.setItem('userId', 'test-user-id')
@@ -127,7 +110,6 @@ const sidecar = (page) =>
 const propertyNames = async (page) =>
     ((await sidecar(page))?.properties ?? []).map((p) => `${p.name}:${p.type}`)
 
-/** The panel's rows as "Name=value". */
 const rows = async (page) =>
     (await page.locator(`${PANEL} li[data-meta-property-id]`).allInnerTexts()).map(
         (t) => t.replace(/\n+/g, '=').trim()
@@ -144,7 +126,6 @@ async function selectPoint(page) {
     await page.locator(PANEL).waitFor()
 }
 
-/** The wizard, end to end: name + type (new) or an existing one, then value. */
 async function addProperty(page, { name, type = 'Text', value, existing = false }) {
     const panel = page.locator(PANEL)
     await panel.getByText('+ Add property').click()
@@ -181,17 +162,13 @@ test.describe('meta properties panel', () => {
         await expect(page.locator(PANEL)).toContainText('Point')
         await expect(page.locator(PANEL)).toContainText('No properties on this point yet')
 
-        // Click empty canvas: deselected, panel gone.
         await page.mouse.click(1000, 250)
         await expect(page.locator(PANEL)).toHaveCount(0)
 
-        // A route takes properties too.
         await page.mouse.click(410, 650)
         await expect(page.locator(PANEL)).toContainText('Route')
     })
 
-    // Like the legend, the card can be carried by the grip in its header and
-    // parked anywhere, without letting go of the object it describes.
     test('drags by its grip, keeps the selection, and docks on double-click', async ({
         page,
     }) => {
@@ -209,14 +186,11 @@ test.describe('meta properties panel', () => {
         await page.mouse.move(from.x - 400, from.y + 120, { steps: 10 })
         await page.mouse.up()
 
-        // Moved by the drag, and the point is still the one being described.
         const moved = await panel.boundingBox()
         expect(moved.x).toBeCloseTo(docked.x - 400, -1)
         expect(moved.y).toBeCloseTo(docked.y + 120, -1)
         await expect(panel).toContainText('Point')
 
-        // Remembered across a fresh selection: the card comes and goes with
-        // it, the spot does not.
         await page.mouse.click(1000, 250)
         await expect(panel).toHaveCount(0)
         await selectPoint(page)
@@ -224,7 +198,6 @@ test.describe('meta properties panel', () => {
         expect(again.x).toBeCloseTo(moved.x, 0)
         expect(again.y).toBeCloseTo(moved.y, 0)
 
-        // Double-click the grip: back under the legend.
         await panel.getByRole('button', { name: /Drag to move/ }).dblclick()
         const home = await panel.boundingBox()
         expect(home.x).toBeCloseTo(docked.x, 0)
@@ -239,7 +212,6 @@ test.describe('meta properties panel', () => {
         await addProperty(page, { name: 'Rating', type: 'Number', value: '4.5' })
         await saveWizard(page)
         await expect(page.locator(PANEL)).toContainText('Enter a whole number.')
-        // Nothing half-made: no "Rating" yet.
         expect(await propertyNames(page)).toEqual([])
 
         await page.locator(PANEL).locator('input').first().fill('4')
@@ -271,7 +243,6 @@ test.describe('meta properties panel', () => {
         await saveWizard(page)
         expect(await assetCount(page)).toBe(1)
 
-        // The regression: cleanup on load kept only image ELEMENTS' bytes.
         await page.reload()
         await page.waitForSelector('[data-component-id="p1"]')
         await page.waitForTimeout(1000)
@@ -287,7 +258,6 @@ test.describe('meta properties panel', () => {
         await openSeeded(page)
         await selectPoint(page)
 
-        // Add (property + value: one step).
         await addProperty(page, { name: 'Quantity', value: '12' })
         await saveWizard(page)
         expect(await rows(page)).toEqual(['Quantity=12'])
@@ -297,7 +267,6 @@ test.describe('meta properties panel', () => {
         await triggerRedoKeyboard(page)
         await expect.poll(() => rows(page)).toEqual(['Quantity=12'])
 
-        // Edit in place, undone from the toolbar.
         await page.locator(PANEL).getByRole('button', { name: 'Edit Quantity' }).click()
         await page.locator(`${PANEL} textarea`).fill('a dozen')
         await page.locator(`${PANEL} textarea`).press('Enter')
@@ -309,14 +278,12 @@ test.describe('meta properties panel', () => {
         await triggerUndoKeyboard(page)
         await expect.poll(() => rows(page)).toEqual(['Quantity=12'])
 
-        // Remove from the point (no confirm; undo is the safety net).
         await rowAction(page, 'Remove from this point')
         await expect.poll(() => rows(page)).toEqual([])
         expect(await propertyNames(page)).toEqual(['Quantity:text'])
         await triggerUndoKeyboard(page)
         await expect.poll(() => rows(page)).toEqual(['Quantity=12'])
 
-        // Rename.
         await rowAction(page, 'Rename property')
         await page.locator(`${DIALOG} input`).fill('Count')
         await page.locator(`${DIALOG} input`).press('Enter')
@@ -324,7 +291,6 @@ test.describe('meta properties panel', () => {
         await triggerUndoKeyboard(page)
         await expect.poll(() => rows(page)).toEqual(['Quantity=12'])
 
-        // Change type, with the outcome previewed first.
         await rowAction(page, 'Change type')
         await page.locator(DIALOG).getByRole('radio', { name: 'Number' }).click()
         await expect(page.locator(DIALOG)).toContainText('1 value will be converted.')
@@ -335,7 +301,6 @@ test.describe('meta properties panel', () => {
         await triggerRedoKeyboard(page)
         await expect.poll(() => propertyNames(page)).toEqual(['Quantity:integer'])
 
-        // Delete from the map: confirmed, and undoable.
         await rowAction(page, 'Delete property from map')
         await expect(page.locator(DIALOG)).toContainText('You can undo this')
         await page.locator(DIALOG).getByRole('button', { name: 'Delete property' }).click()
@@ -353,7 +318,6 @@ test.describe('meta properties panel', () => {
         await addProperty(page, { name: 'Hours', value: '9–5' })
         await saveWizard(page)
 
-        // Then a canvas edit: drag the point.
         await page.mouse.move(POINT_AT.x + 1, POINT_AT.y)
         await page.mouse.down()
         await page.mouse.move(POINT_AT.x + 81, POINT_AT.y, { steps: 8 })
@@ -386,8 +350,6 @@ test.describe('meta properties panel', () => {
         const { values } = await sidecar(page)
         const copy = values.find((v) => v.objectId !== 'p1')
         expect(copy.value).toBe('9–5')
-        // The copy's value names the pasted object (the draft is debounced,
-        // so poll for it rather than read it once).
         await expect
             .poll(() =>
                 page.evaluate(() =>
@@ -432,7 +394,6 @@ test.describe('meta properties panel', () => {
         await openSeeded(page)
         await selectPoint(page)
         await addProperty(page, { name: 'Notes' })
-        // "p" is a letter a tool might bind; Backspace deletes a selection.
         const field = page.locator(`${PANEL} textarea`)
         await field.type('pp')
         await field.press('Backspace')

@@ -16,18 +16,6 @@ import type {
 } from '../types/legend'
 import { isLegendPresetType } from '../types/legend'
 
-/**
- * The legend presets of one base, and every write to them.
- *
- * Gated on `isPersistedRef` exactly as every component mutation in base.tsx is:
- * on `/base/:id` a write goes to Hasura, on `/` it goes to a localStorage
- * sidecar. The id is minted CLIENT-side in both modes rather than letting
- * Postgres default it — an element binds to a preset the instant it is created,
- * so there is no point at which we could afford to wait for a server round trip
- * to learn what to bind to. `id` is in the insert permission's column list, so
- * the server takes ours.
- */
-
 export interface LegendPresetInput {
     name: string
     elementType: LegendPresetType
@@ -37,7 +25,6 @@ export interface LegendPresetInput {
 export interface UseLegendPresetsArgs {
     baseId: string
     isPersistedRef: MutableRefObject<boolean>
-    /** `legendPresets` off GET_COMPONENTS_FOR_BASE_QUERY; undefined in local mode. */
     seed: readonly unknown[] | undefined
 }
 
@@ -50,16 +37,9 @@ export interface UseLegendPresetsApi {
         patch: Partial<LegendPresetInput>
     ) => LegendPreset | null
     deletePreset: (id: string) => void
-    /** Wholesale replace — used by import and by persistBase's re-key. */
     replacePresets: (next: LegendPreset[]) => void
 }
 
-/**
- * Rows arrive from Hasura as opaque jsonb + text. Anything whose `elementType`
- * is not one of the four is dropped rather than rendered: a legend entry that
- * captions no possible mark is noise, and the CHECK constraint means it can
- * only appear if someone wrote to the table by hand.
- */
 function normalizePreset(row: unknown): LegendPreset | null {
     if (!row || typeof row !== 'object') return null
     const r = row as Record<string, unknown>
@@ -97,14 +77,6 @@ function readLocal(baseId: string): LegendPreset[] {
     }
 }
 
-/**
- * Write the local sidecar for a base directly.
- *
- * Exported for `persistBase`, which rotates the local base id and has to carry
- * the legend onto the new one — the same move it already makes for the anchor
- * and the camera. Without it, sharing a canvas would silently empty the legend
- * of the `/` session the user is still sitting in.
- */
 export function writeLegendPresetsLocal(
     baseId: string,
     presets: LegendPreset[]
@@ -116,8 +88,6 @@ function writeLocal(baseId: string, presets: LegendPreset[]): void {
     try {
         localStorage.setItem(keyFor(baseId), JSON.stringify(presets))
     } catch (_) {
-        // A full quota costs the legend's local mirror, never the session.
-        // The in-memory list stays authoritative for this tab either way.
     }
 }
 
@@ -139,8 +109,6 @@ export function useLegendPresets({
         ignoreResults: true,
     })
 
-    // One writer for both halves of the state, so the ref can never lag the
-    // list. Callers inside Two.js handlers read the ref; React reads the list.
     const commit = useCallback(
         (next: LegendPreset[]): void => {
             legendPresetsRef.current = next
@@ -150,9 +118,6 @@ export function useLegendPresets({
         [baseId, isPersistedRef]
     )
 
-    // Seed. In persisted mode the query is the truth; in local mode the
-    // sidecar is. Runs on baseId change too, because share and import both
-    // rotate the id under a mounted component.
     useEffect(() => {
         if (seed !== undefined) {
             const rows = seed
@@ -180,9 +145,6 @@ export function useLegendPresets({
             }
             commit([...legendPresetsRef.current, preset])
             if (isPersistedRef.current) {
-                // `createdBy` is omitted deliberately — Hasura stamps it from
-                // the x-hasura-user-id header. Sending one would be rejected
-                // (it is not an insertable column) and, worse, forgeable.
                 insertLegendPreset({
                     variables: {
                         object: {
@@ -234,14 +196,6 @@ export function useLegendPresets({
         [commit, isPersistedRef, updateLegendPreset]
     )
 
-    /**
-     * Removes the caption, never the styling.
-     *
-     * The FK is ON DELETE SET NULL, so bound elements keep exactly how they
-     * look and simply stop being explained. The caller is responsible for
-     * clearing `legendPresetId` in the in-memory store to match — the DB does
-     * its half on its own, but nothing tells a mounted element component.
-     */
     const deletePreset = useCallback(
         (id: string): void => {
             commit(legendPresetsRef.current.filter((p) => p.id !== id))

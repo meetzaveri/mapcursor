@@ -42,7 +42,6 @@ const PrivacyPage: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-canvas text-left">
-            {/* Nav */}
             <nav className="sticky top-0 z-10 bg-sidebar border-b border-border-panel shadow-sm">
                 <div className="w-full max-w-2xl laptop:max-w-full mx-auto px-4 tablet-landscape:px-6 py-3 flex items-center justify-between">
                     <span className="text-ink font-bold text-sm tablet-landscape:text-base tracking-tight font-display">
@@ -59,9 +58,7 @@ const PrivacyPage: React.FC = () => {
                 </div>
             </nav>
 
-            {/* Body */}
             <main className="w-full max-w-2xl mx-auto px-4 tablet-landscape:px-6 py-8 tablet-landscape:py-12">
-                {/* Header */}
                 <div className="mb-6 tablet-landscape:mb-10">
                     <h1 className="text-xl tablet-landscape:text-2xl font-bold text-ink tracking-tight mb-2 font-display">
                         Privacy
@@ -71,7 +68,6 @@ const PrivacyPage: React.FC = () => {
                     </p>
                 </div>
 
-                {/* TL;DR */}
                 <div
                     className="bg-card-bg border border-border-card rounded-card p-4 mb-6 tablet-landscape:mb-10
                     shadow-card"

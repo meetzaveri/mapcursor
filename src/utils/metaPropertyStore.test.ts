@@ -56,12 +56,12 @@ describe('normalizeMetaSet', () => {
         const out = normalizeMetaSet({
             properties: [
                 prop('p1', 'Rating', 'integer'),
-                { id: 'p2', name: 'Bad', type: 'boolean' }, // type not in the enum
+                { id: 'p2', name: 'Bad', type: 'boolean' },
             ],
             values: [
                 val('ok', 'p1', 'o', 4),
-                val('wrong-shape', 'p1', 'o2', 'four'), // not an integer
-                val('no-prop', 'p2', 'o', 1), // its property was dropped
+                val('wrong-shape', 'p1', 'o2', 'four'),
+                val('no-prop', 'p2', 'o', 1),
                 { ...val('bad-obj', 'p1', 'o3', 1), objectType: 'pencil' },
             ],
         })
@@ -176,7 +176,6 @@ describe('copyValuesToObjects', () => {
             'p-hours',
             'p-photo',
         ])
-        // The pasted photo points at the same stored bytes.
         expect(copies.find((c) => c.propertyId === 'p-photo')?.value).toEqual(IMG)
     })
 })

@@ -1,23 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
 
-// Lets a fixed-position panel be picked up by a grip and dropped anywhere on
-// screen. The panel is DOCKED (wherever its own CSS puts it) until it is first
-// dragged; from then on it is FLOATING at a stored top-left position, until the
-// grip is double-clicked to dock it again.
-//
-// The position is remembered in localStorage, per panel and not per base: where
-// a person likes their legend is a fact about their screen, not about a map.
-
 export interface PanelPosition {
     x: number
     y: number
 }
 
-/**
- * Keep a panel of size `w × h` wholly on screen. Wider or taller than the
- * viewport, it pins to the top-left so its grip stays reachable.
- */
 export function clampPanelPosition(
     pos: PanelPosition,
     w: number,
@@ -49,16 +37,12 @@ function writeStored(key: string, pos: PanelPosition | null): void {
     try {
         if (pos) localStorage.setItem(key, JSON.stringify(pos))
         else localStorage.removeItem(key)
-    } catch {
-        /* storage full or blocked: the panel just won't remember */
-    }
+    } catch {}
 }
 
 export interface DraggablePanel {
-    /** Null while docked. */
     position: PanelPosition | null
     isDragging: boolean
-    /** Spread onto the grip element. */
     gripHandlers: {
         onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void
         onPointerMove: (e: ReactPointerEvent<HTMLElement>) => void
@@ -76,8 +60,6 @@ export function useDraggablePanel(
         readStored(storageKey)
     )
     const [isDragging, setIsDragging] = useState(false)
-    // Where in the panel the pointer grabbed it, so the panel does not jump to
-    // put its corner under the cursor.
     const grabOffset = useRef<PanelPosition | null>(null)
     const latest = useRef<PanelPosition | null>(position)
     latest.current = position
@@ -96,8 +78,6 @@ export function useDraggablePanel(
         [panelRef]
     )
 
-    // A stored spot from a bigger window, or a window since shrunk, must not
-    // leave the panel off screen with no grip to fetch it back by.
     useEffect(() => {
         const refit = (): void => {
             const current = latest.current
@@ -132,21 +112,15 @@ export function useDraggablePanel(
                 if (e.button !== 0) return
                 const rect = panelRef.current?.getBoundingClientRect()
                 if (!rect) return
-                // No text selection, no focus shuffle, and nothing reaches
-                // the canvas underneath.
                 e.preventDefault()
                 e.stopPropagation()
                 grabOffset.current = {
                     x: e.clientX - rect.left,
                     y: e.clientY - rect.top,
                 }
-                // Capture keeps the moves coming when the pointer outruns the
-                // grip, and keeps them off the canvas.
                 e.currentTarget.setPointerCapture(e.pointerId)
-                // On the body too, so the cursor holds wherever it travels.
                 document.body.style.cursor = 'grabbing'
                 setIsDragging(true)
-                // A docked panel floats from exactly where it already is.
                 setPosition({ x: rect.left, y: rect.top })
             },
             onPointerMove: (e): void => {

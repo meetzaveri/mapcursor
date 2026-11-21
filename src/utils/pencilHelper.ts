@@ -1,13 +1,6 @@
-/**
- * Pencil helper utilities for velocity-based variable stroke width.
- *
- * Slow drawing = thick lines, fast drawing = thin lines.
- */
-
 import { geometryPositions, readGeometry, readProperties } from './geometry'
 import type { GeometrySource } from './geometry'
 
-// Velocity thresholds (px/ms)
 const SLOW_VELOCITY = 0.1
 const FAST_VELOCITY = 1.5
 
@@ -17,16 +10,6 @@ export interface PencilPoint {
     lw?: number
 }
 
-/**
- * Re-pair a pencil record's LineString coordinates with the per-point widths
- * stored alongside them in `properties.widths`.
- *
- * The two live apart because a GeoJSON position's third element means altitude
- * — a width there would be a lie, and it would put the stroke's pressure data
- * somewhere a GeoJSON consumer would silently misread. Keeping them as parallel
- * arrays is also what makes every geometry operation length-preserving, so they
- * cannot desync: a translate maps coordinates and never touches widths.
- */
 export function pencilPointsOf(
     source: GeometrySource | null | undefined
 ): PencilPoint[] {
@@ -39,10 +22,6 @@ export function pencilPointsOf(
     })
 }
 
-/**
- * Maps drawing velocity (px/ms) to a linewidth.
- * Slow = thick (baseWidth * 2), fast = thin (baseWidth * 0.5).
- */
 export function velocityToLinewidth(velocity: number, baseWidth: number): number {
     const maxWidth = baseWidth * 2.5
     const minWidth = baseWidth * 0.5
@@ -57,9 +36,6 @@ export function velocityToLinewidth(velocity: number, baseWidth: number): number
     return maxWidth - t * (maxWidth - minWidth)
 }
 
-/**
- * Exponential moving average to smooth linewidth transitions.
- */
 export function smoothLinewidth(
     prevWidth: number,
     targetWidth: number,
@@ -68,12 +44,6 @@ export function smoothLinewidth(
     return prevWidth + factor * (targetWidth - prevWidth)
 }
 
-/**
- * Groups consecutive points with similar linewidths into longer path segments.
- * Adjacent groups share an overlap point to prevent visual gaps.
- *
- * Returns array of point arrays, each representing one path segment.
- */
 export function mergeSegmentsByLinewidth(
     points: PencilPoint[],
     lwTolerance = 0.3
@@ -108,12 +78,6 @@ export function mergeSegmentsByLinewidth(
     return segments
 }
 
-/**
- * Chaikin's corner-cutting smoothing. Each iteration replaces every interior
- * pair (P, Q) with two points at 1/4 and 3/4 along PQ. Endpoints are kept
- * exact. Result stays inside the original polygon — no overshoot — and gentle
- * curves round out while sharp corners only get a small bevel.
- */
 export function chaikinSmooth(
     points: PencilPoint[],
     iterations = 1
@@ -142,9 +106,6 @@ export function chaikinSmooth(
     return result
 }
 
-/**
- * Computes the average linewidth for a segment of points.
- */
 export function averageLinewidth(points: PencilPoint[]): number {
     if (points.length === 0) return 1
     const sum = points.reduce((acc, p) => acc + (p.lw ?? 1), 0)

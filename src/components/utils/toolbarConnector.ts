@@ -1,6 +1,3 @@
-// Placeholder toolbar class — almost all methods are stubs in the original
-// JS. Kept as-is during the TS migration; cleanup can prune unused stubs
-// later if they're confirmed dead code.
 export default class ToolBar {
     toolBarDOM: HTMLElement | null
     constructor() {

@@ -1,7 +1,3 @@
-// Three interaction rules that had drifted apart from what the UI promised:
-// pan mode is for navigating (not authoring), paste hands the selection to the
-// clone, and a geo stroke keeps its counter-scale when its width is edited.
-
 import { test, expect } from './helpers/test.js'
 import {
     baseRow,
@@ -116,7 +112,6 @@ async function openMapBase(page) {
     await page.waitForTimeout(300)
 }
 
-/** How many text editors are open, of either kind. */
 const openEditors = (page) =>
     page.evaluate(
         () =>
@@ -137,8 +132,6 @@ test('pan mode never opens a text editor', async ({ page }) => {
         'true'
     )
 
-    // Both editors are reached by a dblclick bound to the element's OWN svg
-    // node, which is why the canvas-level guard is not enough on its own.
     await dblclickOn(page, `text=${MAP_LABEL}`)
     expect(
         await openEditors(page),
@@ -150,7 +143,6 @@ test('pan mode never opens a text editor', async ({ page }) => {
         'a point opened an editor in pan mode'
     ).toBe(0)
 
-    // ...and the guard is pan mode, not a broken editor: select mode still edits.
     await page.locator('[aria-label="Select"]').first().click({ force: true })
     await dblclickOn(page, `text=${MAP_LABEL}`)
     expect(await openEditors(page)).toBe(1)
@@ -161,8 +153,6 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
 }) => {
     await openMapBase(page)
 
-    // Select the route while the camera is at the anchor (easy to hit), then
-    // zoom out — the bug only showed below the anchor.
     const clickPoint = await page.evaluate((id) => {
         const g = document.querySelector(`g[data-component-id="${id}"]`)
         const path = Array.from(g.querySelectorAll('path')).find(
@@ -178,7 +168,7 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
     await page.mouse.click(clickPoint.x, clickPoint.y)
     await page.waitForSelector('#stroke-width-section')
 
-    const SCALE = 0.0625 // four map zooms below the anchor
+    const SCALE = 0.0625
     await page.evaluate((scale) => {
         const two = window.__mcTwo
         two.scene.scale = scale
@@ -197,9 +187,6 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
             return Number(path.getAttribute('stroke-width'))
         }, ROUTE_ID)
 
-    // route/area paint `linewidth * counterScale(scale, resist)`. Writing the
-    // raw value onto the path skipped that factor, so the widest step still
-    // rendered hairline-thin until the next zoom or a reload re-applied it.
     await page.locator('#stroke-width-section button[title="2px"]').click()
     const thin = await paintedWidth()
     await page.locator('#stroke-width-section button[title="8px"]').click()
@@ -210,8 +197,6 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
         3.5
     )
 
-    // And nothing jumps when the component re-applies its own counter-scale:
-    // that jump on the next camera nudge was how the bug announced itself.
     await page.evaluate(() => {
         const two = window.__mcTwo
         window.dispatchEvent(
@@ -223,7 +208,6 @@ test('a geo stroke keeps its counter-scale when the width is edited', async ({
     })
     expect(await paintedWidth()).toBeCloseTo(thick, 3)
 
-    // The record keeps the logical width — only what is painted is scaled.
     expect(
         await page.evaluate(
             (id) =>
@@ -260,9 +244,6 @@ test('paste hands the selection to the clone', async ({ page }) => {
     await page.mouse.move(box.x + 600, box.y + 420)
     await page.keyboard.press('Control+v')
 
-    // The selection overlay is scene-level chrome, so whichever rectangle it
-    // sits over is the selected one. It used to stay on the SOURCE, which meant
-    // the properties panel edited the element you had copied FROM.
     const selected = async () =>
         page.evaluate(() => {
             const chrome = document.querySelector('[data-mc-selection-chrome]')
@@ -276,12 +257,6 @@ test('paste hands the selection to the clone', async ({ page }) => {
             let best = null
             let bestDist = Infinity
             rects.forEach((r) => {
-                // `two.add` puts the clone's group in `scene.children` right
-                // away, but its SVG node is only appended on the next
-                // `two.update()`. Skipping the un-rendered ones keeps that
-                // window a "not ready yet" for the poll below — throwing a
-                // TypeError out of page.evaluate escapes expect.poll and fails
-                // the test outright, which is how this read flaked under load.
                 const elem = document.getElementById(r.id)
                 if (!elem) return
                 const b = elem.getBoundingClientRect()
@@ -297,11 +272,6 @@ test('paste hands the selection to the clone', async ({ page }) => {
             return { id: best, dist: Math.round(bestDist) }
         })
 
-    // The clone mounts through React.lazy, so give the poll room: on a loaded
-    // machine the chunk fetch + mount can outlast the default expect timeout.
-    // A not-ready read counts as "still on the source", so the poll keeps
-    // waiting rather than passing on an undefined id and then tripping over a
-    // null `final` below.
     await expect
         .poll(async () => (await selected())?.id ?? sourceId, {
             timeout: 15_000,

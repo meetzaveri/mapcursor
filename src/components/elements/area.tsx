@@ -16,7 +16,6 @@ import type {
     VertexPathRevertedDetail,
 } from '../utils/vertexHandles'
 
-// See circle.tsx for the rationale on the loose prop bag.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ElementProps = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,8 +35,6 @@ function Area(props: ElementProps): ReactElement {
     const shapeRef = useRef<ShapeLike>(null)
     const handlesRef = useRef<ShapeLike[]>([])
 
-    // Live values read inside DOM drag handlers registered once at mount — keep
-    // them in refs to dodge the stale-closure trap (see CLAUDE.md).
     const zuiRef = useRef<ShapeLike>(zuiInBase)
     const persistRef = useRef(updateComponentBulkPropertiesInLocalStore)
     const idRef = useRef<string>(props.id)
@@ -52,14 +49,7 @@ function Area(props: ElementProps): ReactElement {
     }, [props.id])
 
     const two = props.twoJSInstance
-    // `resolveResist` is the single reader — reaching for the field directly
-    // is how a live element and its detached group-overlay copy end up
-    // disagreeing. It is also only now that an area can carry a stored resist
-    // at all: under the old vertex-array metadata `.resist` was always
-    // undefined here, so the default was the only reachable value.
     const resist = resolveResist(props)
-    // Logical (unscaled) stroke width. We counter-scale this on zoom rather
-    // than the whole group, so the polygon geometry stays glued to the world.
     const baseLinewidth = props.linewidth ?? 2
 
     useEffect(() => {
@@ -77,36 +67,22 @@ function Area(props: ElementProps): ReactElement {
             const parentGroup = props.parentGroup
             path.translation.x = props.properties.x
             path.translation.y = props.properties.y
-            // No path opacity: an area's is in its fill (areaFillFor), so the
-            // border stays at full strength.
             parentGroup.add(path)
             two.update()
         } else {
             groupRef.current = group
             shapeRef.current = path
-            // No group opacity: the factory folded the area's opacity into its
-            // fill colour, which dims the interior and leaves the border at
-            // full strength (see areaFill.ts).
 
-            // Seed the stroke-width counter-scale from the current camera so the
-            // border is legible before the first zoom event fires. Only linewidth
-            // resists the zoom — the geometry stays glued to the world (unlike
-            // point.tsx, which counter-scales the whole group).
             const initialScale =
                 (zuiInBase as ShapeLike)?.zui?.scale ?? two?.scene?.scale
             if (initialScale) {
                 path.linewidth =
                     baseLinewidth * computeCounterScale(initialScale, resist)
             }
-            // The dash pattern is sized on screen from that width, so it is
-            // seeded (and re-derived on every zoom below) with it.
             applyStrokeDashes(path, props.strokeType, initialScale ?? 1)
 
             two.update()
 
-            // Per-vertex handles + the fat hit band. Route and area share the
-            // editing model: both are multi-point geometries whose coordinates
-            // are the mark.
             vertexHandles = attachVertexHandles({
                 two,
                 group,
@@ -138,10 +114,6 @@ function Area(props: ElementProps): ReactElement {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Counter-scale only the stroke width on every camera change so the area's
-    // border stays legible when the world zooms out, while the geometry stays
-    // glued to its coordinates. Reads scale from the event each fire — no stale
-    // closure (see the React + Two.js stale-closure note in CLAUDE.md).
     useEffect(() => {
         const onZoom = (e: Event): void => {
             const group = groupRef.current
@@ -149,8 +121,6 @@ function Area(props: ElementProps): ReactElement {
             if (!group || !path) return
             const scale = (e as CustomEvent<{ scale: number }>).detail?.scale
             if (!scale) return
-            // Logical width lives on elementData (kept in sync by the property
-            // panel); fall back to the mount-time base.
             const base = group.elementData?.linewidth ?? baseLinewidth
             path.linewidth = base * computeCounterScale(scale, resist)
             applyStrokeDashes(
@@ -166,7 +136,6 @@ function Area(props: ElementProps): ReactElement {
         }
     }, [two, resist, baseLinewidth])
 
-    // Show the vertex handles only while this area is the active selection.
     useEffect(() => {
         const group = groupRef.current
         if (!group) return
@@ -176,9 +145,6 @@ function Area(props: ElementProps): ReactElement {
         setVertexHandlesVisible(handlesRef.current, isSelected, two)
     }, [selectedComponent, two])
 
-    // Undo/redo of a vertex edit reverts our `metadata` in the store, but
-    // ElementRenderWrapper freezes our props at mount so no effect re-fires.
-    // The history hook dispatches this event instead.
     useEffect(() => {
         const handleReverted = ((
             e: CustomEvent<VertexPathRevertedDetail>

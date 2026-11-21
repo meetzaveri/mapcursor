@@ -1,8 +1,5 @@
 import type { HTMLAttributes, ReactElement } from 'react'
 
-// A six-dot drag handle (two columns of three). Purely the affordance: the
-// caller supplies the pointer handlers through `...rest`.
-
 const DOTS: readonly [number, number][] = [
     [3, 2],
     [7, 2],
@@ -34,8 +31,6 @@ export default function DragGrip({
                 text-ink-muted hover:bg-sidebar transition-colors duration-150 ${className}`}
             style={{
                 cursor: isDragging ? 'grabbing' : 'grab',
-                // Otherwise a touchpad or pen pans the page instead of
-                // delivering the pointer moves.
                 touchAction: 'none',
                 ...style,
             }}

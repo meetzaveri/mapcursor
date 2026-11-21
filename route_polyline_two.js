@@ -79,7 +79,6 @@ function finishDrawing() {
     currentLines = []
 
     const anchors = currentVertices.map((v) => new Two.Anchor(v.x, v.y))
-    // closed = false → open path (route, not area)
     const path = new Two.Path(anchors, false, false)
     path.noFill()
     path.stroke = STROKE

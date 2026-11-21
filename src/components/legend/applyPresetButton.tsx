@@ -2,16 +2,10 @@ import type { ReactElement } from 'react'
 
 interface ApplyPresetButtonProps {
     presetName: string
-    /** The selection already wears this preset — nothing to apply. */
     isApplied: boolean
     onApply: () => void
 }
 
-/**
- * A legend row's "Apply" action, shown only when the selected mark is the
- * preset's type. Once applied it stays put as a disabled "Applied" rather than
- * vanishing, so the row confirms the click instead of just losing a button.
- */
 export default function ApplyPresetButton({
     presetName,
     isApplied,

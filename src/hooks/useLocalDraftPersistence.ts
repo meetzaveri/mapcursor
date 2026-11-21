@@ -30,11 +30,6 @@ export interface LocalDraftPersistenceOptions {
     backgroundBaseIdRef: MutableRefObject<string | null>
     setBackgroundBaseId: Dispatch<SetStateAction<string | null>>
     onStorageLimitRef?: MutableRefObject<(() => void) | null>
-    /**
-     * Fired right after a draft write whose UTF-8 size exceeds
-     * `MAX_DRAFT_UTF8_BYTES` — the write-side guard. The host reverts the last
-     * action and surfaces the "canvas is full" modal.
-     */
     onDraftOverBudgetRef?: MutableRefObject<(() => void) | null>
     isMobile?: boolean
 }
@@ -46,12 +41,10 @@ export interface LocalDraftPersistenceApi {
     setStorageLimitBaseUrl: Dispatch<SetStateAction<string | null>>
     handleStartNewCanvas: () => void
     handleContinueOnSavedBase: () => void
-    // Load-side rescue for a persisted draft too large to render safely.
     showBaseTooLargeModal: boolean
     handleDownloadBaseBackup: () => void
     handleStartFreshFromTooLarge: () => void
     handleOpenBaseAnyway: () => void
-    /** Live UTF-8 byte size of the persisted draft, refreshed on every save. */
     draftSizeBytes: number
 }
 
@@ -78,20 +71,10 @@ export function useLocalDraftPersistence({
         string | null
     >(null)
     const [showBaseTooLargeModal, setShowBaseTooLargeModal] = useState(false)
-    // Raw (unparsed) draft text deliberately NOT loaded because it's over
-    // budget. Kept as a string — parsing it is itself heavy enough to stutter
-    // the page — so it's only parsed if the user explicitly hits "Open anyway".
     const deferredRawDraftRef = useRef<string | null>(null)
     const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    // Has the store held any element this session? An EMPTY store is ambiguous:
-    // it is the first render before the draft is restored, and the state while
-    // an over-budget draft waits unparsed behind the rescue modal — in both of
-    // which the stored draft must be left alone — but it is also "the user
-    // deleted the last element", which must clear it. Only the last case comes
-    // after the store has held something.
     const hasHadContentRef = useRef(false)
 
-    // Restore draft and background base ID from localStorage on mount (local mode only)
     useEffect(() => {
         if (isPersisted) return
 
@@ -101,18 +84,10 @@ export function useLocalDraftPersistence({
             setBackgroundBaseId(savedBgBaseId)
         }
 
-        // The store whose images survive cleanup below. Stays `{}` when there
-        // is no draft (nothing references anything), becomes null when the
-        // draft is deferred unparsed (unknown contents: delete nothing).
         let storeForCleanup: ComponentStore | null = {}
         try {
             const draft = localStorage.getItem(DRAFT_STORAGE_KEY)
             if (draft) {
-                // Load-side guard FIRST, on the raw string — before any parse.
-                // Parsing + rebuilding a multi-MB object graph is itself heavy
-                // enough to stutter the page, so an over-budget draft must
-                // never be parsed on load. Stash the raw text and surface the
-                // rescue modal instead; only "Open anyway" parses it.
                 if (isRawDraftOverBudget(draft)) {
                     deferredRawDraftRef.current = draft
                     setShowBaseTooLargeModal(true)
@@ -143,10 +118,6 @@ export function useLocalDraftPersistence({
         }
 
         if (storeForCleanup) {
-            // Meta values outlive a deleted object so undo can restore it with
-            // its values. Nothing can be undone across a load, so values whose
-            // object is gone are dropped here. Runs before the image cleanup,
-            // so a dropped image value frees its bytes in the same pass.
             const meta = readMetaLocal(localBaseId)
             const pruned = dropOrphanValues(
                 meta,
@@ -154,35 +125,26 @@ export function useLocalDraftPersistence({
             )
             if (pruned !== meta) writeMetaLocal(localBaseId, pruned)
 
-            // Image cleanup happens here, on load, and never on delete: undo
-            // has to be able to bring a deleted image back within the session.
             void pruneUnusedAssets(localAssetSources(storeForCleanup))
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Save draft to localStorage on changes (debounced, local mode only)
     useEffect(() => {
         if (isPersisted) return
         if (Object.keys(componentStore).length > 0) {
             hasHadContentRef.current = true
         }
-        // Nothing has been loaded or drawn yet: there is nothing to write, and
-        // clearing here would delete a draft that is still being restored.
         if (!hasHadContentRef.current) return
 
         const writeDraft = (): void => {
             try {
-                // Skip groupobject — a transient visual construct.
                 const componentsToSave = Object.fromEntries(
                     Object.entries(componentStore).filter(
                         ([, v]) => v?.componentType !== GROUP_COMPONENT
                     )
                 ) as ComponentStore
-                // The canvas had content and now has none: the user deleted
-                // the last element. Clear the draft, or the next load restores
-                // what they just removed.
                 if (Object.keys(componentsToSave).length === 0) {
                     localStorage.removeItem(DRAFT_STORAGE_KEY)
                     setDraftSizeBytes(0)
@@ -197,10 +159,6 @@ export function useLocalDraftPersistence({
                     })
                 )
 
-                // Write-side guard: measure the REAL UTF-8 size of what we just
-                // persisted (TextEncoder on the draft key), keep the live
-                // readout current, and revert the last action if it's over the
-                // budget.
                 const bytes = measureStoredDraftUtf8Bytes()
                 setDraftSizeBytes(bytes)
                 if (bytes > MAX_DRAFT_UTF8_BYTES) {
@@ -221,11 +179,6 @@ export function useLocalDraftPersistence({
         }
         draftSaveTimerRef.current = setTimeout(writeDraft, 500)
 
-        // Flush the pending save synchronously if the page is being hidden
-        // (reload / navigation). Without this, a reload fired inside the 500ms
-        // debounce window drops the latest change — most visibly a theme-toggle
-        // recolor — so the next load restores the stale pre-change colors (e.g.
-        // dark shapes after switching to light then quickly reloading).
         const flushDraftSave = (): void => {
             if (draftSaveTimerRef.current) {
                 clearTimeout(draftSaveTimerRef.current)
@@ -257,8 +210,6 @@ export function useLocalDraftPersistence({
         }
     }
 
-    // Rescue: download the raw over-budget draft straight from localStorage
-    // (no rendering, so it can't freeze) so the user keeps their work.
     const handleDownloadBaseBackup = (): void => {
         const raw = readRawDraft()
         if (raw) downloadRawDraftBackup(raw)
@@ -271,10 +222,6 @@ export function useLocalDraftPersistence({
         window.location.href = '/'
     }
 
-    // Explicit override: parse the deferred (over-budget) draft now and render
-    // it anyway — this is the heavy work the load path deliberately skipped, so
-    // it may freeze; the user opted in. The write-side guard leaves the result
-    // alone because the undo stack is empty.
     const handleOpenBaseAnyway = (): void => {
         const raw = deferredRawDraftRef.current
         if (raw) {
@@ -291,7 +238,6 @@ export function useLocalDraftPersistence({
                     }
                 }
             } catch {
-                // Corrupt draft — nothing to open; fall through to close.
             }
             deferredRawDraftRef.current = null
         }
