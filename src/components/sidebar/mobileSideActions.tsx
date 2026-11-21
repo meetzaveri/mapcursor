@@ -9,6 +9,8 @@ import { MobileMetaPropertiesButton } from '../metaProperties/metaPropertiesPane
 import { useSelectedMetaObject } from '../metaProperties/useSelectedMetaObject'
 import { SHARE_BUTTON_ID } from './shapesToolbarId'
 import LocateMeButton from '../locateMeButton'
+import ChromeReveal from '../common/chromeReveal'
+import { CHROME_ENTER } from '../common/chromeEnter'
 
 const GAP_PX = 8
 const FALLBACK_TOP_PX = 62
@@ -38,7 +40,13 @@ function useHasNonPencilSelection(): boolean {
     return typeof componentType === 'string' && componentType !== 'pencil'
 }
 
-const MobileSideActions = (): ReactElement | null => {
+interface MobileSideActionsProps {
+    chromeShown: boolean
+}
+
+const MobileSideActions = ({
+    chromeShown,
+}: MobileSideActionsProps): ReactElement | null => {
     const { isMobile } = useMediaQueryUtils()
     const hasSelection = useHasNonPencilSelection()
     const metaTarget = useSelectedMetaObject()
@@ -61,20 +69,22 @@ const MobileSideActions = (): ReactElement | null => {
                         zIndex: 20,
                     }}
                 >
-                    <LocateMeButton
-                        className="w-10 h-10 rounded-lg flex items-center justify-center
-                            bg-card-bg text-ink border border-border-panel disabled:cursor-wait"
-                        iconClassName="w-5 h-5"
-                        tooltipPlacement="left"
-                    />
+                    <ChromeReveal shown={chromeShown} order={4}>
+                        <LocateMeButton
+                            className="w-10 h-10 rounded-lg flex items-center justify-center
+                                bg-card-bg text-ink border border-border-panel disabled:cursor-wait"
+                            iconClassName="w-5 h-5"
+                            tooltipPlacement="left"
+                        />
+                    </ChromeReveal>
                     {active && (
                         <button
                             type="button"
                             aria-label="Legend"
                             title="Legend"
                             onClick={(): void => setShowLegend(true)}
-                            className="w-10 h-10 rounded-lg flex items-center justify-center
-                                bg-accent-dark text-white"
+                            className={`w-10 h-10 rounded-lg flex items-center justify-center
+                                bg-card-bg text-accent-dark border border-accent/30 ${CHROME_ENTER}`}
                         >
                             <LegendIcon size={18} />
                         </button>

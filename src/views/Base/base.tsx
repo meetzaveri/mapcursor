@@ -53,6 +53,7 @@ import ZoomControls from '../../components/ZoomControls'
 import GoToContentButton from '../../components/goToContentButton'
 import HelpButton from '../../components/helpButton'
 import ChromeReveal from '../../components/common/chromeReveal'
+import { CHROME_ENTER_FROM_BOTTOM } from '../../components/common/chromeEnter'
 import Sidebar from '../../components/sidebar/primary'
 import ElementPropertiesToolbar from '../../components/sidebar/elementProperties'
 import controlsIcon from '../../assets/controls.svg'
@@ -2289,7 +2290,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                                 right: '10px',
                                 zIndex: 20,
                             }}
-                            className="flex flex-col gap-2"
+                            className={`flex flex-col gap-2 ${CHROME_ENTER_FROM_BOTTOM}`}
                         >
                             <button
                                 title="Finish drawing"
@@ -2339,7 +2340,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                                     right: '10px',
                                     zIndex: 20,
                                 }}
-                                className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150 ${
+                                className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-150 ${CHROME_ENTER_FROM_BOTTOM} ${
                                     showMobileToolbarPanel
                                         ? 'bg-accent'
                                         : 'bg-accent-dark'
@@ -2358,7 +2359,7 @@ const BaseViewPage: React.FC<BaseProps> = (props) => {
                         <LegendPanel />
                     </ChromeReveal>
                     <MetaPropertiesPanel />
-                    <MobileSideActions />
+                    <MobileSideActions chromeShown={mapFirstPaint} />
                     <Canvas
                         pointerToggle={pointerToggle}
                         isPencilMode={isPencilMode}
