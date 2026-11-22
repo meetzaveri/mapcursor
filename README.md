@@ -60,7 +60,20 @@ choose (it's Web Mercator) and no shapefile or GeoJSON import yet. If you
 need those, QGIS is what you want. Mapcursor is for the step before or after
 it: the quick sketch, the slide, the "here's what I mean" message.
 
-## Running it locally
+## What's open sourced and what's not ?
+
+This repository only has the frontend code. A frontend client still needs to authenticate (first time) with the backend server to register a user. Once user is registered on DB, it will send back the token. Then using that token (with certain expiry) you can basically use mapcursor even in offline mode (in case of internet disruptions).
+
+But to run it locally or self hosting locally, you'll need to
+
+- first get a carto API key
+- run mapcursor backend
+- run mapcursor hasura instance
+- run mapcursor frontend (already open sourced)
+
+In coming days I'll also make backend and hasura repo open source, so you can self host it on your own.
+
+<!-- ## Running it locally
 
 You'll need a current Node LTS and Yarn 1.
 
@@ -84,25 +97,7 @@ README, then point `VITE_GRAPHQL_ENDPOINT` and `VITE_WS_GRAPHQL_ENDPOINT` at it.
 | `yarn typecheck` | `tsc --noEmit`                       |
 | `yarn test`      | Unit tests (Vitest)                  |
 | `yarn test:e2e`  | End-to-end tests (Playwright)        |
-| `yarn codegen`   | Regenerate GraphQL types from Hasura |
-
-### Finding your way around
-
-```
-src/
-    views/Base/        the workspace page and BaseContext
-    newCanvas.tsx      the canvas: two.js setup and every input handler
-    components/
-        elements/      one component per drawable (point, route, area, ...)
-        sidebar/       toolbars and the properties panel
-        legend/        legend presets
-    factory/           templates for each element type
-    baseTypes/         the MapLibre backdrop and map anchoring
-    utils/             geometry, export/import, road snapping, ...
-```
-
-Stack: React 18, TypeScript, Vite, two.js, MapLibre GL, Apollo + Hasura,
-Tailwind.
+| `yarn codegen`   | Regenerate GraphQL types from Hasura | -->
 
 ## Status
 
