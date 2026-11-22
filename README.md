@@ -101,10 +101,9 @@ README, then point `VITE_GRAPHQL_ENDPOINT` and `VITE_WS_GRAPHQL_ENDPOINT` at it.
 
 ## Status
 
-Built on evenings and weekends, so it moves in bursts. Expect rough edges.
-Bug reports, ideas and "I tried to do X and couldn't" are all useful.
-[Open an issue](https://github.com/meetzaveri/mapcursor/issues); I read every
-one, even if a reply takes a few days.
+I mostly work on it on weekends. Please expect rough edges.
+Bug reports, ideas and "I tried to do X and couldn't" are all welcomed. You can
+file an issue [here](https://github.com/meetzaveri/mapcursor/issues).
 
 Pull requests are welcome too. For anything bigger than a bug fix, open an
 issue first so we can talk it through before you spend your weekend on it.
